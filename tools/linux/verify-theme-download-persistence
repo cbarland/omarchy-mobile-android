@@ -2,8 +2,9 @@
 """Phased, opt-in disposable-fixture check; run inside a prepared Linux session.
 
 This tests Git HTTP download through unchanged omarchy-theme-install using a
-locally generated data-only repository. It does NOT test public HTTPS, TLS,
-DNS, third-party themes, or prove rendered colors from an IPC acknowledgment.
+locally generated data-only repository. An opt-in loopback HTTPS mode uses an
+ephemeral certificate and scoped CA trust; it does not test public HTTPS, DNS,
+third-party themes, or prove rendered colors from an IPC acknowledgment.
 Capture both Android displays after install and after owner reopening for the
 separate appearance check (flat cyan wallpaper, accent #12abef).
 
@@ -31,13 +32,13 @@ from pathlib import Path
 import re
 import shutil
 import signal
+import ssl
 import stat
 import struct
 import subprocess
 import sys
 import threading
 import time
-from urllib.parse import urlparse
 import zlib
 
 PIN = "e71a816e9032f040225e086c7256f73e8080ae45"
@@ -68,35 +69,6 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
-def reviewed_theme_name(url):
-    parsed = urlparse(url)
-    require(parsed.scheme == "https" and parsed.hostname and not parsed.username and not parsed.password,
-            "Reviewed public theme URL must use HTTPS without embedded credentials")
-    name = Path(parsed.path.rstrip("/")).name
-    name = re.sub(r"\.git$", "", name, flags=re.IGNORECASE)
-    name = re.sub(r"^omarchy-", "", name, flags=re.IGNORECASE)
-    require(re.fullmatch(r"[a-z0-9_][a-z0-9._+-]*", name), "Reviewed URL does not produce a safe theme name")
-    return name
-
-
-def review_remote_theme(work, url, expected):
-    """Fetch only Git metadata and reject executable or install-like files."""
-    review = work / "review-repository.git"
-    git_env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null",
-                   GIT_TERMINAL_PROMPT="0", GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.hooksPath",
-                   GIT_CONFIG_VALUE_0="/dev/null")
-    run(["git", "clone", "--bare", "--no-local", "--depth", "1", "--", url, str(review)], work,
-        "review-clone", timeout=90, env=git_env)
-    commit = run(["git", "--git-dir=" + str(review), "rev-parse", "HEAD"], work, "review-commit", env=git_env).strip()
-    require(re.fullmatch(r"[0-9a-f]{40}", expected or "") and commit == expected,
-            "Reviewed theme commit does not match pinned expected commit")
-    listing = run(["git", "--git-dir=" + str(review), "ls-tree", "-r", "HEAD"], work, "review-tree", env=git_env)
-    denied = (".sh", ".bash", ".zsh", ".fish", ".lua", ".desktop", ".service", ".socket", ".qml")
-    for line in listing.splitlines():
-        mode, kind, _object, path = line.split(None, 3)
-        require(mode == "100644" and kind == "blob" and not path.lower().endswith(denied),
-                "Reviewed theme contains executable, symlink, or install-like file: " + path)
-    require(listing.strip(), "Reviewed theme repository is empty")
 
 
 def run(argv, work, label, timeout=30, env=None):
@@ -225,7 +197,7 @@ def preconditions():
         assert_real_ancestors(HOME / relative)
 
 
-def prepare(work, repository_url=None, expected_commit=None):
+def prepare(work, transport="loopback-http-git"):
     preconditions()
     require(not work.exists(), "Refusing to overwrite previous fixture or recovery data: " + str(work))
     original = (HOME / ".local/state/omarchy/current/theme.name").read_text().strip()
@@ -239,15 +211,9 @@ def prepare(work, repository_url=None, expected_commit=None):
         saved[relative] = inventory(path)
         if path.exists():
             shutil.copytree(path, work / "snapshots" / str(index), symlinks=True, copy_function=shutil.copy2)
-    if repository_url is not None:
-        reviewed_theme_name(repository_url)
-        require(re.fullmatch(r"[0-9a-f]{40}", expected_commit or ""),
-                "Expected public theme commit must be a full SHA-1")
     state = {"version": 1, "home": str(HOME), "originalTheme": original,
              "fixture": work.name, "snapshots": saved, "signatures": {},
-             "transport": "public-https-git" if repository_url else "loopback-http-git",
-             "repositoryUrl": repository_url, "expectedCommit": expected_commit,
-             "themeName": reviewed_theme_name(repository_url) if repository_url else work.name,
+             "transport": transport,
              "publicHttpsVerified": False,
              "renderedPaletteVerified": False, "phase": "prepared"}
     write_json(work / "state.json", state)
@@ -268,25 +234,23 @@ def png():
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 32, 32, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
 
 
-def install(work, state):
+def tls_material(work):
+    cert = work / "tls-cert.pem"
+    key = work / "tls-key.pem"
+    run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+         "-keyout", str(key), "-out", str(cert), "-subj", "/CN=127.0.0.1",
+         "-addext", "subjectAltName=IP:127.0.0.1"], work, "tls-certificate", timeout=30)
+    key.chmod(0o600)
+    return cert, key
+
+
+def install(work, state, untrusted_cert=False):
     preconditions()
     require(state["phase"] == "prepared", "Install can run only once after prepare")
-    target = HOME / ".config/omarchy/themes" / state.get("themeName", state["fixture"])
+    target = HOME / ".config/omarchy/themes" / state["fixture"]
     assert_real_ancestors(target)
     require(not target.exists(), "Unique fixture theme already exists")
     source = work / "source"
-    if state["transport"] == "public-https-git":
-        review_remote_theme(work, state["repositoryUrl"], state["expectedCommit"])
-        git_env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null", GIT_TERMINAL_PROMPT="0")
-        state.update(phase="installing", url=state["repositoryUrl"], commit=state["expectedCommit"], publicHttpsVerified=True)
-        write_json(work / "state.json", state)
-        run(["omarchy-theme-install", state["repositoryUrl"]], work, "upstream-install", timeout=90, env=git_env)
-        cloned = run(["git", "-C", str(target), "rev-parse", "HEAD"], work, "downloaded-commit", env=git_env).strip()
-        require(cloned == state["expectedCommit"], "Installed public theme differs from pinned commit")
-        state["phase"] = "installed"
-        write_json(work / "state.json", state)
-        check(work, state, "installed", False)
-        return
     (source / "backgrounds").mkdir(parents=True)
     colors = (OMARCHY / "themes/tokyo-night/colors.toml").read_text()
     colors, count = re.subn(r'^accent\s*=.*$', 'accent = "#12abef"', colors, flags=re.MULTILINE)
@@ -317,14 +281,37 @@ def install(work, state):
             with (work / "http-access.log").open("a") as log:
                 log.write((fmt % args) + "\n")
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    cert, key = (None, None)
+    if state["transport"] == "loopback-https-git":
+        cert, key = tls_material(work)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(certfile=str(cert), keyfile=str(key))
+        server.socket = context.wrap_socket(server.socket, server_side=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    url = "http://127.0.0.1:%d/%s.git" % (server.server_port, state["fixture"])
+    scheme = "https" if state["transport"] == "loopback-https-git" else "http"
+    if scheme == "https":
+        git_env["GIT_SSL_CAINFO"] = str(cert)
+    url = "%s://127.0.0.1:%d/%s.git" % (scheme, server.server_port, state["fixture"])
     state.update(phase="installing", url=url, commit=commit,
                  colorsSha256=sha(source / "colors.toml"), backgroundSha256=sha(source / "backgrounds/fixture.png"))
     write_json(work / "state.json", state)  # Recovery information precedes mutation.
     offset = SYNC_LOG.stat().st_size if SYNC_LOG.exists() else 0
     try:
+        if untrusted_cert:
+            untrusted_env = dict(git_env)
+            untrusted_env.pop("GIT_SSL_CAINFO", None)
+            try:
+                run(["omarchy-theme-install", url], work, "untrusted-install", timeout=90, env=untrusted_env)
+            except RuntimeError:
+                require(not target.exists(), "Untrusted certificate created a theme checkout")
+                require((HOME / ".local/state/omarchy/current/theme.name").read_text().strip() == state["originalTheme"],
+                        "Untrusted certificate changed the selected theme")
+                state["phase"] = "prepared"
+                write_json(work / "state.json", state)
+                print("Untrusted certificate rejected before theme mutation")
+                return
+            raise RuntimeError("Untrusted certificate unexpectedly succeeded")
         run(["omarchy-theme-install", url], work, "upstream-install", timeout=90, env=git_env)
     finally:
         server.shutdown()
@@ -421,7 +408,7 @@ def restore(work, state):
         shutil.rmtree(target)
     state["phase"] = "restored"
     write_json(work / "state.json", state)
-    write_json(work / "result.json", {"transport": "loopback-http-git", "publicHttpsVerified": False,
+    write_json(work / "result.json", {"transport": state["transport"], "publicHttpsVerified": False,
                "bothOwnersReopened": set(state.get("reopened", {})) == {"phone", "desktop"},
                "renderedPaletteVerified": False, "originalThemeRestored": state["originalTheme"],
                "originalThemeDataRestored": True, "fixtureCheckoutRemoved": True})
@@ -434,21 +421,20 @@ def main():
     parser.add_argument("work", type=safe_work)
     parser.add_argument("--stage", default="installed", choices=("installed", "reopened"))
     parser.add_argument("--require-restart", action="store_true")
-    parser.add_argument("--repository-url", help="Reviewed public HTTPS data-only theme URL (prepare only)")
-    parser.add_argument("--expected-commit", help="Pinned full commit SHA-1 for --repository-url (prepare only)")
+    parser.add_argument("--untrusted-cert", action="store_true", help="Negative HTTPS install probe; no theme mutation expected")
+    parser.add_argument("--transport", choices=("loopback-http-git", "loopback-https-git"),
+                        default="loopback-http-git", help="Generated two-file fixture transport")
     args = parser.parse_args()
     def terminate(_signum, _frame):
         raise InterruptedError("Fixture terminated; preserve WORK recovery snapshots")
     signal.signal(signal.SIGTERM, terminate)
     if args.action == "prepare":
-        require((args.repository_url is None) == (args.expected_commit is None),
-                "--repository-url and --expected-commit must be supplied together")
-        prepare(args.work, args.repository_url, args.expected_commit)
+        prepare(args.work, args.transport)
         return
     state = load(args.work)
     if args.action == "install":
         try:
-            install(args.work, state)
+            install(args.work, state, args.untrusted_cert)
         except BaseException:
             if state["phase"] in ("installing", "installed"):
                 try:

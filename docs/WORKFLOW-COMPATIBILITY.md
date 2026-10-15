@@ -49,24 +49,22 @@ index was live and returned bounded passages. No upstream source was copied;
 the audit confirmed the current environment already satisfies the relevant
 desktop filtering contract.
 
-## Public HTTPS theme check
+## HTTPS theme transport check
 
-`tools/linux/verify-theme-download-persistence` accepts a reviewed public
-theme explicitly during `prepare`:
+The harness keeps its reviewed generated two-file data fixture and can exercise
+the same upstream installer over an ephemeral local HTTPS Git server:
 
 ```text
-python3 /root/.local/share/omamobile/verify-theme-download-persistence prepare \
-  /tmp/omamobile-theme-download-reviewed \
-  --repository-url https://example.invalid/omarchy-reviewed-theme.git \
-  --expected-commit <full-40-character-commit>
+python3 /root/.local/share/omamobile/verify-theme-download-persistence prepare /tmp/omamobile-theme-download-untrusted --transport loopback-https-git
+python3 /root/.local/share/omamobile/verify-theme-download-persistence install /tmp/omamobile-theme-download-untrusted --untrusted-cert
+python3 /root/.local/share/omamobile/verify-theme-download-persistence prepare /tmp/omamobile-theme-download-trusted --transport loopback-https-git
+python3 /root/.local/share/omamobile/verify-theme-download-persistence install /tmp/omamobile-theme-download-trusted
 ```
 
-The URL must be HTTPS without embedded credentials. Before invoking the
-unchanged upstream installer, the harness performs a shallow bare Git fetch,
-checks the exact pinned commit, and rejects symlinks, executable entries, and
-script or service-like suffixes (`.sh`, `.lua`, `.qml`, `.desktop`, `.service`,
-and related forms). Git's normal CA verification remains enabled; a bad or
-untrusted certificate fails before the user's theme state is touched. The
-subsequent `install`, `check`, and `restore` phases retain the existing
-observations of installed commit, peer IPC acknowledgments, live shell state,
-and exact snapshot restoration.
+The certificate has a `127.0.0.1` SAN and is trusted only through the fixture
+subprocess's `GIT_SSL_CAINFO`; no global TLS override is made. The negative
+phase proves an untrusted certificate fails before a theme checkout or
+selection change, after which the trusted phase observes the generated commit,
+peer acknowledgments, persistence, and existing restore checks. Public
+third-party theme compatibility remains open and is deliberately not executed
+by this harness.
