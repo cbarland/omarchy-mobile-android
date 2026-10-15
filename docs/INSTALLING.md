@@ -132,3 +132,20 @@ left no active setup processes or unpublished rootfs. Service completion/retry
 regressions also pass. See [VERIFICATION.md](VERIFICATION.md) for evidence scope.
 Fresh ARM64 installation is still unverified; previous manually prepared physical
 sessions do not establish this new installation path on a phone.
+
+
+### User-data export verification - 2026-10-15
+
+On disposable API35 emulator-5556, the three targeted LinuxDataExportTest
+checks passed again in 20.980 seconds after the abandoned-staging fix. They
+verify user-tree scope, fixture bytes/mode/symlink, unchanged installed data,
+cancellation/private-temp cleanup, persistent logs, rejected-service cleanup,
+and reclamation of an abandoned archive while retaining an unrelated sentinel.
+These in-process tests use file URIs and do not themselves prove SAF grants.
+
+A separate actual Export control -> Android Downloads picker -> Save flow
+completed through the document provider. Inspection of the resulting 98,904,258
+byte tar.gz found 1,256 regular files and 13 symlinks, all under root/ or home/;
+the foreground LinuxService had exited after completion. No archive or private
+Linux data is committed to the repository. Restore/replacement and authenticated
+image download remain open in issue #3.
