@@ -45,6 +45,7 @@ final class HostRuntime {
     private volatile Process guest;
     private volatile AndroidBroker broker;
     private volatile Thread activeWorker;
+    private volatile boolean recordingSetup;
 
     private HostRuntime(Context context) {
         this.context = context;
@@ -53,6 +54,17 @@ final class HostRuntime {
         File external = context.getExternalFilesDir(null);
         shared = (external != null ? external : new File(context.getFilesDir(), "shared")).toPath().resolve("Shared");
         nativeDir = new File(context.getApplicationInfo().nativeLibraryDir);
+        Path previousSetup = linux.resolve("install.log");
+        try {
+            if (Files.isRegularFile(previousSetup)) {
+                try (var channel = Files.newByteChannel(previousSetup)) {
+                    channel.position(Math.max(0, channel.size() - 48 * 1024));
+                    var tail = java.nio.ByteBuffer.allocate(48 * 1024);
+                    while (tail.hasRemaining() && channel.read(tail) != -1) { }
+                    log.append(new String(tail.array(), 0, tail.position(), StandardCharsets.UTF_8));
+                }
+            }
+        } catch (IOException error) { android.util.Log.w("OmamobileLinux", "Cannot read previous setup log", error); }
         displays = new DisplayProfiles(root.toString());
         DisplayManager manager = context.getSystemService(DisplayManager.class);
         for (Display display : manager.getDisplays()) displays.connect(display.getDisplayId(), display.getDisplayId() == Display.DEFAULT_DISPLAY);
@@ -66,6 +78,13 @@ final class HostRuntime {
 
     boolean busy() { return busy; }
     boolean installed() { return Files.isDirectory(root); }
+    boolean graphicsReady() {
+        return Files.isRegularFile(root.resolve("root/.local/share/omamobile/start-shell"))
+                && Files.isRegularFile(root.resolve("usr/bin/quickshell"));
+    }
+    boolean installerAvailable() {
+        return new File(nativeDir, "libomamobile_hyprland.so").isFile() && InstallAssets.available(context);
+    }
     synchronized String output() { return log.toString(); }
     void observe(Runnable listener) { listeners.add(listener); }
     void unobserve(Runnable listener) { listeners.remove(listener); }
@@ -78,11 +97,19 @@ final class HostRuntime {
     private synchronized void append(String text) {
         if (BuildConfig.DEBUG) android.util.Log.i("OmamobileLinux", text);
         log.append(text);
+        if (recordingSetup) try {
+            Files.write(linux.resolve("install.log"), text.getBytes(StandardCharsets.UTF_8),
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (IOException error) { android.util.Log.w("OmamobileLinux", "Cannot persist setup log", error); }
         if (log.length() > 64 * 1024) log.delete(0, log.length() - 48 * 1024);
         changed();
     }
 
     synchronized boolean submit(String command, Uri image, boolean ando, boolean androidDns, Runnable done) {
+        return submit(command, image, ando, androidDns, false, done);
+    }
+
+    synchronized boolean submit(String command, Uri image, boolean ando, boolean androidDns, boolean installOmarchy, Runnable done) {
         if (busy) return false;
         busy = true;
         stopping = false;
@@ -90,17 +117,37 @@ final class HostRuntime {
         worker.execute(() -> {
             activeWorker = Thread.currentThread();
             try {
+                checkSetupRunning();
                 if (image != null) {
+                    if (installOmarchy) {
+                        if (!installerAvailable()) throw new IOException("Install the full graphical APK to set up Omarchy");
+                        if (installed()) throw new IOException("An installation already exists; it will not be replaced");
+                        Files.createDirectories(linux);
+                        Files.write(linux.resolve("install.log"), new byte[0]);
+                        recordingSetup = true;
+                        appendLine("Installing Omarchy from the selected trusted Linux archive. Signed packages require internet access.");
+                        // Android may have killed a previous setup before its
+                        // finally block. Reclaim only our unpublished work trees.
+                        try (var children = Files.list(linux)) {
+                            for (Path child : (Iterable<Path>) children::iterator) {
+                                if (child.getFileName().toString().matches("(?:import|setup)-[0-9a-f-]{36}"))
+                                    GuestPaths.deleteTree(child);
+                            }
+                        }
+                    }
                     var input = context.getContentResolver().openInputStream(image);
                     if (input == null) throw new IOException("Cannot read the selected archive");
                     try (input) {
-                        importer().install(input, linux, machine(), this::appendLine);
+                        importer().install(input, linux, machine(), this::appendLine, staging -> {
+                            if (installOmarchy) prepareOmarchy(staging);
+                        });
                     }
+                    if (installOmarchy) appendLine("Omarchy is ready. Press Start Omarchy screens.");
                 } else {
                     run(command, ando, androidDns);
                 }
             } catch (Exception e) {
-                appendLine("Error: " + (e.getMessage() == null ? e.toString() : e.getMessage()));
+                appendLine(stopping ? "Operation cancelled." : "Error: " + (e.getMessage() == null ? e.toString() : e.getMessage()));
             } finally {
                 // Reused executor threads must not carry cancellation into a later session.
                 Thread.interrupted();
@@ -109,6 +156,7 @@ final class HostRuntime {
                 broker = null;
                 guest = null;
                 activeWorker = null;
+                recordingSetup = false;
                 synchronized (this) { busy = false; }
                 changed();
                 main.post(done);
@@ -118,6 +166,67 @@ final class HostRuntime {
     }
 
     private void appendLine(String line) { append(line + "\n"); }
+
+    private void prepareOmarchy(Path staging) throws Exception {
+        Path assets = linux.resolve("setup-" + java.util.UUID.randomUUID());
+        Files.createDirectory(assets);
+        try {
+            checkSetupRunning();
+            appendLine("Verifying the APK's pinned Omarchy shell sources…");
+            InstallAssets.stage(context, assets);
+            try (var payload = Files.newInputStream(assets.resolve("linux-shell.tgz"))) {
+                importer().overlay(payload, staging, this::appendLine);
+            }
+            configureDns(staging);
+            Files.createDirectories(shared);
+            for (String name : List.of("/tmp", "/root", "/run")) Files.createDirectories(GuestPaths.resolve(staging, name));
+            var binds = List.of(new RuntimeSpec.Bind("/dev", "/dev", false),
+                    new RuntimeSpec.Bind("/proc", "/proc", false), new RuntimeSpec.Bind("/sys", "/sys", true),
+                    new RuntimeSpec.Bind(shared.toString(), "/android/shared", false),
+                    new RuntimeSpec.Bind(assets.toString(), "/run/omamobile-install", true));
+            List<String> argv = RuntimeSpec.command(new File(nativeDir, "libtawcroot.so").toPath(), staging, binds,
+                    List.of("/bin/bash", "-c", "set -e; /bin/bash /run/omamobile-install/prepare-arch-graphics; "
+                            + "/bin/bash /root/.local/share/omamobile/setup-linux-shell; "
+                            + "pacman -Q hyprland quickshell foot; test -r /usr/share/X11/xkb/rules/evdev"));
+            ProcessBuilder builder = new ProcessBuilder(argv).directory(GuestPaths.resolve(staging, "/root").toFile())
+                    .redirectErrorStream(true);
+            builder.environment().clear();
+            builder.environment().putAll(RuntimeSpec.environment(false));
+            builder.environment().put("GSETTINGS_BACKEND", "keyfile");
+            builder.environment().put("OMARCHY_THEME_HEADLESS", "1");
+            appendLine("Installing signed Linux packages and preparing phone/desktop profiles…");
+            checkSetupRunning();
+            Process process = builder.start();
+            guest = process;
+            process.getOutputStream().close();
+            if (stopping) process.destroy();
+            int exit;
+            try {
+                try (var in = new java.io.InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8)) {
+                    char[] buffer = new char[4096];
+                    int count;
+                    while ((count = in.read(buffer)) != -1) append(new String(buffer, 0, count));
+                }
+                exit = process.waitFor();
+            } finally {
+                if (process.isAlive()) {
+                    process.destroy();
+                    try { if (!process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) process.destroyForcibly(); }
+                    catch (InterruptedException interrupted) { process.destroyForcibly(); Thread.currentThread().interrupt(); }
+                }
+                guest = null;
+            }
+            checkSetupRunning();
+            if (exit != 0) throw new IOException("Linux setup failed (exit " + exit + "). See the setup log; retry with the archive.");
+            Path provenance = GuestPaths.resolve(staging, "/usr/share/omamobile/android/install-manifest.json");
+            Files.copy(assets.resolve("install-manifest.json"), provenance);
+            appendLine("Linux setup completed; activating the prepared installation.");
+        } finally { GuestPaths.deleteTree(assets); }
+    }
+
+    private void checkSetupRunning() throws IOException {
+        if (stopping || Thread.currentThread().isInterrupted()) throw new IOException("Installation cancelled");
+    }
 
     static void chmod(Path path, int mode) throws IOException {
         try { Os.chmod(path.toString(), mode); } catch (ErrnoException e) { throw new IOException(e); }
@@ -157,7 +266,7 @@ final class HostRuntime {
         for (String partition : List.of("/system", "/apex", "/vendor", "/system_ext")) {
             if (new File(partition).exists()) binds.add(new RuntimeSpec.Bind(partition, partition, true));
         }
-        if (androidDns) configureDns();
+        if (androidDns) configureDns(root);
         if (ando) {
             AndroidBroker active = new AndroidBroker(new File(nativeDir, "libando.so"), linux.resolve("ando").toFile());
             active.start();
@@ -187,7 +296,7 @@ final class HostRuntime {
         appendLine("\nExit " + process.waitFor());
     }
 
-    private void configureDns() throws IOException {
+    private void configureDns(Path guestRoot) throws IOException {
         ConnectivityManager manager = context.getSystemService(ConnectivityManager.class);
         var properties = manager.getLinkProperties(manager.getActiveNetwork());
         if (properties == null || properties.getDnsServers().isEmpty()) {
@@ -196,7 +305,7 @@ final class HostRuntime {
         }
         StringBuilder contents = new StringBuilder("# Android active network; generated by Omarchy Mobile host\n");
         properties.getDnsServers().forEach(server -> contents.append("nameserver ").append(server.getHostAddress()).append('\n'));
-        Path dns = GuestPaths.resolve(root, "/etc/resolv.conf");
+        Path dns = GuestPaths.resolve(guestRoot, "/etc/resolv.conf");
         Files.createDirectories(dns.getParent());
         Files.write(dns, contents.toString().getBytes(StandardCharsets.UTF_8));
         appendLine("Updated Linux /etc/resolv.conf from Android (requested for this operation).");

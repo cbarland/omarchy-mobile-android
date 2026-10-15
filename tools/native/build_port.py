@@ -7,19 +7,49 @@ modifications are involved. The stock Arch userland remains a separate ABI.
 import argparse
 import os
 from pathlib import Path
+import platform
+import re
 import shutil
 import subprocess
 import sys
+from fetch_termux import default_lock, load_lock
 
 PIN = "bc13ae5859097791b3e93a32632727a7f7075354"
+ROOT = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--abi", choices=["x86_64", "arm64-v8a"], required=True)
-parser.add_argument("--cache", type=Path, default=Path("/opt/omamobile-native"))
+parser.add_argument("--cache", type=Path, default=ROOT / ".build-tools/native")
 parser.add_argument("--ndk", type=Path, required=True)
 parser.add_argument("--from-dependency", help="Resume a failed build at this dependency (previous installs must exist)")
 parser.add_argument("--core-only", action="store_true", help="Rebuild compositor after all dependencies are installed")
+parser.add_argument("--termux-lock", type=Path, help="Override the committed per-ABI native dependency lock")
+parser.add_argument("--refresh-termux", action="store_true", help="Resolve new Termux versions in a fresh cache for manifest review")
 args = parser.parse_args()
 architecture = "aarch64" if args.abi == "arm64-v8a" else "x86_64"
+if sys.platform != "linux" or platform.machine().lower() not in ("x86_64", "amd64"):
+    parser.error("The native build requires a Linux x86_64 host (including WSL)")
+if args.refresh_termux and (args.termux_lock or args.core_only):
+    parser.error("--refresh-termux requires a fresh full build and cannot be combined with --termux-lock/--core-only")
+args.ndk = args.ndk.resolve()
+properties = args.ndk / "source.properties"
+if not properties.is_file():
+    parser.error("NDK source.properties is missing: " + str(properties))
+metadata = dict(line.split("=", 1) for line in properties.read_text().splitlines() if "=" in line)
+metadata = {key.strip(): value.strip() for key, value in metadata.items()}
+expected_ndk = re.search(r'ndkVersion\s*=\s*"([^"]+)"', (ROOT / "app/build.gradle.kts").read_text()).group(1)
+revision = metadata.get("Pkg.BaseRevision", metadata.get("Pkg.Revision", "").split("-")[0])
+if revision != expected_ndk:
+    parser.error(f"Expected the project's NDK {expected_ndk}, got {revision or 'unknown'}")
+compiler = args.ndk / "toolchains/llvm/prebuilt/linux-x86_64/bin" / (architecture + "-linux-android29-clang")
+if not compiler.is_file():
+    parser.error("The selected NDK lacks the Linux compiler for " + args.abi + ": " + str(compiler))
+termux_lock = args.termux_lock or default_lock(architecture)
+if not args.refresh_termux:
+    try:
+        load_lock(termux_lock, architecture)
+    except ValueError as error:
+        parser.error(str(error))
+args.cache = args.cache.resolve()
 base = args.cache / args.abi
 source = base / "anhyprland"
 prefix = base / "ndk-prefix"
@@ -29,6 +59,10 @@ def run(command, **kwargs):
     print("+", " ".join(map(str, command)), flush=True)
     subprocess.run(list(map(str, command)), check=True, **kwargs)
 
+fetch = [sys.executable, Path(__file__).with_name("fetch_termux.py"), "--abi", architecture, "--directory", base]
+fetch += ["--refresh"] if args.refresh_termux else ["--lock", termux_lock]
+run(fetch)
+
 if not source.exists():
     run(["git", "clone", "--depth", "1", "--branch", "android", "https://github.com/taowen/anhyprland.git", source])
 head = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
@@ -36,8 +70,6 @@ if head != PIN:
     run(["git", "-C", source, "fetch", "--depth", "1", "origin", PIN])
     run(["git", "-C", source, "checkout", "--detach", "FETCH_HEAD"])
 run(["git", "-C", source, "submodule", "update", "--init", "--depth", "1"])
-if not (base / "termux-packages.json").exists():
-    run([sys.executable, Path(__file__).with_name("fetch_termux.py"), "--abi", architecture, "--directory", base])
 shared = base / "build/ndk-prefix"
 shared.parent.mkdir(exist_ok=True)
 if not shared.exists(): shared.symlink_to(prefix, target_is_directory=True)

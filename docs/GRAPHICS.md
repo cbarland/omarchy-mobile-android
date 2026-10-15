@@ -117,6 +117,11 @@ removed. This modifies Android dependency packaging, not Linux executables.
 
 ## Preparing the Linux shells
 
+The in-app [archive installer](INSTALLING.md) now performs fresh guest package
+and shell preparation. Developers include its pinned assets using
+`python3 tools/prepare-install-assets.py`. The manual recipe below remains useful
+for adapter development and existing prepared test installations.
+
 The ARM64 path was built and staged with the same recipe using
 `--abi arm64-v8a`, then installed on the locked Nubia NX789J (Android 15,
 Adreno 830). Do not use the emulator's x86_64 bootstrap on this device.

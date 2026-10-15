@@ -10,6 +10,7 @@ local.properties
 app/src/main/jniLibs/
 app/src/main/prebuilt/
 app/src/main/assets/native/
+app/src/main/assets/install/
 __pycache__/
 *.py[cod]
 .build-tools/

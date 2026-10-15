@@ -24,6 +24,7 @@ final class RootfsImporter {
     interface Modes { void chmod(Path path, int mode) throws IOException; }
     interface Hardlinks { boolean create(Path source, Path destination) throws IOException; }
     interface Progress { void update(String message); }
+    interface Prepare { void run(Path staging) throws Exception; }
     private final Modes modes;
     private final long maxBytes;
     private final Hardlinks hardlinks;
@@ -37,6 +38,10 @@ final class RootfsImporter {
     private record Link(Path path, String target, boolean hard) { }
 
     String install(InputStream source, Path linux, int machine, Progress progress) throws Exception {
+        return install(source, linux, machine, progress, staging -> { });
+    }
+
+    String install(InputStream source, Path linux, int machine, Progress progress, Prepare prepare) throws Exception {
         Files.createDirectories(linux);
         Path root = linux.resolve("rootfs");
         if (Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
@@ -69,7 +74,12 @@ final class RootfsImporter {
             if (GuestPaths.elfMachine(shell) != machine) {
                 throw new IOException("Rootfs architecture does not match this Android device");
             }
-            // New installation only: atomic rename never merges into or overwrites a running distro.
+            // Package/setup failures remain invisible to display sessions and
+            // cannot turn an incomplete staging directory into an installation.
+            prepare.run(staging);
+            if (Thread.currentThread().isInterrupted()) throw new IOException("Installation cancelled");
+            if (Files.exists(root, LinkOption.NOFOLLOW_LINKS)) throw new IOException("A Linux installation already exists");
+            // New installation only: never merge into a running distro.
             Files.move(staging, root, StandardCopyOption.ATOMIC_MOVE);
             activated = true;
             StringBuilder hex = new StringBuilder();
@@ -79,6 +89,19 @@ final class RootfsImporter {
             return fingerprint;
         } finally {
             if (!activated) GuestPaths.deleteTree(staging);
+        }
+    }
+
+    /** Trusted APK shell overlay; retain the importer's path/link/size checks. */
+    void overlay(InputStream source, Path root, Progress progress) throws IOException {
+        try (var payload = new GzipCompressorInputStream(new BufferedInputStream(source))) {
+            extract(payload, root, progress);
+            byte[] remainder = new byte[8192];
+            long trailing = 0;
+            int read;
+            while ((read = payload.read(remainder)) != -1) {
+                if ((trailing += read) > 1024 * 1024) throw new IOException("Excessive overlay trailer");
+            }
         }
     }
 

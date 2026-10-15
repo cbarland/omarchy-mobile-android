@@ -1,0 +1,324 @@
+{
+  "format": 1,
+  "components": [
+    {
+      "component": "aquamarine",
+      "repository": "https://github.com/taowen/anhyprland",
+      "commit": "bc13ae5859097791b3e93a32632727a7f7075354",
+      "sourcePath": "subprojects/aquamarine/LICENSE",
+      "sourceUrl": "https://github.com/taowen/anhyprland/blob/bc13ae5859097791b3e93a32632727a7f7075354/subprojects/aquamarine/LICENSE",
+      "noticeSha256": "52d07f3457591b4496ae2e79b05efd63c7df72135666fa12428d83078c4c0de5",
+      "extraction": "canonical file",
+      "abiPaths": [
+        "arm64-v8a/built/aquamarine/LICENSE",
+        "x86_64/built/aquamarine/LICENSE"
+      ]
+    },
+    {
+      "component": "lua",
+      "repository": "https://github.com/lua/lua",
+      "commit": "a5522f06d2679b8f18534fd6a9968f7eb539dc31",
+      "sourcePath": "lua.h",
+      "sourceUrl": "https://github.com/lua/lua/blob/a5522f06d2679b8f18534fd6a9968f7eb539dc31/lua.h",
+      "noticeSha256": "d83103413067359fa162d5c465c076d6a9a25f8d678f06b7ed2a7c9d9e4fa704",
+      "extraction": "unaltered trailing copyright/license comment from canonical lua.h",
+      "abiPaths": [
+        "arm64-v8a/built/lua/LICENSE",
+        "x86_64/built/lua/LICENSE"
+      ]
+    },
+    {
+      "component": "glib",
+      "abi": "arm64-v8a",
+      "binaryPackageVersion": "2.90.1",
+      "noticePackage": "termux-licenses",
+      "noticePackageVersion": "2.2",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+      "packageSha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9",
+      "indexSha256": "3c7db2c410913ccdd529729e458c9a314ec00a43030c710bab6bddd3a2cdbfdd",
+      "integrity": "HTTPS package verified against cached official repository index SHA256; detached publisher authentication not claimed",
+      "extraction": "materialized original package copyright symlink targets from the shared-license package",
+      "notices": [
+        {
+          "path": "arm64-v8a/termux/doc/glib/copyright",
+          "originalSymlink": "../../LICENSES/LGPL-2.1.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/LGPL-2.1.txt",
+          "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+        }
+      ]
+    },
+    {
+      "component": "pango",
+      "abi": "arm64-v8a",
+      "binaryPackageVersion": "1.58.2",
+      "noticePackage": "termux-licenses",
+      "noticePackageVersion": "2.2",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+      "packageSha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9",
+      "indexSha256": "3c7db2c410913ccdd529729e458c9a314ec00a43030c710bab6bddd3a2cdbfdd",
+      "integrity": "HTTPS package verified against cached official repository index SHA256; detached publisher authentication not claimed",
+      "extraction": "materialized original package copyright symlink targets from the shared-license package",
+      "notices": [
+        {
+          "path": "arm64-v8a/termux/doc/pango/copyright",
+          "originalSymlink": "../../LICENSES/LGPL-2.0.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/LGPL-2.0.txt",
+          "sha256": "b7993225104d90ddd8024fd838faf300bea5e83d91203eab98e29512acebd69c"
+        }
+      ]
+    },
+    {
+      "component": "libcairo",
+      "abi": "arm64-v8a",
+      "binaryPackageVersion": "1.18.6",
+      "noticePackage": "termux-licenses",
+      "noticePackageVersion": "2.2",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+      "packageSha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9",
+      "indexSha256": "3c7db2c410913ccdd529729e458c9a314ec00a43030c710bab6bddd3a2cdbfdd",
+      "integrity": "HTTPS package verified against cached official repository index SHA256; detached publisher authentication not claimed",
+      "extraction": "materialized original package copyright symlink targets from the shared-license package",
+      "notices": [
+        {
+          "path": "arm64-v8a/termux/doc/libcairo/copyright",
+          "originalSymlink": "../../LICENSES/LGPL-2.1.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/LGPL-2.1.txt",
+          "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+        }
+      ]
+    },
+    {
+      "component": "freetype",
+      "abi": "arm64-v8a",
+      "binaryPackageVersion": "2.15.0",
+      "noticePackage": "termux-licenses",
+      "noticePackageVersion": "2.2",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+      "packageSha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9",
+      "indexSha256": "3c7db2c410913ccdd529729e458c9a314ec00a43030c710bab6bddd3a2cdbfdd",
+      "integrity": "HTTPS package verified against cached official repository index SHA256; detached publisher authentication not claimed",
+      "extraction": "materialized original package copyright symlink targets from the shared-license package",
+      "notices": [
+        {
+          "path": "arm64-v8a/termux/doc/freetype/copyright",
+          "originalSymlink": "../../LICENSES/GPL-2.0.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/GPL-2.0.txt",
+          "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+        }
+      ]
+    },
+    {
+      "component": "fribidi",
+      "abi": "arm64-v8a",
+      "binaryPackageVersion": "1.0.17",
+      "noticePackage": "termux-licenses",
+      "noticePackageVersion": "2.2",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+      "packageSha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9",
+      "indexSha256": "3c7db2c410913ccdd529729e458c9a314ec00a43030c710bab6bddd3a2cdbfdd",
+      "integrity": "HTTPS package verified against cached official repository index SHA256; detached publisher authentication not claimed",
+      "extraction": "materialized original package copyright symlink targets from the shared-license package",
+      "notices": [
+        {
+          "path": "arm64-v8a/termux/doc/fribidi/copyright",
+          "originalSymlink": "../../LICENSES/LGPL-2.0.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/LGPL-2.0.txt",
+          "sha256": "b7993225104d90ddd8024fd838faf300bea5e83d91203eab98e29512acebd69c"
+        }
+      ]
+    },
+    {
+      "component": "libiconv",
+      "abi": "arm64-v8a",
+      "binaryPackageVersion": "1.19",
+      "noticePackage": "termux-licenses",
+      "noticePackageVersion": "2.2",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+      "packageSha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9",
+      "indexSha256": "3c7db2c410913ccdd529729e458c9a314ec00a43030c710bab6bddd3a2cdbfdd",
+      "integrity": "HTTPS package verified against cached official repository index SHA256; detached publisher authentication not claimed",
+      "extraction": "materialized original package copyright symlink targets from the shared-license package",
+      "notices": [
+        {
+          "path": "arm64-v8a/termux/doc/libiconv/copyright",
+          "originalSymlink": "../../LICENSES/LGPL-2.1.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/LGPL-2.1.txt",
+          "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+        },
+        {
+          "path": "arm64-v8a/termux/doc/libiconv/copyright.1",
+          "originalSymlink": "../../LICENSES/GPL-3.0.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/GPL-3.0.txt",
+          "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+        }
+      ]
+    },
+    {
+      "component": "libgraphite",
+      "abi": "arm64-v8a",
+      "binaryPackageVersion": "1.3.15",
+      "noticePackage": "termux-licenses",
+      "noticePackageVersion": "2.2",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+      "packageSha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9",
+      "indexSha256": "3c7db2c410913ccdd529729e458c9a314ec00a43030c710bab6bddd3a2cdbfdd",
+      "integrity": "HTTPS package verified against cached official repository index SHA256; detached publisher authentication not claimed",
+      "extraction": "materialized original package copyright symlink targets from the shared-license package",
+      "notices": [
+        {
+          "path": "arm64-v8a/termux/doc/libgraphite/copyright",
+          "originalSymlink": "../../LICENSES/LGPL-2.0.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/LGPL-2.0.txt",
+          "sha256": "b7993225104d90ddd8024fd838faf300bea5e83d91203eab98e29512acebd69c"
+        }
+      ]
+    },
+    {
+      "component": "glib",
+      "abi": "x86_64",
+      "binaryPackageVersion": "2.90.1",
+      "noticePackage": "termux-licenses",
+      "noticePackageVersion": "2.2",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+      "packageSha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9",
+      "indexSha256": "3c7db2c410913ccdd529729e458c9a314ec00a43030c710bab6bddd3a2cdbfdd",
+      "integrity": "HTTPS package verified against cached official repository index SHA256; detached publisher authentication not claimed",
+      "extraction": "materialized original package copyright symlink targets from the shared-license package",
+      "notices": [
+        {
+          "path": "x86_64/termux/doc/glib/copyright",
+          "originalSymlink": "../../LICENSES/LGPL-2.1.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/LGPL-2.1.txt",
+          "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+        }
+      ]
+    },
+    {
+      "component": "pango",
+      "abi": "x86_64",
+      "binaryPackageVersion": "1.58.2",
+      "noticePackage": "termux-licenses",
+      "noticePackageVersion": "2.2",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+      "packageSha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9",
+      "indexSha256": "3c7db2c410913ccdd529729e458c9a314ec00a43030c710bab6bddd3a2cdbfdd",
+      "integrity": "HTTPS package verified against cached official repository index SHA256; detached publisher authentication not claimed",
+      "extraction": "materialized original package copyright symlink targets from the shared-license package",
+      "notices": [
+        {
+          "path": "x86_64/termux/doc/pango/copyright",
+          "originalSymlink": "../../LICENSES/LGPL-2.0.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/LGPL-2.0.txt",
+          "sha256": "b7993225104d90ddd8024fd838faf300bea5e83d91203eab98e29512acebd69c"
+        }
+      ]
+    },
+    {
+      "component": "libcairo",
+      "abi": "x86_64",
+      "binaryPackageVersion": "1.18.6",
+      "noticePackage": "termux-licenses",
+      "noticePackageVersion": "2.2",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+      "packageSha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9",
+      "indexSha256": "3c7db2c410913ccdd529729e458c9a314ec00a43030c710bab6bddd3a2cdbfdd",
+      "integrity": "HTTPS package verified against cached official repository index SHA256; detached publisher authentication not claimed",
+      "extraction": "materialized original package copyright symlink targets from the shared-license package",
+      "notices": [
+        {
+          "path": "x86_64/termux/doc/libcairo/copyright",
+          "originalSymlink": "../../LICENSES/LGPL-2.1.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/LGPL-2.1.txt",
+          "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+        }
+      ]
+    },
+    {
+      "component": "freetype",
+      "abi": "x86_64",
+      "binaryPackageVersion": "2.15.0",
+      "noticePackage": "termux-licenses",
+      "noticePackageVersion": "2.2",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+      "packageSha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9",
+      "indexSha256": "3c7db2c410913ccdd529729e458c9a314ec00a43030c710bab6bddd3a2cdbfdd",
+      "integrity": "HTTPS package verified against cached official repository index SHA256; detached publisher authentication not claimed",
+      "extraction": "materialized original package copyright symlink targets from the shared-license package",
+      "notices": [
+        {
+          "path": "x86_64/termux/doc/freetype/copyright",
+          "originalSymlink": "../../LICENSES/GPL-2.0.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/GPL-2.0.txt",
+          "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+        }
+      ]
+    },
+    {
+      "component": "fribidi",
+      "abi": "x86_64",
+      "binaryPackageVersion": "1.0.17",
+      "noticePackage": "termux-licenses",
+      "noticePackageVersion": "2.2",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+      "packageSha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9",
+      "indexSha256": "3c7db2c410913ccdd529729e458c9a314ec00a43030c710bab6bddd3a2cdbfdd",
+      "integrity": "HTTPS package verified against cached official repository index SHA256; detached publisher authentication not claimed",
+      "extraction": "materialized original package copyright symlink targets from the shared-license package",
+      "notices": [
+        {
+          "path": "x86_64/termux/doc/fribidi/copyright",
+          "originalSymlink": "../../LICENSES/LGPL-2.0.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/LGPL-2.0.txt",
+          "sha256": "b7993225104d90ddd8024fd838faf300bea5e83d91203eab98e29512acebd69c"
+        }
+      ]
+    },
+    {
+      "component": "libiconv",
+      "abi": "x86_64",
+      "binaryPackageVersion": "1.19",
+      "noticePackage": "termux-licenses",
+      "noticePackageVersion": "2.2",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+      "packageSha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9",
+      "indexSha256": "3c7db2c410913ccdd529729e458c9a314ec00a43030c710bab6bddd3a2cdbfdd",
+      "integrity": "HTTPS package verified against cached official repository index SHA256; detached publisher authentication not claimed",
+      "extraction": "materialized original package copyright symlink targets from the shared-license package",
+      "notices": [
+        {
+          "path": "x86_64/termux/doc/libiconv/copyright",
+          "originalSymlink": "../../LICENSES/LGPL-2.1.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/LGPL-2.1.txt",
+          "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+        },
+        {
+          "path": "x86_64/termux/doc/libiconv/copyright.1",
+          "originalSymlink": "../../LICENSES/GPL-3.0.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/GPL-3.0.txt",
+          "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+        }
+      ]
+    },
+    {
+      "component": "libgraphite",
+      "abi": "x86_64",
+      "binaryPackageVersion": "1.3.15",
+      "noticePackage": "termux-licenses",
+      "noticePackageVersion": "2.2",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+      "packageSha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9",
+      "indexSha256": "3c7db2c410913ccdd529729e458c9a314ec00a43030c710bab6bddd3a2cdbfdd",
+      "integrity": "HTTPS package verified against cached official repository index SHA256; detached publisher authentication not claimed",
+      "extraction": "materialized original package copyright symlink targets from the shared-license package",
+      "notices": [
+        {
+          "path": "x86_64/termux/doc/libgraphite/copyright",
+          "originalSymlink": "../../LICENSES/LGPL-2.0.txt",
+          "packageSourcePath": "data/data/com.termux/files/usr/share/LICENSES/LGPL-2.0.txt",
+          "sha256": "b7993225104d90ddd8024fd838faf300bea5e83d91203eab98e29512acebd69c"
+        }
+      ]
+    }
+  ],
+  "scope": "Supplemental notice provenance only; corresponding-source/relinking release review remains open."
+}

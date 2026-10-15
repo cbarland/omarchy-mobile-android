@@ -4,3 +4,5 @@
 *.jar binary
 *.png binary
 *.webp binary
+# Preserve third-party notice text verbatim, including upstream whitespace.
+app/src/main/assets/licenses/** -whitespace

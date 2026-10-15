@@ -10,6 +10,42 @@ reconnected to or changed the Nubia. Preserve the prepared Linux data and
 Shizuku authorization. The emulator server was restarted after boot using the
 already authorized official starter; its app grant remains enabled.
 
+### Installation and contributor setup — 2026-10-15
+
+The new archive installer passed on disposable API35 x86_64 emulator-5556 after
+clearing only that disposable app's data. The normalized official Arch bootstrap
+was 211,166,021 bytes, SHA-256
+`b8e123034d389c150a1579d26c84e0a6bac9366336812ef7f7ade3765c513a63`.
+Its original upstream checksum had been checked; this test does not add an
+independent PGP-verification claim. Users verify bootstrap signatures separately.
+The importer extracts to unpublished staging, verifies packaged source assets,
+installs signed packages, prepares both profiles and activates only on success.
+The packaged-asset test plus fresh-install/real-layer check passed in215.296s.
+Hyprland0.56.2, Quickshell0.3.2, Foot1.28.0 and glibc2.44 were installed through
+pacman. Both upstream phone and desktop layers mapped without config errors.
+The first attempt exposed AAPT's transparent `.gz` expansion; `.tgz` preserves
+the payload bytes and the Android packaged-hash/unpack regression now covers it.
+
+The actual MainActivity document picker separately delivered a SAF content URI
+and read grant to LinuxService. Android reported its foreground notification and
+bounded setup wake lock. Cancelling during signed package downloads left no
+active setup children, service, wake lock, staging rootfs or setup directory.
+The stopped verified installation was temporarily parked for this disposable
+test, then restored. It was not merged with the cancelled attempt. Two service
+generation/duplicate-start regressions plus packaged assets passed in9.286s.
+The new flow has not been exercised as a fresh ARM64 phone install. The Nubia and
+the prepared emulator's Linux data/Shizuku grant were not changed by this batch.
+
+A source-only snapshot with no generated compositor/installer assets passed the
+core APK,25 JVM tests and lint in18s. The Linux host suite passed36 tests, and
+the CI C credential probe passed19 checks. Full graphical debug APK assembly and
+lint pass separately; both ABIs remain included. Release preflight correctly
+rejects public binary release while seven version-specific corresponding-source
+mappings are missing. Mechanical checks pass114 library hashes,3 installer
+files/pins, closure and restored notices. Hosted GitHub CI is separate from
+these local checks. Fresh-install screenshots in `docs/images/` are genuine
+SurfaceFlinger captures from the disposable emulator after reopening both shells.
+
 ### Cleanup review — 2026-10-15
 
 An independent Sol PR reviewer evaluated baseline `09b3109` against INTENT.md.

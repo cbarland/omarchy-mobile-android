@@ -1,0 +1,45 @@
+name: Bug report
+description: Report a reproducible host, installation, Linux session, or display problem.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For vulnerabilities, follow SECURITY.md instead of posting sensitive details here.
+        Share a small redacted log excerpt; full device bugreports and Linux home directories can contain personal data.
+  - type: input
+    id: revision
+    attributes:
+      label: Build revision
+      description: Git commit or APK version, and whether the APK came from your build or a provided artifact.
+    validations:
+      required: true
+  - type: dropdown
+    id: build
+    attributes:
+      label: Build contents
+      options:
+        - Core APK without staged graphics
+        - Graphics APK with installer assets
+        - Graphics APK with an already prepared Linux installation
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Android version, ABI, emulator or device model, external display connection/resolution, and whether optional Shizuku Android windows are involved. Omit serial numbers and account identifiers.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps, expected result, and actual result
+      description: Include whether the problem happens on a fresh installation, after reopening, or after disconnecting a display.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Focused evidence
+      description: Relevant redacted logs, screenshot, test command/result, or installation archive release and verified checksum. Do not attach signing keys, credentials, or private rootfs archives.

@@ -15,12 +15,12 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-/** Development control panel. The desktop itself belongs to upstream Linux/Omarchy. */
+/** Installation and display controls. The desktop belongs to upstream Linux/Omarchy. */
 public final class MainActivity extends Activity {
     private HostRuntime runtime;
     private TextView status, console;
     private EditText command;
-    private Button run, importImage, stop;
+    private Button run, importImage, install, screens, stop;
     private CheckBox ando, androidDns;
     private DisplaySettings displaySettings;
     private final Runnable refresh = this::render;
@@ -45,10 +45,20 @@ public final class MainActivity extends Activity {
         layout.setBackgroundColor(Color.rgb(24, 24, 28));
         TextView title = text("Omarchy Mobile / Android host", 24);
         layout.addView(title);
-        layout.addView(text("Development build · one shared Linux installation\nHyprland runs the desktop and Omarchy Mobile shell on separate Android displays.", 15));
+        layout.addView(text("Preview · one shared Linux installation\nOmarchy Mobile on the phone, Omarchy desktop on an external display.", 15));
         status = text("", 14);
         layout.addView(status);
-        Button screens = new Button(this);
+        install = new Button(this);
+        install.setText("Install Omarchy from Linux archive");
+        install.setOnClickListener(v -> startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .setType("*/*").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, "Choose a verified Arch Linux archive"), 12));
+        layout.addView(install);
+        stop = new Button(this);
+        stop.setText("Cancel operation");
+        stop.setOnClickListener(v -> runtime.stop());
+        layout.addView(stop);
+        layout.addView(text("First setup: choose a trusted Arch Linux ARM tar.gz (x86_64 on an emulator). Verify its upstream signature before importing. Setup installs signed Linux packages over the internet and can take several minutes and multiple GB of storage. Existing Linux data is never replaced.", 14));
+        screens = new Button(this);
         screens.setText(R.string.start_screens);
         screens.setOnClickListener(v -> startForegroundService(new Intent(this, DesktopService.class)));
         layout.addView(screens);
@@ -65,7 +75,7 @@ public final class MainActivity extends Activity {
         androidInput.setOnClickListener(v -> { AndroidShell.get(this).authorize(); status.postDelayed(this::render, 1200); });
         layout.addView(androidInput);
         importImage = new Button(this);
-        importImage.setText(R.string.import_rootfs);
+        importImage.setText("Import rootfs only (advanced)");
         importImage.setOnClickListener(v -> startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT)
                 .setType("*/*").addCategory(Intent.CATEGORY_OPENABLE), 10));
         layout.addView(importImage);
@@ -90,10 +100,6 @@ public final class MainActivity extends Activity {
                 .putExtra("command", command.getText().toString()).putExtra("ando", ando.isChecked())
                 .putExtra("androidDns", androidDns.isChecked())));
         actions.addView(run, new LinearLayout.LayoutParams(0, -2, 1));
-        stop = new Button(this);
-        stop.setText(R.string.stop_command);
-        stop.setOnClickListener(v -> runtime.stop());
-        actions.addView(stop);
         layout.addView(actions);
         console = text("", 13);
         console.setTypeface(android.graphics.Typeface.MONOSPACE);
@@ -117,15 +123,18 @@ public final class MainActivity extends Activity {
     private void startOperation(Intent intent) { startForegroundService(intent); }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if (request == 10 && result == RESULT_OK && data != null && data.getData() != null) {
-            startOperation(new Intent(this, LinuxService.class).setData(data.getData()).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
+        if ((request == 10 || request == 12) && result == RESULT_OK && data != null && data.getData() != null) {
+            startOperation(new Intent(this, LinuxService.class).setData(data.getData()).putExtra("installOmarchy", request == 12)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
         }
     }
     @Override protected void onResume() { super.onResume(); runtime.observe(refresh); render(); }
     @Override protected void onPause() { runtime.unobserve(refresh); super.onPause(); }
     @Override protected void onDestroy() { displaySettings.dismiss(); super.onDestroy(); }
     private void render() {
-        StringBuilder info = new StringBuilder(runtime.installed() ? "Linux rootfs installed" : "No Linux rootfs imported");
+        StringBuilder info = new StringBuilder(runtime.graphicsReady() ? "Omarchy is installed" : runtime.installed()
+                ? "Linux imported · Omarchy setup not complete" : "Ready for first installation");
+        if (!runtime.installerAvailable()) info.append("\nFull graphical APK required for Omarchy installation");
         info.append(" · ").append(Build.SUPPORTED_ABIS[0]).append(runtime.busy() ? " · busy\n" : " · idle\n");
         runtime.displays.snapshot().values().forEach(output -> info.append("Display ").append(output.id()).append(": ").append(output.profile()).append("\n"));
         info.append("All displays share one Linux installation.\nShared folder: ").append(runtime.shared);
@@ -134,6 +143,8 @@ public final class MainActivity extends Activity {
         console.setText(runtime.output());
         run.setEnabled(runtime.installed() && !runtime.busy());
         importImage.setEnabled(!runtime.installed() && !runtime.busy());
+        install.setEnabled(runtime.installerAvailable() && !runtime.installed() && !runtime.busy());
+        screens.setEnabled(runtime.graphicsReady() && !runtime.busy());
         ando.setEnabled(!runtime.busy());
         androidDns.setEnabled(!runtime.busy());
         stop.setEnabled(runtime.busy());

@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -19,7 +20,8 @@ import xml.etree.ElementTree as ET
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 p = argparse.ArgumentParser(description=__doc__)
-p.add_argument("--adb", default=str(Path(os.environ["LOCALAPPDATA"]) / "Android/Sdk/platform-tools/adb.exe"))
+p.add_argument("--adb", default=shutil.which("adb") or (str(Path(os.environ.get("LOCALAPPDATA", ""))
+               / "Android/Sdk/platform-tools/adb.exe") if os.name == "nt" else "adb"))
 p.add_argument("--serial", default="emulator-5554")
 sub = p.add_subparsers(dest="action", required=True)
 sub.add_parser("start", help="Launch both displays using the visible Android app control")

@@ -31,3 +31,19 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
+
+// Debug builds support contributor CI without the separately built compositor.
+// A release must not silently degrade into that command-only APK.
+val verifyReleasePayload by tasks.registering(Exec::class) {
+    val report = layout.buildDirectory.file("reports/release-payload.json")
+    workingDir(rootDir)
+    commandLine(providers.gradleProperty("python").getOrElse(
+        if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3"),
+        "tools/native/verify_release.py", "--project", rootDir.absolutePath)
+    doFirst {
+        report.get().asFile.parentFile.mkdirs()
+        standardOutput = report.get().asFile.outputStream()
+        logger.lifecycle("Release payload report: ${report.get().asFile}")
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(verifyReleasePayload) }

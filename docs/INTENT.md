@@ -27,20 +27,22 @@ These are engineering goals, not additional acceptance gates. Omalauncher and Om
 - **Android commands:** an opt-in native broker, UID-checked local socket, with command exit status and descriptors forwarded. No fork from Android's Java runtime.
 - **Outputs/input:** Android display lifecycle and surface/input adapters around genuine Hyprland and upstream Linux shells. Both emulator and Nubia ARM64 present real Wayland surfaces on phone and external outputs. The external host requests relative pointer capture. The user confirmed Bluetooth keyboard input, mouse movement and clicks on the Nubia after stopping the older Omalateral input helper. Broader physical input and lifecycle coverage remain part of device verification.
 - **Linux shell:** upstream packages own UI, layouts, plugins and themes. Do not port individual plugins into Java to simulate ecosystem compatibility.
-- **Native environment contract:** present the paths, session environment, command interfaces and Linux services expected by Omarchy ARM/Mobile through a small adapter layer. Install normal upstream packages when they can run here; translate Android-owned facilities at their boundary. Prefer this to feature-specific edits in upstream shells. Preserve argv, exit status and diagnostics; document unsupported service/hardware semantics rather than returning false success. Use XERJ for focused reference lookup and RIPP when available; delegate bounded inventories and mechanical checks to Luna/Sol, keeping implementation decisions and verification under primary review.
-- **Development tools:** the user authorizes Jev usage for this project through RIPP/OpenRouter, including project observations needed for bounded decisions. Credentials stay in the platform store and must not appear in prompts, logs or source. This authorization does not change Android-device permissions or authorize unrelated external actions.
+- **Native environment contract:** present the paths, session environment, command interfaces and Linux services expected by Omarchy ARM/Mobile through a small adapter layer. Install normal upstream packages when they can run here; translate Android-owned facilities at their boundary. Prefer this to feature-specific edits in upstream shells. Preserve argv, exit status and diagnostics; document unsupported service/hardware semantics rather than returning false success. Reference coding tools are optional; contributor builds require no agent, model-provider account or private reference library.
 - **Lifecycle:** user-started foreground work; no boot persistence or disabled Android process limits. Real Linux PTY terminals work inside the graphical session. Complete detached-daemon cleanup and suspend/resume still need validation.
 
 ## Next development sequence
 
-The current emulator batch is authorized to use up to three parallel agents, with RIPP scope/routing admission and primary review of integration changes. Luna/Sol handles bounded mechanical work and ordinary implementation; reserve Astra for confidently difficult input/lifecycle, display-adapter and native-runtime integration tasks. Jev project usage is approved. A separate disposable emulator and its app-private Linux installation may be created/reset for clean-install and recovery tests; preserve the prepared emulator's user data and leave the Nubia alone. Prefer official signed Arch/Arch Linux ARM and Omarchy repositories, following upstream's package-backed direction. AUR source builds are outside this batch. Further physical-device work, account sign-in and hardware/security changes wait for the user.
+Use disposable emulator data for destructive clean-install and recovery tests.
+Preserve prepared installations and explicitly authorize each physical-device
+test. Prefer official signed Arch/Arch Linux ARM and Omarchy packages. AUR source
+builds are a separate compatibility and trust decision.
 
 The shared Arch ARM runtime, signed package operations and simultaneous real
 phone/external shells have been demonstrated on the locked Nubia. The user
 confirmed physical keyboard/mouse operation, including mouse use after
-reopening. Further development now uses the emulator; leave the physical
-device alone while wireless debugging is off. Keep Shizuku authorization
-unless a specific need or user instruction requires changing it.
+reopening. Current new-installer development uses the emulator; physical
+verification of the new installation flow remains separate. Keep an existing
+Shizuku authorization unless a specific test requires changing it.
 
 1. Keep the green emulator lifecycle baseline under regression coverage:
    full lifecycle 26.236s and slow broker 11.151s on prepared emulator-5554,
@@ -68,8 +70,11 @@ unless a specific need or user instruction requires changing it.
    verified. Ordinary and rapid Android display-selection UI persistence passed
    on disposable emulator-5556. Physical display modes and cross-session window
    movement are unsupported. See [the display plan](GRAPHICS.md#display-management-helper-prototype).
-4. Establish a committed, reproducible baseline and data export/recovery;
-   automate authenticated bootstrap and Linux shell/package preparation.
+4. The in-app archive installer now prepares signed Linux packages and pinned
+   shell sources before activation; fresh x86_64 emulator setup and cancellation
+   pass. Broaden fresh ARM64 coverage, automate authenticated image downloading,
+   and implement data export/recovery. Native inputs use committed package locks;
+   full reproducibility and binary corresponding-source delivery remain open.
 5. Complete Linux/Android integration: storage/document adapters,
    IME/clipboard/notifications, audio and hardware/status services.
 6. Broaden lifecycle and app compatibility: hotplug, rotation, sleep/resume,

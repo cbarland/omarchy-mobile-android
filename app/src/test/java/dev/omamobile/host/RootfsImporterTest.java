@@ -64,4 +64,24 @@ public class RootfsImporterTest {
         assertThrows(IOException.class, () -> importer(1000).install(new ByteArrayInputStream(contents), base, 183, p -> {}));
         assertArrayEquals(elf(183), Files.readAllBytes(base.resolve("rootfs/bin/sh")));
     }
+
+    @Test public void preparationFailureRollsBackBeforeActivation() throws Exception {
+        Path base = base();
+        assertThrows(IOException.class, () -> importer(1000).install(new ByteArrayInputStream(tar("bin/sh", elf(183))),
+                base, 183, p -> {}, staging -> {
+                    assertFalse(Files.exists(base.resolve("rootfs")));
+                    Files.write(staging.resolve("partial-package"), "unfinished".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    throw new IOException("package install failed");
+                }));
+        try (var children = Files.list(base)) { assertEquals(0, children.count()); }
+    }
+
+    @Test public void preparedFilesActivateTogetherWithTheRootfs() throws Exception {
+        Path base = base();
+        importer(1000).install(new ByteArrayInputStream(tar("bin/sh", elf(183))), base, 183, p -> {}, staging -> {
+            assertFalse(Files.exists(base.resolve("rootfs")));
+            Files.write(staging.resolve("prepared"), "ready".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        });
+        assertEquals("ready", new String(Files.readAllBytes(base.resolve("rootfs/prepared")), java.nio.charset.StandardCharsets.UTF_8));
+    }
 }
