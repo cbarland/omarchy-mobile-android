@@ -1,0 +1,21 @@
+#!/bin/bash
+set -euo pipefail
+window_size() { hyprctl -j clients | jq -c '.[] | select(.class == "omamobile-android") | .size'; }
+before=$(window_size)
+test -n "$before"
+hyprctl dispatch_lua_expression 'hl.dsp.exec_cmd("foot --title=Resize-check /bin/sleep 7")' >/dev/null
+during=$before
+for attempt in {1..40}; do
+  during=$(window_size)
+  [[ -n $during && $during != "$before" ]] && break
+  sleep .1
+done
+[[ -n $during && $during != "$before" ]]
+for attempt in {1..100}; do
+  hyprctl -j clients | jq -e 'any(.[]; .initialTitle == "Resize-check")' >/dev/null || break
+  sleep .1
+done
+after=$(window_size)
+[[ $after == "$before" ]]
+jq -n --argjson before "$before" --argjson during "$during" --argjson after "$after" \
+  '{before:$before,withAdditionalLinuxWindow:$during,after:$after}' | tee ~/.cache/omamobile-verified-resize.json

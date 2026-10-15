@@ -1,0 +1,92 @@
+#!/bin/bash
+set -euo pipefail
+
+# Configure the signed Omarchy repository in the disposable app-private Linux
+# guest. This helper deliberately does not install packages or upgrade them.
+
+readonly KEY_FINGERPRINT=40DFB630FF42BCFFB047046CF0134EE680CAC571
+readonly KEY_URL="https://keys.openpgp.org/vks/v1/by-fingerprint/${KEY_FINGERPRINT}"
+readonly CONFIG=/etc/pacman.conf
+readonly BACKUP=/etc/pacman.conf.before-omamobile-repository
+readonly REPO_MARKER='# omamobile: official Omarchy signed repository'
+
+die() { echo "configure-omarchy-repository: $*" >&2; exit 1; }
+[[ -d /android/shared ]] || die 'run inside the Android host Linux environment (/android/shared is missing)'
+[[ -f $CONFIG ]] || die "$CONFIG is missing"
+
+channel=''
+while (($#)); do
+  case "$1" in
+    --channel) (($# >= 2)) || die '--channel requires stable, rc, or edge'; channel=$2; shift 2 ;;
+    --channel=*) channel=${1#*=}; shift ;;
+    -h|--help) echo 'Usage: configure-omarchy-repository --channel stable|rc|edge'; exit 0 ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+[[ -n $channel ]] || die 'an explicit --channel is required'
+case "$channel" in stable|rc|edge) ;; *) die "unsupported channel: $channel" ;; esac
+
+arch=$(uname -m)
+case "$arch" in
+  x86_64) pacman_arch=x86_64 ;;
+  aarch64) [[ $channel == edge ]] || die 'generic aarch64 supports only the upstream edge channel'; pacman_arch=aarch64 ;;
+  *) die "unsupported guest architecture: $arch (expected x86_64 or aarch64)" ;;
+esac
+
+command -v curl >/dev/null || die 'curl is required'
+command -v gpg >/dev/null || die 'gpg is required'
+command -v pacman-key >/dev/null || die 'pacman-key is required'
+command -v pacman-conf >/dev/null || die 'pacman-conf is required'
+
+tmpdir=$(mktemp -d)
+keyfile="$tmpdir/omarchy-key.asc"
+cleanup() { rm -rf "$tmpdir"; }
+trap cleanup EXIT
+curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+  --tlsv1.2 --connect-timeout 10 --max-time 60 "$KEY_URL" -o "$keyfile"
+actual=$(gpg --batch --import-options show-only --import --with-colons "$keyfile" 2>/dev/null | awk -F: '$1 == "fpr" {print toupper($10); exit}')
+[[ $actual == "$KEY_FINGERPRINT" ]] || die "downloaded key fingerprint mismatch (got ${actual:-none})"
+
+cp -p "$CONFIG" "$tmpdir/current.conf"
+[[ -e $BACKUP ]] || cp -p "$CONFIG" "$BACKUP"
+rollback() { cp -p "$tmpdir/current.conf" "$CONFIG"; }
+trap 'status=$?; if ((status != 0)); then rollback || true; fi; cleanup; exit "$status"' EXIT
+
+repo_url="https://pkgs.omarchy.org/${channel}/\$arch"
+awk -v marker="$REPO_MARKER" -v url="$repo_url" '
+  function insert() {
+    print marker; print "[omarchy]"; print "Server = " url
+    print "SigLevel = Required DatabaseOptional"; print ""; inserted=1
+  }
+  BEGIN { skip=0; managed=0; inserted=0 }
+  $0 == marker { managed=1; next }
+  /^[[:space:]]*\[/ {
+    skip=0
+    if ($0 ~ /^[[:space:]]*\[omarchy\][[:space:]]*$/) {
+      if (!managed) { print "Refusing to replace an unmanaged [omarchy] stanza" > "/dev/stderr"; exit 1 }
+      skip=1; managed=0; next
+    }
+    if ($0 !~ /^[[:space:]]*\[options\][[:space:]]*$/ && !inserted) insert()
+  }
+  !skip { print }
+  END { if (!inserted) insert() }
+' "$CONFIG" > "$tmpdir/pacman.conf"
+pacman-conf --config "$tmpdir/pacman.conf" --repo-list >/dev/null
+# Refuse an unmanaged/conflicting configuration before granting key trust.
+# A later installation failure restores pacman.conf; it cannot roll back a
+# GnuPG keyring transaction, so validate the candidate before touching either.
+pacman-key --add "$keyfile"
+pacman-key --lsign-key "$KEY_FINGERPRINT"
+mv "$tmpdir/pacman.conf" "$CONFIG"
+
+grep -Fqx 'SigLevel = Required DatabaseOptional' "$CONFIG" || die 'pacman SigLevel is not Required'
+grep -Fqx "Server = $repo_url" "$CONFIG" || die 'Omarchy repository stanza validation failed'
+[[ $(grep -Fc '[omarchy]' "$CONFIG") == 1 ]] || die 'duplicate Omarchy repository stanzas detected'
+pacman-key --list-keys "$KEY_FINGERPRINT" >/dev/null || die 'imported key is not present in pacman keyring'
+
+echo "Configured signed Omarchy $channel repository for $pacman_arch."
+cat <<'EOF'
+Post-configuration validation (run separately when package access is intended):
+  pacman -Syu --needed omarchy-keyring
+  pacman-key --list-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571
+EOF

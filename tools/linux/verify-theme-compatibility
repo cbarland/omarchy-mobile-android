@@ -1,0 +1,55 @@
+#!/bin/bash
+set -euo pipefail
+test_dir=$(mktemp -d "${TMPDIR:-/tmp}/omamobile-theme-compat.XXXXXX")
+log_file="$test_dir/test.log"
+exec > >(tee -a "$log_file") 2>&1
+themes_dir="$HOME/.config/omarchy/themes"
+stock_dir="${OMARCHY_PATH:?OMARCHY_PATH is required}/themes/tokyo-night"
+original_theme=''
+fixture_name="omamobile-fixture-$$-$(date +%s)"
+fixture_repo="$test_dir/$fixture_name"
+installed_theme="$themes_dir/$fixture_name"
+cleanup() {
+  status=$?
+  set +e
+  restore_status=0
+  if [[ -n "$original_theme" ]]; then
+    omarchy-theme-set "$original_theme" >>"$log_file" 2>&1 || restore_status=$?
+  fi
+  if (( restore_status == 0 )) && [[ -e "$installed_theme" || -L "$installed_theme" ]]; then rm -rf -- "$installed_theme"; fi
+  (( restore_status == 0 )) || echo "WARNING: original theme restore failed; fixture preserved: $installed_theme"
+  echo "Theme compatibility log: $log_file"
+  (( restore_status == 0 )) || status=$restore_status
+  trap - EXIT INT TERM
+  exit "$status"
+}
+trap cleanup EXIT INT TERM
+command -v omarchy-theme-install >/dev/null
+command -v omarchy-theme-set >/dev/null
+command -v git >/dev/null
+[[ -d "$stock_dir" ]] || { echo "Missing stock theme: $stock_dir" >&2; exit 1; }
+mkdir -p "$themes_dir"
+original_name_file="$HOME/.local/state/omarchy/current/theme.name"
+[[ -s "$original_name_file" ]] || { echo "Missing current theme name" >&2; exit 1; }
+original_theme=$(<"$original_name_file")
+[[ "$original_theme" =~ ^[a-z0-9_][a-z0-9._+-]*$ && "$original_theme" != "$fixture_name" ]] || { original_theme=''; echo "Could not determine original theme" >&2; exit 1; }
+if [[ -e "$installed_theme" || -L "$installed_theme" ]]; then echo "Refusing to overwrite existing fixture: $installed_theme" >&2; exit 1; fi
+mkdir -p "$fixture_repo/backgrounds"
+cp -- "$stock_dir/backgrounds/0-winding-road.webp" "$fixture_repo/backgrounds/0-winding-road.webp"
+cp -- "$stock_dir/colors.toml" "$fixture_repo/colors.toml"
+sed -i 's/^accent[[:space:]]*=.*/accent = "#12abef"/' "$fixture_repo/colors.toml"
+printf '%s\n' 'fixture sentinel' >"$fixture_repo/foot.ini"
+printf '%s\n' 'fixture sentinel' >"$fixture_repo/hyprland.lua"
+git -C "$fixture_repo" init -q
+git -C "$fixture_repo" add colors.toml backgrounds/0-winding-road.webp foot.ini hyprland.lua
+git -C "$fixture_repo" -c user.name=omamobile-test -c user.email=omamobile-test@example.invalid commit -qm fixture
+omarchy-theme-install "file://$fixture_repo"
+[[ -d "$installed_theme" ]]
+[[ "$(<"$original_name_file")" == "$fixture_name" ]]
+grep -Fq 'accent = "#12abef"' "$HOME/.local/state/omarchy/current/theme/colors.toml"
+[[ -e "$HOME/.local/state/omarchy/current/background" ]]
+[[ ! -e "$HOME/.local/state/omarchy/current/theme/hyprland.lua" ]] || ! grep -Fq 'fixture sentinel' "$HOME/.local/state/omarchy/current/theme/hyprland.lua"
+[[ ! -e "$HOME/.local/state/omarchy/current/theme/foot.ini" ]] || ! grep -Fq 'fixture sentinel' "$HOME/.local/state/omarchy/current/theme/foot.ini"
+omarchy-theme-set "$original_theme"
+[[ "$(<"$original_name_file")" == "$original_theme" ]]
+echo "Theme compatibility check passed"

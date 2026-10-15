@@ -1,0 +1,21 @@
+#!/bin/bash
+# Development check of reviewed upstream OWL widgets, on the emulator only.
+set -euo pipefail
+omarchy-shell shell ping
+for widget in simonschubert/todo; do
+  dir=$HOME/.config/omamobile/widgets/${widget/\//.}
+  [[ -e $dir ]] || omamobile-widget store-copy "$widget"
+done
+omarchy-shell shell call omamobile.home rescanWidgets ''
+for attempt in {1..40}; do
+  status=$(omarchy-shell shell call omamobile.home owlStatus simonschubert.todo)
+  [[ $status == \{* ]] && break
+  sleep .1
+done
+omarchy-shell shell call omamobile.home approveOwl simonschubert.todo
+if ! jq -e '.. | objects | select(.type? == "user:simonschubert.todo")' ~/.config/omamobile/home.json >/dev/null; then
+  omarchy-shell shell call omamobile.home addWidgetHere user:simonschubert.todo
+fi
+omarchy-shell shell call omamobile.home goHome ''
+omarchy-shell shell call omamobile.home owlStatus simonschubert.todo
+omarchy-shell shell call omamobile.home state ''

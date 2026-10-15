@@ -1,0 +1,5 @@
+#!/bin/bash
+set -euo pipefail
+hyprctl dispatch_lua_expression 'hl.dsp.workspace.toggle_special("scratchpad")'
+sleep .2
+hyprctl -j monitors | jq -c '.[].specialWorkspace'

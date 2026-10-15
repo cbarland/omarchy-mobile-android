@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Omarchy Mobile · development</string>
+    <string name="import_rootfs">Import Linux rootfs (.tar / .tar.gz)</string>
+    <string name="enable_ando">Enable ando Android commands for this operation (app UID)</string>
+    <string name="android_dns">Write Android DNS servers to Linux /etc/resolv.conf</string>
+    <string name="run_command">Run in shared Linux</string>
+    <string name="stop_command">Stop</string>
+    <string name="start_screens">Start Omarchy screens</string>
+    <string name="stop_screens">Stop graphical sessions</string>
+    <string name="default_command" translatable="false">uname -m; cat /etc/os-release; id; ls /android/shared</string>
+</resources>

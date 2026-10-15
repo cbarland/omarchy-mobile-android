@@ -1,0 +1,85 @@
+# Android applications in Hyprland
+
+This adapter is optional. Linux shells, widgets and plugins work without it.
+An unmodified Android base is retained. The user separately starts official
+[Shizuku](https://shizuku.rikka.app/guide/setup/) in ADB mode and authorizes
+Omarchy Mobile. The helper runs as shell UID 2000; the Linux environment,
+compositors and Android host keep their normal application UID. Root mode is
+rejected. Android developer/debugging setup is therefore required for this
+prototype's mixed windows, beyond ordinary APK installation.
+
+The user requested that Shizuku remain authorized on the Nubia. Normal
+screen closure unbinds this app's helper and releases its displays, but does
+not revoke the grant or stop Shizuku. Starting the screens again reconnects
+using the existing grant. Do not repeat the earlier temporary-test revocation
+as routine cleanup; revoke only when specifically required or requested.
+
+## Display and window ownership
+
+`AndroidShellService` creates up to three virtual displays, using Android's
+trusted-display, own-focus and destroy-content-on-removal flags. The ordinary
+app could not launch Settings on an untrusted display: the emulator returned
+a real `SecurityException`. That restriction is not patched or disabled.
+The authorized shell service supplies the required display boundary.
+
+On Android 15+, the hosted display also uses
+VIRTUAL_DISPLAY_FLAG_STEAL_TOP_FOCUS_DISABLED. Own-focus alone lets an
+Android editor steal top display focus from the physical Linux host, which
+caused a missing-focused-window input ANR on the Nubia. The additional flag
+retains local injected-key focus without rerouting the physical keyboard.
+The IME remains hidden; this is key-event forwarding, not a full Android IME.
+
+Each app display renders into an ImageReader owned by the Android host.
+`omamobile-android` is a stock Linux GTK/Wayland client. Its xdg_toplevel is
+tiled, moved and resized by genuine Hyprland alongside other Linux clients.
+Size changes resize the corresponding Android display. This is a live app
+window, not a screenshot placed over the desktop or Android split-screen
+beside a full-screen Linux surface.
+
+The initial transport pulls changed frames at up to ten requests per second,
+encodes JPEG and carries them over an app-private filesystem Unix socket.
+It is a CPU-copy prototype, not a low-latency or power-efficiency result.
+Inactive/occluded windows and display suspend still need lifecycle work.
+
+Linux pointer input becomes display-scoped Android touch gestures. Text keys
+use Android KeyCharacterMap events. Each app display retains independent
+focus, and its fallback Android IME is hidden so it cannot cover the physical
+Linux desktop. ASCII keyboard input is tested; arbitrary Unicode, complex
+IME composition, hover/right-click, multi-touch and general accessibility
+remain open. No Android accessibility service is requested.
+
+## Scope and cleanup
+
+- The Unix socket is private, mode 0600, and checks SO_PEERCRED against the
+  application UID. It listens on no network port.
+- One connection owns one display. It cannot choose an arbitrary display ID
+  for input. The shell Binder independently checks the calling app UID and
+  its own display leases; input to display 0 is rejected by an instrumented
+  test.
+- The Binder exposes app display creation, launch, resize and input. It has
+  no arbitrary command execution, existing-display capture or task-list API.
+- Disconnect releases the display. Binder death releases the helper's lease.
+  Destroy-content-on-removal prevents hosted tasks being moved to the phone
+  when their window closes.
+- The display has no SECURE flag, and the app requests no secure-capture
+  permission. Protected content is not made readable by this adapter.
+  DRM, work-profile policies, Wallet and device security still need hardware
+  verification; no compatibility claim is made for them.
+
+## Emulator evidence
+
+API 35 x86_64: Android Settings and Linux Foot are simultaneous non-floating
+Wayland clients on Hyprland workspace 1. Settings navigation and typing
+`battery` worked through the Linux window; switching focus back to Foot and
+typing works too. The upstream Scratchpad bar widget toggles its special
+workspace. Phone OWL widget interaction remains independent.
+
+The first input attempt exposed missing per-display focus and Android's IME
+fallback; the resulting input-dispatch ANRs are retained as development
+history. Independent focus plus IME-hide policy resolves the reproduced
+failure. See `VERIFICATION.md` for the final checks and remaining limits.
+
+The earlier emulator test used explicitly authorized Shizuku there. Its
+temporary app authorization is revoked after verification, as requested.
+The later Nubia tests have separate physical-device authorization; its
+current grant remains enabled under the user's subsequent instruction.

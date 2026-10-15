@@ -1,0 +1,94 @@
+#!/bin/bash
+# Sync the theme-set result to the other Android-backed Omarchy session.
+# Installed as an additive upstream theme-set.d hook, never a theme-set wrapper.
+set -uo pipefail
+
+[[ ${OMAMOBILE_SESSION_HOST:-} == android ]] || exit 0
+
+state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/omamobile
+log_file=$state_dir/theme-sync.log
+mkdir -p "$state_dir" || exit 1
+log() { printf '%s\n' "$(date -Is) $*" >>"$log_file"; }
+
+theme_dir=$HOME/.local/state/omarchy/current/theme
+colors_file=$theme_dir/colors.toml
+shell_file=$theme_dir/shell.toml
+background_link=$HOME/.local/state/omarchy/current/background
+if [[ ! -s $colors_file ]]; then
+  log "origin missing colors.toml; sync failed"
+  exit 1
+fi
+
+colors_b64=$(base64 -w 0 "$colors_file") || { log "origin colors encoding failed"; exit 1; }
+shell_b64=
+if [[ -f $shell_file ]]; then
+  shell_b64=$(base64 -w 0 "$shell_file") || { log "origin shell encoding failed"; exit 1; }
+fi
+background=$(readlink -f "$background_link" 2>/dev/null || true)
+
+origin=${OMAMOBILE_PROFILE:-}
+case $origin in
+  phone|desktop) ;;
+  *)
+    case ${XDG_RUNTIME_DIR:-} in
+      /run/omamobile/p) origin=phone ;;
+      /run/omamobile/d) origin=desktop ;;
+      *) log "unknown origin profile; sync failed"; exit 1 ;;
+    esac
+    ;;
+esac
+result=0
+for peer in p d; do
+  [[ $origin == phone && $peer == p ]] && continue
+  [[ $origin == desktop && $peer == d ]] && continue
+
+  runtime=/run/omamobile/$peer
+  [[ -d $runtime ]] || continue
+  peer_name=desktop
+  [[ $peer == p ]] && peer_name=phone
+  # The upstream fast socket is keyed by config path AND Wayland display.
+  # Discover the peer's display instead of inheriting the origin's value. A
+  # runtime directory alone survives shutdown and must not trigger qs fallback.
+  peer_display=
+  for display_socket in "$runtime"/wayland-[0-9]*; do
+    [[ -S $display_socket && $display_socket != *.lock ]] || continue
+    display=${display_socket##*/}
+    socket_id=$(printf '%s\n%s' "${OMARCHY_PATH:-$HOME/.local/share/omarchy}/shell" "$display" | md5sum)
+    if [[ -S $runtime/omarchy-shell-${socket_id:0:16}.sock ]]; then
+      peer_display=$display
+      break
+    fi
+  done
+  if [[ -z $peer_display ]]; then
+    log "$peer_name inactive; sync skipped"
+    continue
+  fi
+  peer_env=(env "XDG_RUNTIME_DIR=$runtime" "OMAMOBILE_PROFILE=$peer_name"
+    "WAYLAND_DISPLAY=$peer_display" "OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}"
+    "DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus")
+
+  if ! ping_output=$(timeout --kill-after=1s 3s "${peer_env[@]}" omarchy-shell shell ping 2>&1) || [[ $ping_output != ok ]]; then
+    log "$peer_name ping failed: ${ping_output//$'\n'/ }"
+    result=1
+    continue
+  fi
+  log "$peer_name ping acknowledged"
+
+  if ! apply_output=$(timeout --kill-after=1s 5s "${peer_env[@]}" omarchy-shell shell applyTheme "$colors_b64" "$shell_b64" 2>&1) || [[ $apply_output != ok ]]; then
+    log "$peer_name applyTheme failed: ${apply_output//$'\n'/ }"
+    result=1
+    continue
+  fi
+  log "$peer_name applyTheme acknowledged"
+
+  if [[ -f $background ]]; then
+    if ! background_output=$(timeout --kill-after=1s 5s "${peer_env[@]}" omarchy-shell background setInstant "$background" 2>&1) || [[ -n $background_output ]]; then
+      log "$peer_name background setInstant failed: ${background_output//$'\n'/ }"
+      result=1
+      continue
+    fi
+    log "$peer_name background setInstant acknowledged"
+  fi
+done
+
+exit "$result"

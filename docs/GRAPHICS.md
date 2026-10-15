@@ -1,0 +1,224 @@
+# Android display adapter
+
+The upstream Omarchy Quickshell shell and Omarchy Mobile plugins run in the
+same ordinary Arch rootfs. Linux and the compositors run as the normal Android
+application UID. The optional Android-window helper is separately authorized
+to run as shell UID 2000; see [ANDROID-APPS.md](ANDROID-APPS.md).
+This adapter does not flash, unlock, root, run systemd as
+Android's PID 1, change SELinux, or replace Android's device credentials.
+
+The compositor is genuine Hyprland from the public Android backend port
+https://github.com/taowen/anhyprland at
+`bc13ae5859097791b3e93a32632727a7f7075354` (BSD-3-Clause). Its Aquamarine backend
+renders to an Android `Surface` with GLES. Linux programs remain glibc ELF
+executables and connect with standard Wayland protocols. Initial Qt clients
+use `wl_shm` software rendering, so their graphics do not require a Linux DRM
+device or libhybris. This is not a claim of accelerated Linux client EGL or
+compatibility with arbitrary glibc Hyprland binary plugins.
+
+The port supports one Surface and one compositor lifetime per process.
+`PhoneActivity` and `DesktopActivity` therefore live in dedicated Android
+processes, each with a compositor, Wayland socket and session D-Bus. They
+share the same UID, rootfs, home directory, installed packages, plugins and
+theme. A profile override selects different shell layouts without forking
+the shell or copying Linux installations. `DesktopService` owns the display
+lifecycle and a visible foreground notification.
+
+## Display management helper prototype
+
+The adapter has display inventory and selection policy code, but it remains a
+prototype. The desktop stock display panel maps and answers on the external
+profile; the upstream Mobile phone bar has no stock desktop panel, so a global
+summon returns `unknown`. The phone scale CLI works. Per-profile scale values
+(2 and 1.25) remain isolated, apply through an atomic `sed -i` reload, and
+persist across restart. Ordinary and rapid Android display-selection UI
+persistence pass Activity recreation and reconnect on disposable emulator-5556.
+Prefer reusing Omarchy's existing UI and Linux monitor configuration, with
+Android-specific behavior in the adapter.
+
+Candidates checked against upstream documentation:
+
+- [Omarchy Display panel](https://github.com/omacom/omarchy/blob/quattro/manual/05-the-top-bar.md):
+  the desktop stock panel maps and answers with scaling and per-monitor
+  controls. The upstream Mobile phone bar has no stock desktop panel; a
+  global summon returns `unknown`. The phone scale CLI is the available phone
+  route.
+- [Hyprmon](https://github.com/erans/hyprmon): the
+  [official monitor manual](https://github.com/omacom/omarchy/blob/quattro/manual/33-monitors.md)
+  recommends this TUI for arranging multiple screens. Evaluate compatibility
+  with the pinned Hyprland/Lua configuration before adopting it.
+- [omarchy-display-arrange](https://github.com/xe-nvdk/omarchy-display-arrange):
+  a community extension of the Display panel with relative placement,
+  rotation and mode selection. Evaluate as an optional UI candidate; it has
+  layout and keyboard-navigation limitations. Pin and review any adopted
+  implementation before installation.
+
+The current Android backend exposes one Surface per compositor process.
+Phone and desktop therefore have separate Hyprland output inventories;
+`DesktopService` also selects only one external presentation display. A
+Linux monitor helper cannot by itself join these sessions, add another host
+output or control physical Android display modes. Decide how to coordinate
+the sessions, or extend the backend for multiple outputs, before claiming a
+unified layout, mirroring or cross-display window/pointer movement.
+
+Completion should demonstrate on emulator displays:
+
+- Correct phone/external inventory and roles without replacing the phone's
+  Mobile shell. Keep Android display IDs separate from persisted monitor
+  identities; use stable identity where exposed and handle ambiguity.
+- Working scale and rotation controls, and resolution/refresh selection only
+  where the Android host exposes usable modes and control. Report unsupported
+  operations clearly; Android remains the physical display owner.
+- Per-profile scale settings are isolated, apply through an atomic reload and
+  persist across restart. Ordinary and rapid Android display-selection UI
+  persistence across reconnect/reopening pass on disposable emulator-5556.
+- Safe preview/revert for settings that could make an output unusable,
+  preserving a reachable phone recovery path.
+- An explicit outcome for multiple external monitors and shared placement:
+  the two sessions remain independent; cross-session window movement and
+  hardware display mode control are unsupported. Do not equate two
+  independent sessions with one extended desktop.
+
+## Building the native backend
+
+The WSL build uses Ubuntu 24.04, GCC/G++ 14 for host generators, the Android
+NDK matching Gradle's NDK 30, Ninja, pkg-config, patchelf, autoconf, automake, libtool,
+bison, flex, libexpat1-dev, libxml2-dev, libffi-dev, libinput-dev and libudev-dev.
+An isolated Python environment supplies CMake 4.1.2, Meson 1.10 and Jinja2.
+
+`tools/native/build_port.py --abi x86_64 --ndk <Linux NDK>` checks out the
+pinned port in a separate build cache, fetches its pinned source dependencies,
+and cross-compiles them. `--abi arm64-v8a` selects the device architecture.
+Common C libraries come from official Termux package repositories, checked
+against each repository's SHA-256 index. Package scripts are never executed.
+They are Android native dependencies, not the Linux package installation.
+`termux-packages.json` records the resolved package versions, URLs and hashes.
+The recipes retain the port's `android/deps.lock.json` source pins.
+
+Build adaptations select the target ABI, use build-host generators instead
+of attempting to execute Android tools in WSL, supply the NDK's GLES/EGL
+pkg-config metadata and disable Xwayland for this Wayland milestone. Hardware
+libinput bodies are already excluded by the port's Android guards; public
+type headers remain available. `patch_port.py` changes Android program
+launch to `posix_spawn` with child-only environment metadata. The adapter's
+wrapper enters the shared rootfs and preserves Hyprland workspace/exec tokens.
+The GLES reset query selects core 3.2, KHR or EXT robustness according to the
+current context's advertised capabilities. This avoids calling an unsupported
+core entry point on the emulator's GLES 3.0 translator; genuine reset results
+still use Hyprland's existing failure handling.
+
+`tools/native/stage_port.py --abi x86_64 --ndk <Linux NDK>` collects the
+required shared-library closure, magic database, license files and source
+manifests. Generated binaries are ignored by Git. AGP supplies its matching
+NDK C++ runtime. Then use the normal Gradle assemble tasks.
+Versioned Android native library SONAMEs are rewritten to private `lib*.so`
+names for APK extraction, with their NEEDED entries updated and Termux RPATHs
+removed. This modifies Android dependency packaging, not Linux executables.
+
+## Preparing the Linux shells
+
+The ARM64 path was built and staged with the same recipe using
+`--abi arm64-v8a`, then installed on the locked Nubia NX789J (Android 15,
+Adreno 830). Do not use the emulator's x86_64 bootstrap on this device.
+The official generic Arch Linux ARM tarball's detached signature was checked
+against the build-system fingerprint published on its package-signing page;
+the exact archive/hash are recorded in VERIFICATION.md.
+
+`tools/linux/prepare-arch-graphics` is the development provisioning script
+for a verified Arch/Arch Linux ARM image inside this app. It initializes the
+distribution keyring and uses an official HTTPS mirror, preserving package
+signature verification. It backs up changed pacman configuration and adapts
+only the guest's downloader sandbox/UID options. It removes the generic ARM
+image's unused Linux kernel/firmware packages through pacman before updating,
+avoiding initramfs hooks against Android's kernel modules. Android boot and
+firmware partitions are never modified.
+
+Install signed Arch packages: `hyprland quickshell mesa dbus fontconfig
+ttf-dejavu qt6-wayland qt6-declarative qt6-svg qt6-5compat qt6-multimedia
+qt6-imageformats foot ttf-cascadia-code-nerd jq git curl ca-certificates
+python python-gobject python-cairo neovim inotify-tools socat xkeyboard-config adwaita-cursors imagemagick gtk3 gum xdg-terminal-exec`.
+
+The normal developer provisioning path configures the signed Omarchy repository,
+then runs `pacman -Syu --needed yay` when the standard removal picker is needed.
+This is a manual signed-package step; `yay` is not assumed to be provided by
+Arch core's default preparation set.
+
+Pacman's downloader cannot use Landlock or switch to its `alpm` user inside
+this app sandbox. The guest pacman configuration uses `DisableSandbox`, as
+TAWC's Arch integration does. Package signature checking stays enabled;
+Android's app isolation and SELinux remain unchanged.
+
+`tools/prepare-linux-shell.py` packages the pinned Omarchy and Mobile sources.
+It also requires `--widgets <checkout>` at OWL store commit
+`b63886b75e02ccef1a8a11baeef2d6eff7a374af`. Only files marked `ok` or `partial`
+in Mobile's pinned compatibility index are staged, after SHA-256 verification.
+Fresh setups enable the upstream OWL feature; exact per-widget approvals
+remain upstream behavior. Existing feature/layout files are preserved.
+Extract its output into the existing rootfs, then run
+`/root/.local/share/omamobile/setup-linux-shell`. It seeds shared theme and
+plugins, per-display profiles, and an editable phone widget layout. Existing
+user profile/layout files are retained. It deliberately omits the upstream
+phone hardware, flashing, fingerprint, lock and system-service setup steps.
+Android continues to own those facilities.
+
+The only remaining shell source patch adds an optional `OMARCHY_SHELL_CONFIG`
+override in `shell.qml`. Desktop/mobile application launch source is staged
+unchanged. Android-hosted sessions prepend `/usr/lib/omamobile/session-bin`
+to PATH, providing the `tools/linux/session-exec` adapter as `uwsm-app`.
+It accepts an executable and literal argv, with an optional `--` separator,
+preserving session variables, Hyprland launch tokens and child exit status.
+Standard `gtk-launch` resolves desktop entries and the normal packaged
+`xdg-terminal-exec` selects the terminal; `gum` supplies upstream interactive
+prompts. The payload includes upstream logo/icon/version files used by these
+commands, in addition to the shell trees.
+
+This is an explicit subset of the UWSM launch interface, not a systemd
+implementation. Android owns the session lifetime; no service or cgroup scope
+is created. Unsupported launcher options fail with status 64 and stderr;
+using the adapter outside an Android-hosted session fails with status 69.
+The adapter directory is session-local on PATH and does not replace a distro's
+`/usr/bin/uwsm-app`. `tools/tests/test_session_exec.py` checks argv/environment,
+status propagation and rejected calls under Linux bash.
+`NO_AT_BRIDGE=1` avoids a GTK launch wait for an unavailable Linux accessibility
+bus; an Android accessibility adapter remains future work.
+The phone and desktop still share the source tree,
+ordinary plugin registry and user theme. Linux launch/initial setup scripts
+are in `tools/linux/`. The GUI installer for this preparation is future work;
+the development recipe is reproducible with the test-APK helper.
+
+## Emulator verification
+
+`tools/emulator-linux.py --serial <device>` and
+`tools/capture-emulator.py --serial <device>` also support physical devices.
+The capture helper discovers physical SurfaceFlinger output IDs; explicit
+overrides are available when multiple monitors are present. Android logical
+display IDs can change after reconnect, so use the current session's
+`ANDROID_DISPLAY_ID` rather than a saved ID when injecting test input.
+
+The external Surface requests Android's ordinary relative pointer capture
+while focused. It translates deltas into compositor pixel coordinates and
+forwards button-state transitions once. Hyprland software cursors remain
+visible when Android hides its own captured pointer. Ctrl+Alt+Escape releases
+capture, as does focus loss. Starting the existing sessions again brings
+both activities forward and restores external focus.
+
+On the Nubia, Android reports capture on the external activity, and an
+injected relative event explicitly targeted at that display moves the real
+Hyprland cursor. The user also confirmed physical Bluetooth mouse movement
+and clicks after the older Omalateral helper stopped. Its privileged reader
+can use EVIOCGRAB to own mouse events exclusively, preventing Android views
+from receiving them despite valid pointer capture. Keep that older input
+reader stopped when using this host. This is separate from the injected
+test, which only verifies the app's targeted-event path.
+
+Use the emulator's default phone display plus its external presentation
+display. Do not run Gradle `connectedDebugAndroidTest` against the prepared
+installation: its uninstall cleanup removes Linux user data. Install APKs
+with `adb install -r` and invoke individual tests directly instead.
+
+`tools/emulator-linux.py` transfers binary files with SHA-256 verification
+and invokes the test-APK-only Linux command harness. Run setup commands before
+starting graphics, because Android instrumentation restarts the application.
+Native and Linux shell logs are in `files/graphics/{phone,desktop}/`.
+Display IPC is under the short `files/r/{p,d}` paths to respect Unix-domain
+socket address length limits.

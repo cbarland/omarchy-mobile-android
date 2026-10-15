@@ -1,0 +1,15 @@
+.gradle/
+.idea/
+**/build/
+**/.cxx/
+local.properties
+*.iml
+*.apk
+*.tar*
+*.log
+app/src/main/jniLibs/
+app/src/main/prebuilt/
+app/src/main/assets/native/
+__pycache__/
+*.py[cod]
+.build-tools/

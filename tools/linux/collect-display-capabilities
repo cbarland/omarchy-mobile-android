@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Collect observed Hyprland monitor capabilities for the two Android sessions.
+
+This reports compositor observations only.  It does not change monitor state or
+claim that a mode is controllable through Android.
+"""
+import argparse
+import datetime as dt
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+MAX_OUTPUT = 1024 * 1024
+MAX_SIGNATURES = 4
+TIMEOUT = 3
+
+
+def text_prefix(value):
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value[:MAX_OUTPUT].decode("utf-8", "replace")
+    return value[:MAX_OUTPUT]
+
+
+def command(argv, env):
+    try:
+        completed = subprocess.run(argv, env=env, text=True, capture_output=True,
+                                   timeout=TIMEOUT, check=False)
+        stdout = text_prefix(completed.stdout)
+        stderr = text_prefix(completed.stderr)
+        value = None
+        parse_error = None
+        if stdout:
+            try:
+                value = json.loads(stdout)
+            except json.JSONDecodeError as exc:
+                parse_error = str(exc)
+        return {"argv": argv, "exit_status": completed.returncode,
+                "value": value, "stdout": stdout if value is None else None,
+                "stderr": stderr, "parse_error": parse_error}
+    except subprocess.TimeoutExpired as exc:
+        return {"argv": argv, "exit_status": None, "value": None,
+                "stdout": text_prefix(exc.stdout),
+                "stderr": text_prefix(exc.stderr),
+                "error": "timeout"}
+    except OSError as exc:
+        return {"argv": argv, "exit_status": None, "value": None,
+                "stdout": "", "stderr": "", "error": str(exc)}
+
+
+def signatures(runtime):
+    hypr = runtime / "hypr"
+    if not hypr.is_dir():
+        return [], "missing hypr runtime directory"
+    entries = [entry for entry in hypr.iterdir()
+               if entry.is_dir() and (entry / ".socket.sock").exists()]
+    names = [entry.name for entry in sorted(entries, key=lambda entry: entry.stat().st_mtime, reverse=True)]
+    if len(names) > MAX_SIGNATURES:
+        return names[:MAX_SIGNATURES], (
+            "too many socket candidates; limited to "
+            f"{MAX_SIGNATURES} of {len(names)}")
+    if not names:
+        return [], "no signature directory containing .socket.sock"
+    return names, None
+
+
+def collect(profile, runtime):
+    names, discovery_error = signatures(runtime)
+    sessions = []
+    for signature in names:
+        env = dict(os.environ)
+        env["XDG_RUNTIME_DIR"] = str(runtime)
+        env["HYPRLAND_INSTANCE_SIGNATURE"] = signature
+        monitors = command(["hyprctl", "-j", "monitors"], env)
+        live = monitors["exit_status"] == 0 and isinstance(monitors["value"], list) and bool(monitors["value"])
+        systeminfo = command(["hyprctl", "-j", "systeminfo"], env) if live else None
+        sessions.append({"signature": signature, "monitors": monitors,
+                         "live": live, "systeminfo": systeminfo})
+        if live:
+            break
+    return {"profile": profile, "runtime": str(runtime),
+            "signature_directories": names,
+            "discovery_error": discovery_error, "sessions": sessions}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("-o", "--output", type=Path,
+                        help="write JSON to this path instead of stdout")
+    args = parser.parse_args()
+    root = Path("/run/omamobile")
+    report = {
+        "schema": "omamobile.display-capabilities.v1",
+        "timestamp_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "collector": "collect-display-capabilities",
+        "topology": {
+            "kind": "separate-single-output-sessions",
+            "profiles": {"phone": "/run/omamobile/p",
+                         "desktop": "/run/omamobile/d"},
+            "shared_topology": False,
+            "android_display_control": "not reported by this collector",
+        },
+        "sessions": [collect("phone", root / "p"),
+                     collect("desktop", root / "d")],
+    }
+    encoded = json.dumps(report, indent=2) + "\n"
+    if args.output:
+        args.output.write_text(encoded, encoding="utf-8")
+    else:
+        sys.stdout.write(encoded)
+
+
+if __name__ == "__main__":
+    main()

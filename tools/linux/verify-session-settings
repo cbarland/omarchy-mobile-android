@@ -1,0 +1,80 @@
+#!/bin/bash
+set -u
+
+schema='org.gnome.desktop.interface'
+color_key='color-scheme'
+theme_key='gtk-theme'
+keyfile="${XDG_CONFIG_HOME:-$HOME/.config}/glib-2.0/settings/keyfile"
+tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/omamobile-session-settings.XXXXXX") || exit 1
+log_file="$tmp_dir/verify.log"
+exec > >(tee -a "$log_file") 2>&1
+
+original_color=''
+original_theme=''
+mutated=0
+status=0
+
+fail() {
+  echo "ERROR: $*" >&2
+  status=1
+  return 1
+}
+
+restore() {
+  local incoming=$?
+  local restore_status=0
+  (( incoming == 0 )) || status=$incoming
+  if (( mutated )); then
+    if ! gsettings set "$schema" "$color_key" "$original_color"; then
+      echo "ERROR: failed to restore $color_key" >&2
+      restore_status=1
+    fi
+    if ! gsettings set "$schema" "$theme_key" "$original_theme"; then
+      echo "ERROR: failed to restore $theme_key" >&2
+      restore_status=1
+    fi
+    if [[ $restore_status -eq 0 ]]; then
+      local restored_color restored_theme
+      restored_color=$(gsettings get "$schema" "$color_key") || restore_status=1
+      restored_theme=$(gsettings get "$schema" "$theme_key") || restore_status=1
+      [[ $restored_color == "$original_color" ]] || { echo "ERROR: $color_key restoration mismatch" >&2; restore_status=1; }
+      [[ $restored_theme == "$original_theme" ]] || { echo "ERROR: $theme_key restoration mismatch" >&2; restore_status=1; }
+    fi
+  fi
+  if (( restore_status )); then
+    status=1
+  fi
+  echo "Session settings log: $log_file"
+  exit "$status"
+}
+trap restore EXIT
+
+command -v gsettings >/dev/null 2>&1 || { fail 'gsettings is required'; exit "$status"; }
+[[ ${GSETTINGS_BACKEND:-} == keyfile ]] || {
+  fail 'GSETTINGS_BACKEND=keyfile is required; refusing to select a test-only backend'
+  exit "$status"
+}
+[[ $(gsettings writable "$schema" "$color_key") == true ]] || { fail "schema/key is not writable: $schema $color_key"; exit "$status"; }
+[[ $(gsettings writable "$schema" "$theme_key") == true ]] || { fail "schema/key is not writable: $schema $theme_key"; exit "$status"; }
+
+original_color=$(gsettings get "$schema" "$color_key") || { fail "could not read $color_key"; exit "$status"; }
+original_theme=$(gsettings get "$schema" "$theme_key") || { fail "could not read $theme_key"; exit "$status"; }
+[[ $original_color != "''" && $original_theme != "''" ]] || { fail 'original settings must be non-empty'; exit "$status"; }
+
+mutated=1
+test_color="'prefer-dark'"
+[[ $original_color != "$test_color" ]] || test_color="'prefer-light'"
+test_theme="'Adwaita'"
+[[ $original_theme != "$test_theme" ]] || test_theme="'Adwaita-dark'"
+gsettings set "$schema" "$color_key" "$test_color" || { fail "could not set $color_key"; exit "$status"; }
+gsettings set "$schema" "$theme_key" "$test_theme" || { fail "could not set $theme_key"; exit "$status"; }
+
+child_color=$(gsettings get "$schema" "$color_key") || { fail "separate process could not read $color_key"; exit "$status"; }
+child_theme=$(gsettings get "$schema" "$theme_key") || { fail "separate process could not read $theme_key"; exit "$status"; }
+[[ $child_color == "$test_color" ]] || { fail "unexpected $color_key read: $child_color"; exit "$status"; }
+[[ $child_theme == "$test_theme" ]] || { fail "unexpected $theme_key read: $child_theme"; exit "$status"; }
+
+[[ -f "$keyfile" ]] || { fail "keyfile was not persisted: $keyfile"; exit "$status"; }
+grep -Fxq "color-scheme=$test_color" "$keyfile" || { fail 'persisted color-scheme value missing from keyfile'; exit "$status"; }
+grep -Fxq "gtk-theme=$test_theme" "$keyfile" || { fail 'persisted gtk-theme value missing from keyfile'; exit "$status"; }
+echo 'Session settings regression passed; original values will be restored.'

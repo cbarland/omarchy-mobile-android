@@ -1,0 +1,54 @@
+#!/bin/bash
+set -euo pipefail
+if [[ ! -s /etc/machine-id ]] || grep -qx uninitialized /etc/machine-id; then
+  dbus-uuidgen > /etc/machine-id
+fi
+dbus-uuidgen --ensure=/etc/machine-id
+# Deliberately separate from Omarchy Mobile's hardware/credential setup.
+mkdir -p ~/.config/omarchy/plugins ~/.config/omamobile ~/.config/fontconfig \
+  ~/.local/state/omarchy/current ~/.local/share/omamobile/profiles \
+  ~/.config/omarchy/hooks/theme-set.d
+# Preserve both the legacy user hook and every existing hook-directory entry,
+# including an intentionally dangling symlink at our reserved adapter path.
+theme_hook=$HOME/.config/omarchy/hooks/theme-set.d/omamobile-sync-session-theme
+if [[ ! -e $theme_hook && ! -L $theme_hook ]]; then
+  ln -s "$HOME/.local/share/omamobile/sync-session-theme" "$theme_hook"
+fi
+for plugin in /usr/share/omamobile/shell/plugins/omamobile.*; do
+  ln -sfn "$plugin" ~/.config/omarchy/plugins/"${plugin##*/}"
+done
+for profile in phone desktop; do
+  target=$HOME/.local/share/omamobile/profiles/$profile.json
+  [[ -e $target ]] || cp /usr/share/omamobile/android/$profile.json "$target"
+done
+[[ -e ~/.config/omamobile/home.json ]] || cp /usr/share/omamobile/android/home.json ~/.config/omamobile/home.json
+if [[ ! -e ~/.config/omamobile/features.json ]]; then
+  printf '%s\n' '{"owlWidgets":true}' > ~/.config/omamobile/features.json
+fi
+initialize_theme=false
+if [[ ! -e ~/.local/state/omarchy/current/theme && ! -L ~/.local/state/omarchy/current/theme ]]; then
+  initialize_theme=true
+elif [[ ! -s ~/.local/state/omarchy/current/theme.name && -L ~/.local/state/omarchy/current/theme ]] &&
+     [[ $(readlink -f ~/.local/state/omarchy/current/theme) == $(readlink -f ~/.local/share/omarchy/themes/tokyo-night) ]]; then
+  # Upgrade only the exact seed used by the initial prototype. Preserve an
+  # existing selected theme and user configuration.
+  initialize_theme=true
+fi
+if $initialize_theme; then
+  PATH="$HOME/.local/share/omarchy/bin:$PATH" OMARCHY_PATH="$HOME/.local/share/omarchy" \
+    OMARCHY_THEME_HEADLESS=1 omarchy-theme-set tokyo-night
+fi
+if [[ ! -e ~/.local/state/omarchy/current/background ]]; then
+  ln -s ~/.local/state/omarchy/current/theme/backgrounds/0-winding-road.webp ~/.local/state/omarchy/current/background
+fi
+if [[ ! -e ~/.config/fontconfig/fonts.conf ]]; then
+  cat > ~/.config/fontconfig/fonts.conf <<'XML'
+<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig><alias><family>monospace</family><prefer><family>CaskaydiaMono Nerd Font</family><family>DejaVu Sans Mono</family></prefer></alias></fontconfig>
+XML
+fi
+mkdir -p ~/.config/foot
+if [[ ! -e ~/.config/foot/foot.ini && ! -L ~/.config/foot/foot.ini ]]; then
+  cp ~/.local/share/omarchy/config/foot/foot.ini ~/.config/foot/foot.ini
+fi
+echo 'Omarchy Linux shell profiles prepared. Android owns device credentials and display lifetime.'

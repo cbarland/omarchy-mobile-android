@@ -1,0 +1,411 @@
+#!/usr/bin/env python3
+"""Phased, opt-in disposable-fixture check; run inside a prepared Linux session.
+
+This tests Git HTTP download through unchanged omarchy-theme-install using a
+locally generated data-only repository. It does NOT test public HTTPS, TLS,
+DNS, third-party themes, or prove rendered colors from an IPC acknowledgment.
+Capture both Android displays after install and after owner reopening for the
+separate appearance check (flat cyan wallpaper, accent #12abef).
+
+Example guest commands, with BOTH profiles running and the same WORK each time:
+  export WORK=/tmp/omamobile-theme-download-review01
+  python3 /tmp/verify-theme-download-persistence prepare "$WORK"
+  python3 /tmp/verify-theme-download-persistence install "$WORK"   # phone session
+  python3 /tmp/verify-theme-download-persistence check "$WORK" --stage installed  # desktop session
+  # Parent: settle widget guard, stop both Android owners normally, reopen both.
+  python3 /tmp/verify-theme-download-persistence check "$WORK" --stage reopened --require-restart  # each profile
+  python3 /tmp/verify-theme-download-persistence restore "$WORK"  # either session
+
+All phases have finite process bounds. Do not run concurrent theme changes or
+other user activity. Keep WORK until results/snapshots have been copied out.
+The only theme files downloaded are colors.toml and a generated PNG; no
+third-party scripts, plugins, Lua or terminal/editor configuration are fetched.
+"""
+import argparse
+import base64
+import hashlib
+import http.server
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import stat
+import struct
+import subprocess
+import sys
+import threading
+import time
+import zlib
+
+PIN = "e71a816e9032f040225e086c7256f73e8080ae45"
+UPSTREAM_HASHES = {
+    "bin/omarchy-theme-install": "1fd7417d2d9b3b6f39e4b74ae00440a6cc36a48e706c589bd5a30e6a25702550",
+    "bin/omarchy-theme-set": "0bfdee10347b12e074217f36b40fa96a6831e80a0ce8583b3149d8ba96a84796",
+    "themes/tokyo-night/colors.toml": "8b5f53ba35b9305aafa72776dd56ea2029faaf29015e2e42db5e19ef698a8e0e",
+}
+# Upstream: github.com/basecamp/omarchy, MIT, PIN above. Install clones a URL
+# (bin/omarchy-theme-install:56), then applies it (:64). theme-set stages repo
+# data (:330), stores theme.name and invokes theme-set hooks at the end.
+SNAPSHOTS = (".local/state/omarchy", ".config/glib-2.0/settings", ".cache/omarchy")
+HOME = Path.home()
+OMARCHY = Path(os.environ.get("OMARCHY_PATH", str(HOME / ".local/share/omarchy")))
+SYNC_LOG = HOME / ".local/state/omamobile/theme-sync.log"
+
+
+def require(condition, message):
+    if not condition:
+        raise RuntimeError(message)
+
+
+def sha(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def write_json(path, value):
+    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+
+def run(argv, work, label, timeout=30, env=None):
+    with (work / (label + ".log")).open("wb") as log:
+        process = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT,
+                                   env=env, start_new_session=True)
+        try:
+            result = process.wait(timeout=timeout)
+        except BaseException as error:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait(timeout=5)
+            if isinstance(error, subprocess.TimeoutExpired):
+                raise RuntimeError(label + " timed out; see " + str(log.name)) from error
+            raise
+    # Upstream starts thumbnail warming in the background. Do not race that
+    # writer with state snapshots or claim a finished phase while it survives.
+    deadline = time.monotonic() + 10
+    while live_group_members(process.pid):
+        if time.monotonic() >= deadline:
+            os.killpg(process.pid, signal.SIGKILL)
+            raise RuntimeError(label + " left background work beyond its deadline")
+        time.sleep(0.05)
+    require(result == 0, label + " failed; see " + str(log.name))
+    return (work / (label + ".log")).read_text(encoding="utf-8")
+
+
+def live_group_members(group):
+    members = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdecimal():
+            continue
+        try:
+            fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+            if fields[0] != "Z" and int(fields[2]) == group:
+                members.append(int(entry.name))
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            pass
+    return members
+
+
+def safe_work(value):
+    path = Path(value)
+    require(path.is_absolute() and path.parent == Path("/tmp")
+            and re.fullmatch(r"omamobile-theme-download-[a-z0-9-]+", path.name),
+            "WORK must be /tmp/omamobile-theme-download-<unique-lowercase-id>")
+    require(not path.is_symlink(), "WORK cannot be a symlink")
+    return path
+
+
+def assert_real_ancestors(path):
+    require(path == HOME or HOME in path.parents, "Path must stay inside HOME")
+    for parent in (path, *path.parents):
+        if parent == HOME.parent:
+            break
+        require(not parent.is_symlink(), "Custom symlink path preserved: " + str(parent))
+
+
+def inventory(path):
+    if not path.exists() and not path.is_symlink():
+        return None
+    def item(entry):
+        mode = stat.S_IMODE(entry.lstat().st_mode)
+        if entry.is_symlink():
+            return {"link": os.readlink(entry), "mode": mode}
+        if entry.is_file():
+            return {"sha256": sha(entry), "mode": mode}
+        require(entry.is_dir(), "Special file in theme state: " + str(entry))
+        return {"directory": True, "mode": mode}
+    result = {".": item(path)}
+    if path.is_dir() and not path.is_symlink():
+        for directory, dirs, files in os.walk(path, followlinks=False):
+            for name in sorted(dirs + files):
+                entry = Path(directory) / name
+                result[str(entry.relative_to(path))] = item(entry)
+    return result
+
+
+def profile():
+    name = os.environ.get("OMAMOBILE_PROFILE")
+    require(name in ("phone", "desktop"), "Run in an actual phone/desktop Linux session")
+    require(os.environ.get("OMAMOBILE_SESSION_HOST") == "android", "Android session required")
+    require(os.environ.get("GSETTINGS_BACKEND") == "keyfile", "Fixture expects the existing keyfile settings backend")
+    require(os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"), "Live compositor signature required")
+    return name
+
+
+def preconditions():
+    profile()
+    require(sys.platform == "linux", "Run this fixture inside Linux, not the Windows host")
+    for setting in ("OMARCHY_THEME_HEADLESS", "OMARCHY_THEME_OFFLINE", "OMARCHY_THEME_SKIP_BACKGROUND"):
+        require(os.environ.get(setting) != "1", "Full upstream apply path required: unset " + setting)
+    sources = json.loads(Path("/usr/share/omamobile/android/sources.json").read_text())
+    require(sources.get("omarchy") == PIN, "Pinned Omarchy fixture required")
+    for relative, digest in UPSTREAM_HASHES.items():
+        require(sha(OMARCHY / relative) == digest, "Pinned upstream file changed: " + relative)
+    # Full upstream theme-set invokes app retints and local hooks. Refuse a
+    # populated desktop rather than claiming theme.name alone restores its data.
+    for relative in (".pi", ".claude", ".hermes", ".t3", ".config/obsidian", ".config/alacritty"):
+        require(not (HOME / relative).exists() and not (HOME / relative).is_symlink(),
+                "Disposable minimal fixture required; preserve " + relative)
+    for command in ("code", "code-insiders", "codium", "/usr/bin/cursor", "asusctl", "qmk_hid"):
+        require(shutil.which(command) is None, "Disposable fixture cannot retint/control " + command)
+    for directory in ("/etc/chromium/policies/managed", "/etc/opt/chrome/policies/managed",
+                      "/etc/opt/edge/policies/managed", "/etc/brave/policies/managed"):
+        require(not Path(directory).exists() and not Path(directory).is_symlink(),
+                "Existing browser policy directory preserved: " + directory)
+    toggle = HOME / ".local/state/omarchy/toggles/herdr-theme-sync"
+    require(not toggle.exists(), "Remote machine theme mirroring must be disabled")
+    for command in ("kitty", "ghostty", "btop", "opencode", "helix", "hunk", "tmux"):
+        probe = subprocess.run(["pgrep", "-x", command], stdout=subprocess.DEVNULL, timeout=5)
+        require(probe.returncode == 1, "Stop user app before disposable fixture: " + command)
+    templates = HOME / ".config/omarchy/themed"
+    require(not templates.exists() or not any(templates.iterdir()), "User theme templates preserved")
+    hooks = HOME / ".config/omarchy/hooks"
+    approved = hooks / "theme-set.d/omamobile-sync-session-theme"
+    require(approved.is_symlink() and approved.resolve() == (HOME / ".local/share/omamobile/sync-session-theme").resolve(),
+            "Expected additive peer sync hook is absent or user-owned")
+    for hook in [hooks / "theme-set", *sorted((hooks / "theme-set.d").glob("*"))]:
+        if hook == approved or hook.name.endswith(".sample"):
+            continue
+        require(not hook.exists() and not hook.is_symlink(), "Unreviewed user hook preserved: " + str(hook))
+    for relative in SNAPSHOTS:
+        assert_real_ancestors(HOME / relative)
+
+
+def prepare(work):
+    preconditions()
+    require(not work.exists(), "Refusing to overwrite previous fixture or recovery data: " + str(work))
+    original = (HOME / ".local/state/omarchy/current/theme.name").read_text().strip()
+    require(re.fullmatch(r"[a-z0-9_][a-z0-9._+-]*", original), "Original theme name is invalid")
+    require((OMARCHY / "themes" / original).is_dir(), "This bounded fixture requires an original built-in theme")
+    work.mkdir(mode=0o700)
+    (work / "snapshots").mkdir()
+    saved = {}
+    for index, relative in enumerate(SNAPSHOTS):
+        path = HOME / relative
+        saved[relative] = inventory(path)
+        if path.exists():
+            shutil.copytree(path, work / "snapshots" / str(index), symlinks=True, copy_function=shutil.copy2)
+    state = {"version": 1, "home": str(HOME), "originalTheme": original,
+             "fixture": work.name, "snapshots": saved, "signatures": {},
+             "transport": "loopback-http-git", "publicHttpsVerified": False,
+             "renderedPaletteVerified": False, "phase": "prepared"}
+    write_json(work / "state.json", state)
+    print("Prepared snapshot; fixture=" + str(work))
+
+
+def load(work):
+    state = json.loads((work / "state.json").read_text())
+    require(state["version"] == 1 and state["home"] == str(HOME) and state["fixture"] == work.name,
+            "Fixture identity mismatch")
+    return state
+
+
+def png():
+    def chunk(kind, value):
+        return struct.pack(">I", len(value)) + kind + value + struct.pack(">I", zlib.crc32(kind + value) & 0xffffffff)
+    rows = (b"\x00" + bytes((18, 171, 239)) * 32) * 32
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 32, 32, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+
+
+def install(work, state):
+    preconditions()
+    require(state["phase"] == "prepared", "Install can run only once after prepare")
+    target = HOME / ".config/omarchy/themes" / state["fixture"]
+    assert_real_ancestors(target)
+    require(not target.exists(), "Unique fixture theme already exists")
+    source = work / "source"
+    (source / "backgrounds").mkdir(parents=True)
+    colors = (OMARCHY / "themes/tokyo-night/colors.toml").read_text()
+    colors, count = re.subn(r'^accent\s*=.*$', 'accent = "#12abef"', colors, flags=re.MULTILINE)
+    require(count == 1, "Pinned palette must have exactly one accent")
+    (source / "colors.toml").write_text(colors)
+    (source / "backgrounds/fixture.png").write_bytes(png())
+    git_env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null",
+                   GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.hooksPath", GIT_CONFIG_VALUE_0="/dev/null",
+                   GIT_TERMINAL_PROMPT="0", NO_PROXY="127.0.0.1", no_proxy="127.0.0.1")
+    for label, args in (("git-init", ["init", "-q", str(source)]),
+                        ("git-add", ["-C", str(source), "add", "colors.toml", "backgrounds/fixture.png"]),
+                        ("git-commit", ["-C", str(source), "-c", "user.name=omamobile-test", "-c",
+                                        "user.email=fixture@example.invalid", "commit", "-qm", "data-only fixture"])):
+        run(["git", *args], work, label, env=git_env)
+    commit = run(["git", "-C", str(source), "rev-parse", "HEAD"], work, "fixture-commit", env=git_env).strip()
+    listing = run(["git", "-C", str(source), "ls-tree", "-r", "HEAD"], work, "fixture-tree", env=git_env)
+    require(len(listing.splitlines()) == 2 and all(line.startswith("100644 blob ") for line in listing.splitlines()),
+            "Downloaded fixture must contain exactly two regular, non-executable data files")
+    www = work / "www"
+    www.mkdir()
+    repository = www / (state["fixture"] + ".git")
+    run(["git", "clone", "--bare", str(source), str(repository)], work, "serve-repository", env=git_env)
+    run(["git", "--git-dir=" + str(repository), "update-server-info"], work, "server-info", env=git_env)
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=str(www), **kwargs)
+        def log_message(self, fmt, *args):
+            with (work / "http-access.log").open("a") as log:
+                log.write((fmt % args) + "\n")
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    url = "http://127.0.0.1:%d/%s.git" % (server.server_port, state["fixture"])
+    state.update(phase="installing", url=url, commit=commit,
+                 colorsSha256=sha(source / "colors.toml"), backgroundSha256=sha(source / "backgrounds/fixture.png"))
+    write_json(work / "state.json", state)  # Recovery information precedes mutation.
+    offset = SYNC_LOG.stat().st_size if SYNC_LOG.exists() else 0
+    try:
+        run(["omarchy-theme-install", url], work, "upstream-install", timeout=90, env=git_env)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+    cloned = run(["git", "-C", str(target), "rev-parse", "HEAD"], work, "downloaded-commit", env=git_env).strip()
+    require(cloned == commit, "Installed checkout differs from pinned generated commit")
+    require("GET /" + state["fixture"] + ".git/info/refs" in (work / "http-access.log").read_text(),
+            "No Git HTTP download was observed")
+    peer = "desktop" if profile() == "phone" else "phone"
+    new_log = SYNC_LOG.read_bytes()[offset:].decode("utf-8")
+    (work / "install-peer-sync.log").write_text(new_log)
+    for acknowledgment in ("ping", "applyTheme", "background setInstant"):
+        require(peer + " " + acknowledgment + " acknowledged" in new_log, "Peer did not acknowledge " + acknowledgment)
+    require(peer + " inactive" not in new_log and " failed:" not in new_log, "Peer sync failed or skipped")
+    state["phase"] = "installed"
+    write_json(work / "state.json", state)
+    check(work, state, "installed", False)
+
+
+def check(work, state, stage, require_restart):
+    name = profile()
+    require((stage == "reopened") == require_restart, "Reopened checks require --require-restart; installed checks must omit it")
+    require(state["phase"] == "installed", "Install must complete before persistence check")
+    current = HOME / ".local/state/omarchy/current"
+    require((current / "theme.name").read_text().strip() == state["fixture"], "Selected theme did not persist")
+    require(sha(current / "theme/colors.toml") == state["colorsSha256"], "Persisted palette changed")
+    require(sha(current / "background") == state["backgroundSha256"], "Persisted background changed")
+    signature = os.environ["HYPRLAND_INSTANCE_SIGNATURE"]
+    previous = state["signatures"].get(name)
+    if require_restart:
+        require(previous and previous != signature, name + " compositor was not proven to restart")
+    ping = run(["omarchy-shell", "shell", "ping"], work, stage + "-" + name + "-ping", timeout=5).strip()
+    require(ping == "ok", "Shell did not acknowledge ping")
+    # Shell IPC becomes ready before Mobile's asynchronous home page maps.
+    # Observe actual surfaces with a bound rather than racing that normal startup.
+    deadline = time.monotonic() + 20
+    expected = "omamobile-home" if name == "phone" else "omarchy-bar"
+    while True:
+        layers = run(["hyprctl", "-j", "layers"], work, stage + "-" + name + "-layers", timeout=5)
+        if "omarchy-background" in layers and expected in layers:
+            break
+        require(time.monotonic() < deadline, "Expected upstream surfaces are not mapped")
+        time.sleep(0.2)
+    if not require_restart:
+        state["signatures"][name] = signature
+    else:
+        state.setdefault("reopened", {})[name] = signature
+    write_json(work / (stage + "-" + name + ".json"), {
+        "profile": name, "signature": signature, "previousSignature": previous, "ownerRestartVerified": require_restart,
+        "selectedTheme": state["fixture"], "paletteSha256": state["colorsSha256"],
+        "backgroundSha256": state["backgroundSha256"], "shellPing": ping,
+        "renderedPaletteVerified": False, "appearanceEvidenceRequired": "Capture this Android display before and after reopening",
+    })
+    write_json(work / "state.json", state)
+    print(stage + " " + name + " persisted theme and live shell verified; rendered color check remains separate")
+
+
+def restore(work, state):
+    profile()
+    # Normal upstream restore runs first. Preserve snapshots and checkout on
+    # failure so recovery can be reviewed; never delete a currently selected theme.
+    run(["omarchy-theme-set", state["originalTheme"]], work, "upstream-restore", timeout=90)
+    for index, relative in enumerate(SNAPSHOTS):
+        target = HOME / relative
+        assert_real_ancestors(target)
+        backup = work / "snapshots" / str(index)
+        if target.exists():
+            shutil.rmtree(target)
+        if state["snapshots"][relative] is not None:
+            shutil.copytree(backup, target, symlinks=True, copy_function=shutil.copy2)
+        require(inventory(target) == state["snapshots"][relative], "Exact snapshot restoration failed: " + relative)
+    current = HOME / ".local/state/omarchy/current"
+    colors = base64.b64encode((current / "theme/colors.toml").read_bytes()).decode()
+    shell = current / "theme/shell.toml"
+    shell_payload = base64.b64encode(shell.read_bytes()).decode() if shell.is_file() else ""
+    require(run(["omarchy-shell", "shell", "applyTheme", colors, shell_payload], work, "restore-origin-palette", timeout=5).strip() == "ok",
+            "Original palette was not acknowledged")
+    background_reply = run(["omarchy-shell", "background", "setInstant", str((current / "background").resolve())],
+                           work, "restore-origin-background", timeout=5)
+    require(not background_reply.strip(), "Original background call returned an unexpected IPC reply")
+    offset = SYNC_LOG.stat().st_size if SYNC_LOG.exists() else 0
+    run([str(HOME / ".local/share/omamobile/sync-session-theme")], work, "restore-peer", timeout=20)
+    peer = "desktop" if profile() == "phone" else "phone"
+    restored_log = SYNC_LOG.read_bytes()[offset:].decode("utf-8")
+    (work / "restore-peer-sync.log").write_text(restored_log)
+    for acknowledgment in ("ping", "applyTheme", "background setInstant"):
+        require(peer + " " + acknowledgment + " acknowledged" in restored_log, "Restore peer did not acknowledge " + acknowledgment)
+    for relative in SNAPSHOTS:
+        require(inventory(HOME / relative) == state["snapshots"][relative], "Restored data changed after peer sync: " + relative)
+    target = HOME / ".config/omarchy/themes" / state["fixture"]
+    assert_real_ancestors(target)
+    if target.exists():
+        shutil.rmtree(target)
+    state["phase"] = "restored"
+    write_json(work / "state.json", state)
+    write_json(work / "result.json", {"transport": "loopback-http-git", "publicHttpsVerified": False,
+               "bothOwnersReopened": set(state.get("reopened", {})) == {"phone", "desktop"},
+               "renderedPaletteVerified": False, "originalThemeRestored": state["originalTheme"],
+               "originalThemeDataRestored": True, "fixtureCheckoutRemoved": True})
+    print("Original theme/data restored; retained evidence and recovery snapshots at " + str(work))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("action", choices=("prepare", "install", "check", "restore"))
+    parser.add_argument("work", type=safe_work)
+    parser.add_argument("--stage", default="installed", choices=("installed", "reopened"))
+    parser.add_argument("--require-restart", action="store_true")
+    args = parser.parse_args()
+    def terminate(_signum, _frame):
+        raise InterruptedError("Fixture terminated; preserve WORK recovery snapshots")
+    signal.signal(signal.SIGTERM, terminate)
+    if args.action == "prepare":
+        prepare(args.work)
+        return
+    state = load(args.work)
+    if args.action == "install":
+        try:
+            install(args.work, state)
+        except BaseException:
+            if state["phase"] in ("installing", "installed"):
+                try:
+                    restore(args.work, state)
+                except Exception as error:
+                    print("RESTORE FAILED; retain snapshots and rerun restore: " + str(error), file=sys.stderr)
+            raise
+    elif args.action == "check":
+        check(args.work, state, args.stage, args.require_restart)
+    else:
+        restore(args.work, state)
+
+
+if __name__ == "__main__":
+    main()

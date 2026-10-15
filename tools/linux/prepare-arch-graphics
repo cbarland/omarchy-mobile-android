@@ -1,0 +1,46 @@
+#!/bin/bash
+# Developer provisioning inside the app-private Arch Linux/Arch Linux ARM rootfs.
+# This changes guest package configuration only. Package signatures remain required.
+set -euo pipefail
+[[ -d /android/shared ]] || { echo 'Run inside the Android host Linux environment.' >&2; exit 64; }
+source /etc/os-release
+case "$ID" in
+  archarm) mirror='https://fl.us.mirror.archlinuxarm.org/$arch/$repo'; keyring=archlinuxarm ;;
+  arch) mirror='https://geo.mirror.pkgbuild.com/$repo/os/$arch'; keyring=archlinux ;;
+  *) echo "Unsupported userspace: $ID" >&2; exit 64 ;;
+esac
+[[ -e /etc/pacman.conf.omamobile-original ]] || cp /etc/pacman.conf /etc/pacman.conf.omamobile-original
+[[ -e /etc/pacman.d/mirrorlist.omamobile-original ]] || cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.omamobile-original
+# The rootless syscall adapter cannot add Landlock or switch to another Android UID.
+# Pacman 7.1 exposes separate filesystem/syscall switches; older versions use one.
+if grep -q '^#\?DisableSandboxFilesystem' /etc/pacman.conf; then
+  sed -i -e 's/^#DisableSandboxFilesystem.*/DisableSandboxFilesystem/' \
+    -e 's/^#DisableSandboxSyscalls.*/DisableSandboxSyscalls/' /etc/pacman.conf
+elif ! grep -q '^DisableSandbox$' /etc/pacman.conf; then
+  sed -i '/^\[options\]$/a DisableSandbox' /etc/pacman.conf
+fi
+sed -i 's/^DownloadUser[[:space:]]*=/#&/' /etc/pacman.conf
+printf 'Server = %s\n' "$mirror" > /etc/pacman.d/mirrorlist
+# Keep another official mirror available when a regional endpoint is unavailable.
+if [[ $ID == arch ]]; then
+  printf '%s\n' 'Server = https://mirrors.kernel.org/archlinux/$repo/os/$arch' >> /etc/pacman.d/mirrorlist
+fi
+pacman-key --init
+pacman-key --populate "$keyring"
+# The generic ARM archive includes a separate Linux boot stack. It is unused
+# inside Android and its initramfs hooks cannot inspect Android's kernel modules.
+# Remove it through pacman before updating; never touch Android's boot partitions.
+boot_packages=()
+for package in linux-aarch64 linux-firmware; do
+  if pacman -Qq "$package" >/dev/null 2>&1; then boot_packages+=("$package"); fi
+done
+if (( ${#boot_packages[@]} )); then
+  pacman -Rns --noconfirm "${boot_packages[@]}"
+fi
+# Refresh even if an imported image or the previous mirror supplied newer mtimes.
+pacman -Syyu --noconfirm --needed hyprland quickshell mesa dbus fontconfig \
+  ttf-dejavu qt6-wayland qt6-declarative qt6-svg qt6-5compat qt6-multimedia \
+  qt6-imageformats foot ttf-cascadia-code-nerd jq git curl ca-certificates \
+  python python-gobject python-cairo inotify-tools socat xkeyboard-config \
+  adwaita-cursors imagemagick gtk3 gum xdg-terminal-exec fzf xdg-utils sudo neovim
+pacman -Q hyprland quickshell glibc

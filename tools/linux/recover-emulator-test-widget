@@ -1,0 +1,38 @@
+#!/bin/bash
+# Explicit recovery after instrumentation killed the entire Android host
+# inside OWL's 3-second startup guard. Never part of normal shell startup.
+set -euo pipefail
+widget=simonschubert.todo
+guard=$HOME/.config/omamobile/widget-guard.json
+omarchy plugin disable omamobile.home
+for attempt in {1..40}; do
+  [[ $(omarchy-shell shell call omamobile.home state '') == unknown ]] && break
+  sleep .1
+done
+[[ $(omarchy-shell shell call omamobile.home state '') == unknown ]]
+cp -p "$guard" "$guard.before-emulator-test-recovery"
+python - "$guard" "$widget" <<'PY'
+import json, os, sys
+path, widget = sys.argv[1:]
+with open(path) as stream:
+    data = json.load(stream)
+for section in ("loading", "crashed"):
+    data.get(section, {}).pop(widget, None)
+with open(path + ".tmp", "w") as stream:
+    json.dump(data, stream)
+    stream.write("\n")
+os.replace(path + ".tmp", path)
+PY
+omarchy plugin enable omamobile.home
+for attempt in {1..100}; do
+  result=$(omarchy-shell shell call omamobile.home owlStatus "$widget")
+  if [[ $result == \{* ]] && jq -e '.status == "ok" and .approved' <<< "$result" >/dev/null; then
+    [[ $(jq '.loading | length' "$guard") == 0 ]] && break
+  fi
+  sleep .1
+done
+jq -e '.status == "ok" and .approved' <<< "$result" >/dev/null
+[[ $(jq '.loading | length' "$guard") == 0 ]]
+echo "$result"
+cat "$guard"
+omarchy-shell shell call omamobile.home page 1

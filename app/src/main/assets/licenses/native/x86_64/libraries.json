@@ -1,0 +1,718 @@
+{
+  "port": "https://github.com/taowen/anhyprland",
+  "commit": "bc13ae5859097791b3e93a32632727a7f7075354",
+  "abi": "x86_64",
+  "libraries": {
+    "libanhyprland.so": {
+      "name_in_apk": "libanhyprland.so",
+      "sha256_source": "f20ebd566feffc8c6408ba7c4e88d6e7fcec3c8e3cd40e536c8bafb00322a70e",
+      "needed": [
+        "libandroid.so",
+        "liblog.so",
+        "libandroid-execinfo.so",
+        "libaquamarine.so",
+        "libhyprlang.so",
+        "libhyprcursor.so",
+        "libhyprgraphics.so",
+        "libhyprutils.so",
+        "libGLESv2.so",
+        "libxkbcommon.so",
+        "libwayland-server.so",
+        "libm.so",
+        "libpixman-1.so",
+        "libpangocairo-1.0.so.0",
+        "libpango-1.0.so.0",
+        "libharfbuzz.so",
+        "libcairo.so.2",
+        "libXcursor.so",
+        "libdrm.so",
+        "libeis.so",
+        "libgio-2.0.so.0",
+        "libgobject-2.0.so.0",
+        "libglib-2.0.so.0",
+        "libre2.so",
+        "libmuparser.so",
+        "liblcms2.so",
+        "liblua5.5.so",
+        "libEGL.so",
+        "libGLESv3.so",
+        "libc++_shared.so",
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-hyprland/libanhyprland.so",
+      "sha256_apk": "ae8c05d91bc8c529733fe1464eb4e9504f0ee2e56d9e76b8c5f32bda5b176ea1"
+    },
+    "libandroid-execinfo.so": {
+      "name_in_apk": "libandroid-execinfo.so",
+      "sha256_source": "5cb5a1f86fa39242aca2fda9b47089f6a94790cae3254f1f07a9cd97da4f0a7f",
+      "needed": [
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libandroid-execinfo.so",
+      "sha256_apk": "230968d6e90a516c646befc2aaa35eb9c4b6d8d1bb2ea8db5537064f0ca76cc0"
+    },
+    "libaquamarine.so": {
+      "name_in_apk": "libaquamarine.so",
+      "sha256_source": "3d789642282f2a11dcd90db35ecca5dcdc2f5666c8b50947aafef7de5b4597c9",
+      "needed": [
+        "libandroid.so",
+        "liblog.so",
+        "libhyprutils.so",
+        "libpixman-1.so",
+        "libdrm.so",
+        "libm.so",
+        "libc++_shared.so",
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/libaquamarine.so",
+      "sha256_apk": "bbf721cf2955c1d78ccb416997bdb61872c209a4a826051e7c6bee41f40c6a88"
+    },
+    "libhyprutils.so": {
+      "name_in_apk": "libhyprutils.so",
+      "sha256_source": "8666072657271a061fc6668574cbc8677b0174c1cabd80ab762e0409193b0328",
+      "needed": [
+        "libpixman-1.so",
+        "libm.so",
+        "libc++_shared.so",
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/libhyprutils.so",
+      "sha256_apk": "11d23a6dfb39066b50a0956b46b02b738870da576afa2b4c46dc176a2803eccf"
+    },
+    "libpixman-1.so": {
+      "name_in_apk": "libpixman-1.so",
+      "sha256_source": "77c7a6bd71f17bc9ab4bd240a526d5e2afb1111fdf749796afe3d7f4ec151c14",
+      "needed": [
+        "libm.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libpixman-1.so",
+      "sha256_apk": "fc6648343d35a6e0f4048538939f02ad96ac9ad90f9915385e15703fc5865508"
+    },
+    "libc++_shared.so": {
+      "name_in_apk": "libc++_shared.so",
+      "sha256_source": "f98d723f0481308c147ffb560e9c74ab6142e0e52d4837555ed8feedb753af0c",
+      "needed": [
+        "libc.so",
+        "libm.so",
+        "libdl.so"
+      ],
+      "source": "Android NDK toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/x86_64-linux-android/libc++_shared.so",
+      "packaging": "AGP supplies the same NDK runtime with the JNI adapter"
+    },
+    "libdrm.so": {
+      "name_in_apk": "libdrm.so",
+      "sha256_source": "4dc195316bb1f2358763ebe27ffcdb9d47992b6595b9ce859dbb6e69c9d367a8",
+      "needed": [
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libdrm.so",
+      "sha256_apk": "3064a8f1cb5a717ecd510972b089b6fcaf9267422ea4af8e7b55a6bb7640a3e7"
+    },
+    "libhyprlang.so": {
+      "name_in_apk": "libhyprlang.so",
+      "sha256_source": "f8fa7809729ab61bd6f516dfa826f982ee8892d4bdc19f153d856e957d2de0ce",
+      "needed": [
+        "libhyprutils.so",
+        "libm.so",
+        "libc++_shared.so",
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/libhyprlang.so",
+      "sha256_apk": "3c1a4262ca831c8c4deb120b4e74a22bd221ac6edd33a2dd9a77ed0f425647aa"
+    },
+    "libhyprcursor.so": {
+      "name_in_apk": "libhyprcursor.so",
+      "sha256_source": "ae7464db1b8638058532097e876af0dd8ee28bf357d156f989c9069368ff119c",
+      "needed": [
+        "libhyprlang.so",
+        "libzip.so",
+        "libcairo.so.2",
+        "liblunasvg.so",
+        "libm.so",
+        "libc++_shared.so",
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/libhyprcursor.so",
+      "sha256_apk": "75c796b560ab795dcececaafe113d01250a4bad4aceb874522c1aa3dd7fe8766"
+    },
+    "libzip.so": {
+      "name_in_apk": "libzip.so",
+      "sha256_source": "225d30c7c4a29ba94ac568217ceae549462f7889bce28f678b7ffc0bc6f14846",
+      "needed": [
+        "libz.so.1",
+        "libm.so",
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/libzip.so",
+      "sha256_apk": "bcf272ea81bc0bc5fc97028de6403265630835136819241cbeeb93b1342e496e"
+    },
+    "libz.so.1": {
+      "name_in_apk": "libomamobile_z.so",
+      "sha256_source": "6a69170246472fe49a63d5ae1e878da3b622ecbee09b6a0aba16861e1c678c76",
+      "needed": [
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libz.so.1",
+      "sha256_apk": "97e0c5fdf6ba8c2b5a3c1a1a90bbc2c0851b1ae90bf0194e6408980b60a971ef"
+    },
+    "libcairo.so.2": {
+      "name_in_apk": "libomamobile_cairo.so",
+      "sha256_source": "ec6117627388668cf5b6b8d6653a39dea80923a466b4cc5a53e9f57e54dff307",
+      "needed": [
+        "libandroid-shmem.so",
+        "libc.so",
+        "libm.so",
+        "libz.so.1",
+        "libpng16.so",
+        "libfontconfig.so",
+        "libfreetype.so",
+        "libX11.so",
+        "libXext.so",
+        "libXrender.so",
+        "libxcb.so",
+        "libxcb-render.so",
+        "libxcb-shm.so",
+        "libpixman-1.so"
+      ],
+      "source": "ndk-prefix/lib/libcairo.so.2",
+      "sha256_apk": "df09f46de022e14fea9fc119f698631074bc7881572a90e713e19369ec86825a"
+    },
+    "libandroid-shmem.so": {
+      "name_in_apk": "libandroid-shmem.so",
+      "sha256_source": "092926060298acd3778e6239033d7aef1280dcb59aebe021a3719612e6a3465f",
+      "needed": [
+        "liblog.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libandroid-shmem.so",
+      "sha256_apk": "acab9237c6e6d4e79dc5d5cb0b98798a70eb5d96bceca7b9e69a5b45e32fc766"
+    },
+    "libpng16.so": {
+      "name_in_apk": "libpng16.so",
+      "sha256_source": "7c21365fc2ca45293c3d80c91b51f52710b8d446d918eaa11dc829a75ce781cf",
+      "needed": [
+        "libz.so.1",
+        "libm.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libpng16.so",
+      "sha256_apk": "eeb463d94595d51b0dc36e19fe7f7b647baffa661525e66ad054bafe8fba9fa9"
+    },
+    "libfontconfig.so": {
+      "name_in_apk": "libfontconfig.so",
+      "sha256_source": "ba39a4039f72152053601486a210633e39f5910074bbd0c3a4d93923a6bfe473",
+      "needed": [
+        "libfreetype.so",
+        "libexpat.so.1",
+        "libm.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libfontconfig.so",
+      "sha256_apk": "0a9fd306b4cedf9dbb49f36d517fb1b359a335ac193caa0e35b276f220cfaaf3"
+    },
+    "libfreetype.so": {
+      "name_in_apk": "libfreetype.so",
+      "sha256_source": "e14030fda0c2e16db0c2b8dc85146bd0bef7525385b0464520b13ba7ef6f96e6",
+      "needed": [
+        "libz.so.1",
+        "libbz2.so.1.0",
+        "libpng16.so",
+        "libbrotlidec.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libfreetype.so",
+      "sha256_apk": "8a23c9312585f2a1c8aacdeba4ebf112e715ee4a799d502444ce3489dc3ec103"
+    },
+    "libbz2.so.1.0": {
+      "name_in_apk": "libomamobile_bz2.so",
+      "sha256_source": "743cba463316dc74866c916a55c9bbb3eb8337c4cf2ef8c054d0a2be5856b79a",
+      "needed": [
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libbz2.so.1.0",
+      "sha256_apk": "fa2ddb1431ecc454dcd7fb9bd7f3b86eb7a9af52d60fbe4ed2ca9bdda6958bb0"
+    },
+    "libbrotlidec.so": {
+      "name_in_apk": "libbrotlidec.so",
+      "sha256_source": "0b2407a6b805541a9a02e3e834249fdd552bcb5d745c7361ad8b72e85f9459ca",
+      "needed": [
+        "libbrotlicommon.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libbrotlidec.so",
+      "sha256_apk": "5d052314909e180ae0f94e4f0fe3fd19c2a01c764081288d272109e0e9bf01a5"
+    },
+    "libbrotlicommon.so": {
+      "name_in_apk": "libbrotlicommon.so",
+      "sha256_source": "a341f091ccf59b9ea3c876c0b4caabb7e5916dfac4195b462b372d95fdda5c9b",
+      "needed": [
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libbrotlicommon.so",
+      "sha256_apk": "e094a36ecb44d670750482fa9d765bb943402b093c112a5220c268717a2db785"
+    },
+    "libexpat.so.1": {
+      "name_in_apk": "libomamobile_expat.so",
+      "sha256_source": "6e189c9ca331f5f9200beb9b67d2e5ee92c06a738c09a714d1248dc0a51e4642",
+      "needed": [
+        "libm.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libexpat.so.1",
+      "sha256_apk": "c62af4fa05acd39767f6e3799cacc314c25dc9e0af19127f2f2b019fe1af04aa"
+    },
+    "libX11.so": {
+      "name_in_apk": "libX11.so",
+      "sha256_source": "3d7699fba0a62ff0b33f44e5653b802c82146588160b0f770f9334e95cec3e44",
+      "needed": [
+        "libc.so",
+        "libxcb.so",
+        "libandroid-support.so",
+        "libdl.so"
+      ],
+      "source": "ndk-prefix/lib/libX11.so",
+      "sha256_apk": "18a660c77232b2ac6ce54083221a258248ad462ef1022186cd08e84a18903ab2"
+    },
+    "libxcb.so": {
+      "name_in_apk": "libxcb.so",
+      "sha256_source": "2dd3f4a44da7fa13fc066e791c874708f8404a985aac4c2d7700e4985fafd80b",
+      "needed": [
+        "libXau.so",
+        "libXdmcp.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libxcb.so",
+      "sha256_apk": "1c9363ea4c75510f83d7ea9b1be2e04eb215862301361098c4aa3dca5e0bce78"
+    },
+    "libXau.so": {
+      "name_in_apk": "libXau.so",
+      "sha256_source": "197ff5af28b5cd1cb1528d8bcfe02636eb349ad97e563145edbf0b79ec612b5c",
+      "needed": [
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libXau.so",
+      "sha256_apk": "e28f9490f420789b9225e460afa758b4351246b513800b69690a6023340c60f0"
+    },
+    "libXdmcp.so": {
+      "name_in_apk": "libXdmcp.so",
+      "sha256_source": "7425137116c932434439ac81969ab345f093557a4461dc6a5118ca260c91d45e",
+      "needed": [
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libXdmcp.so",
+      "sha256_apk": "74fd35ef6852e0c957d582f684f31646e7fa79ccccdb0e867009f8f31ed4d540"
+    },
+    "libandroid-support.so": {
+      "name_in_apk": "libandroid-support.so",
+      "sha256_source": "f0f44e60090b07b3536729993fad94bb6127ff1c6f70188f5c6dab6a33b85dda",
+      "needed": [
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libandroid-support.so",
+      "sha256_apk": "7b7d40b165b5cfebd7a2ec61b67e8880fa9d6969f3c2e398cc7de7ff804ac1ba"
+    },
+    "libXext.so": {
+      "name_in_apk": "libXext.so",
+      "sha256_source": "56a29bbfe64456b14edaaf5dd9393d159bf6e431ce4a93ddf11e369735717b9c",
+      "needed": [
+        "libX11.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libXext.so",
+      "sha256_apk": "1514543e6dc040b1c838a21057bf7abbe30b71ba6f11fb109cdbe09c6a51f050"
+    },
+    "libXrender.so": {
+      "name_in_apk": "libXrender.so",
+      "sha256_source": "bb8d21960386f51a0b57b5925561827dea575ca3ff6d37e53b737f011ecb006b",
+      "needed": [
+        "libX11.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libXrender.so",
+      "sha256_apk": "c25cc7081d22e8ef6c4dbf5ea7312b28a12f925b5a680ed7f60d584e31d1d6a1"
+    },
+    "libxcb-render.so": {
+      "name_in_apk": "libxcb-render.so",
+      "sha256_source": "eb9ad0d299a0fb5872131f9a04dbae9127044cc89c55e0cfd3cc37e4b646d7ab",
+      "needed": [
+        "libxcb.so",
+        "libXau.so",
+        "libXdmcp.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libxcb-render.so",
+      "sha256_apk": "6508e80789b005de88d197ec72cb6bc8766375dd81c056fdaf6ace5de91bfacf"
+    },
+    "libxcb-shm.so": {
+      "name_in_apk": "libxcb-shm.so",
+      "sha256_source": "9e370ccbabebd7808ccca40c2df5c5f103e600dbb1262f5953cbff669416d498",
+      "needed": [
+        "libxcb.so",
+        "libXau.so",
+        "libXdmcp.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libxcb-shm.so",
+      "sha256_apk": "ae29579d8fc2db91e0449d43cc3685cedb6c62056539f411a5a4122188b72495"
+    },
+    "liblunasvg.so": {
+      "name_in_apk": "liblunasvg.so",
+      "sha256_source": "d307e0f79bfb596dd2bb04935089eb6e2a3f56471dd65dac1aaa4159b5d169d5",
+      "needed": [
+        "libplutovg.so",
+        "libm.so",
+        "libc++_shared.so",
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/liblunasvg.so",
+      "sha256_apk": "6bc28b7415fe9c941cf4fdcd46dc26aa71453e4b4a4b5eabc5daddc4604f6e0b"
+    },
+    "libplutovg.so": {
+      "name_in_apk": "libplutovg.so",
+      "sha256_source": "5cfcf5206bb27c38614f0cbd4d4f7a8e7bbb08ea84687c027ca17ed98b190235",
+      "needed": [
+        "libm.so",
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/libplutovg.so",
+      "sha256_apk": "26eaa9df423fe3e46c18d2dcb20b092da7a2a18ce587e569b0d585c7fa7bd87b"
+    },
+    "libhyprgraphics.so": {
+      "name_in_apk": "libhyprgraphics.so",
+      "sha256_source": "0326f61928b940f1450e5d4d41ac62af5e4516ee9ded45129b6bd3af73018ec0",
+      "needed": [
+        "libdrm.so",
+        "libpixman-1.so",
+        "libpangocairo-1.0.so.0",
+        "libpango-1.0.so.0",
+        "libgobject-2.0.so.0",
+        "libglib-2.0.so.0",
+        "libharfbuzz.so",
+        "libcairo.so.2",
+        "libhyprutils.so",
+        "libjpeg.so",
+        "libwebp.so",
+        "libmagic.so",
+        "libpng16.so",
+        "liblunasvg.so",
+        "libm.so",
+        "libc++_shared.so",
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/libhyprgraphics.so",
+      "sha256_apk": "fb47a1c366bf47a7a633767362ba1f362a225eb2400fb17fd85a246c23592ee1"
+    },
+    "libpangocairo-1.0.so.0": {
+      "name_in_apk": "libomamobile_pangocairo-1.0.so",
+      "sha256_source": "6ab804cfab567818b8517b9867d137463ad69e0f33ab3d516d7a55131067af59",
+      "needed": [
+        "libpango-1.0.so.0",
+        "libpangoft2-1.0.so.0",
+        "libm.so",
+        "libglib-2.0.so.0",
+        "libgobject-2.0.so.0",
+        "libharfbuzz.so",
+        "libfontconfig.so",
+        "libcairo.so.2",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libpangocairo-1.0.so.0",
+      "sha256_apk": "a0fbec073a1ebadbd14b5768b3fac4540b66343743bc702bba06f1bb8ae4ccc8"
+    },
+    "libpango-1.0.so.0": {
+      "name_in_apk": "libomamobile_pango-1.0.so",
+      "sha256_source": "96c82f3d48827fd2f78c928771e0da5a9d3b90624754d1b3cd725b1c0fcd6600",
+      "needed": [
+        "libm.so",
+        "libglib-2.0.so.0",
+        "libgobject-2.0.so.0",
+        "libgio-2.0.so.0",
+        "libfribidi.so",
+        "libharfbuzz.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libpango-1.0.so.0",
+      "sha256_apk": "649231f538e845267d9ff317fada1e58862b2cd72a752f5c7c51c7313a621c7f"
+    },
+    "libglib-2.0.so.0": {
+      "name_in_apk": "libomamobile_glib-2.0.so",
+      "sha256_source": "42f7b91b074e834c27da123bf365b4262ead877cc90ac141a529fe05bbd71369",
+      "needed": [
+        "libandroid-support.so",
+        "libm.so",
+        "libiconv.so",
+        "libpcre2-8.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libglib-2.0.so.0",
+      "sha256_apk": "3bc32c93af63a6bd04187654c759c0271444fcfc302eea8e94e9df440a2255f1"
+    },
+    "libiconv.so": {
+      "name_in_apk": "libiconv.so",
+      "sha256_source": "6ed0976ba35c90b6b38d7d18528d5eb1b64e813670c1771c9fc0f61168c31b99",
+      "needed": [
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libiconv.so",
+      "sha256_apk": "3cdd90e5542be82cca49ec8a6ff877b4ea10daf614636fc067e6f15e577f7d43"
+    },
+    "libpcre2-8.so": {
+      "name_in_apk": "libpcre2-8.so",
+      "sha256_source": "1538a936aac406631b60aed67f3e089ad4d7f7254df0d391393704398c4f9fe1",
+      "needed": [
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libpcre2-8.so",
+      "sha256_apk": "9f262308b4a5c0827159b2e4003d70122e08c32d5527c1fcf0f19e70adb20224"
+    },
+    "libgobject-2.0.so.0": {
+      "name_in_apk": "libomamobile_gobject-2.0.so",
+      "sha256_source": "5ea378a479384b5d4dace828920904bd3825098c3c9d7064a3fefa49573cc951",
+      "needed": [
+        "libandroid-support.so",
+        "libglib-2.0.so.0",
+        "libffi.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libgobject-2.0.so.0",
+      "sha256_apk": "e4a8ce8f2f3d4b581bf00fdad8dc580f23472e2b3b0290660d3d697ca15744c2"
+    },
+    "libffi.so": {
+      "name_in_apk": "libffi.so",
+      "sha256_source": "db94fa6ed653beb6ddaaaf3bb1a32862b2c098800dbafe4930df8294dff91df3",
+      "needed": [
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libffi.so",
+      "sha256_apk": "dacfa93936ea540e3ef983b2d9782b216f2e43504a1d4367d6716d494b2fdc22"
+    },
+    "libgio-2.0.so.0": {
+      "name_in_apk": "libomamobile_gio-2.0.so",
+      "sha256_source": "a296a22c1fa179cbb19eb57448907b6e1087f631796cf25d7a3cdba5305f4697",
+      "needed": [
+        "libandroid-support.so",
+        "libglib-2.0.so.0",
+        "libgobject-2.0.so.0",
+        "libgmodule-2.0.so.0",
+        "libz.so.1",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libgio-2.0.so.0",
+      "sha256_apk": "f8df56d15530c6aa8801f55a2e3ef7cf5cddaaeaf2cb4e2ed03e4fd75cec47f5"
+    },
+    "libgmodule-2.0.so.0": {
+      "name_in_apk": "libomamobile_gmodule-2.0.so",
+      "sha256_source": "a1ed0c57b43443bddba393c0196c457703db12165a912f89a7938f7071341a86",
+      "needed": [
+        "libandroid-support.so",
+        "libglib-2.0.so.0",
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libgmodule-2.0.so.0",
+      "sha256_apk": "fe7c25cbd1b96b72dd6c01ccf830de555ef02ba7fd7006191f5fcafe15cbd3ce"
+    },
+    "libfribidi.so": {
+      "name_in_apk": "libfribidi.so",
+      "sha256_source": "2960b738a8b2350aec5de550789ddf31008dd0640bf423fc7b5c300da1956436",
+      "needed": [
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libfribidi.so",
+      "sha256_apk": "fcff940c57ec8560d3cc288d29f553dcb43fda480196081f879b397d27104fda"
+    },
+    "libharfbuzz.so": {
+      "name_in_apk": "libharfbuzz.so",
+      "sha256_source": "b529e5bf57a43b73bd8a74db5ac3242649f51ac1273c0734befbfc50bbc630b6",
+      "needed": [
+        "libm.so",
+        "libfreetype.so",
+        "libglib-2.0.so.0",
+        "libgraphite2.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libharfbuzz.so",
+      "sha256_apk": "fc95243a072ec61c7ab01fae6a229c20e1524c230d2de11ab08848fe01d30145"
+    },
+    "libgraphite2.so": {
+      "name_in_apk": "libgraphite2.so",
+      "sha256_source": "94502a673b1bb5aeedc892a4e157f066ff5a93389d76e11379cc1278e66e5573",
+      "needed": [
+        "libc++_shared.so",
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libgraphite2.so",
+      "sha256_apk": "864dcc0aa25ca0323d8dc7684bce4fcdeb4f0d990e6e8a1c3e309d406fea2c22"
+    },
+    "libpangoft2-1.0.so.0": {
+      "name_in_apk": "libomamobile_pangoft2-1.0.so",
+      "sha256_source": "3ef3e22e5b3daa5ba64bc7988bbc3f81d3fdea1df8dde5f86c146cfea44cf615",
+      "needed": [
+        "libpango-1.0.so.0",
+        "libglib-2.0.so.0",
+        "libgobject-2.0.so.0",
+        "libgio-2.0.so.0",
+        "libharfbuzz.so",
+        "libfontconfig.so",
+        "libfreetype.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libpangoft2-1.0.so.0",
+      "sha256_apk": "6a64f09c8638aba5fc35bfc506f1fb95617c66d0a58ab2cf2b3bbc065117f6a6"
+    },
+    "libjpeg.so": {
+      "name_in_apk": "libjpeg.so",
+      "sha256_source": "d210fa7b231caf334022719d7224a6bfbcb16685903b9e8b58276a677d90e814",
+      "needed": [
+        "libm.so",
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/libjpeg.so",
+      "sha256_apk": "5e7b806e3f0b619f0477cbf6d2e342e3191acf218737e512b7885854e96ced38"
+    },
+    "libwebp.so": {
+      "name_in_apk": "libwebp.so",
+      "sha256_source": "a04b150b15a4fdba0df8a34ef92181eace32b7fea49a08f6dfaefcbba2f5c503",
+      "needed": [
+        "libsharpyuv.so",
+        "libdl.so",
+        "libm.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/libwebp.so",
+      "sha256_apk": "eb5e4414eb4edf6b720b089d4281d236af2db8387bac19ff1413c06374c494ef"
+    },
+    "libsharpyuv.so": {
+      "name_in_apk": "libsharpyuv.so",
+      "sha256_source": "ab74b8160b75a4742e2874e774a7d97e3c4e0085b1c397867949f6bc122413ca",
+      "needed": [
+        "libdl.so",
+        "libm.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/libsharpyuv.so",
+      "sha256_apk": "bb8a06dc692fd3742cddfb1dd41f125afe0aaccb32e89ef8ef85b9f1d7ef4d80"
+    },
+    "libmagic.so": {
+      "name_in_apk": "libmagic.so",
+      "sha256_source": "c6f44be448f78e885eb8e9020c742bc1e613b3957e4da70c0ff686014797c79b",
+      "needed": [
+        "libm.so",
+        "libz.so.1",
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/libmagic.so",
+      "sha256_apk": "b25698cbc57ed20d4130fc3355b67d8555b203bcb1a0944f324b81bf907ed064"
+    },
+    "libxkbcommon.so": {
+      "name_in_apk": "libxkbcommon.so",
+      "sha256_source": "77ec5da40d5114ccb4bbccc8a5f438bd9a1a653d6e4336d9bd1f8690ab83903c",
+      "needed": [
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libxkbcommon.so",
+      "sha256_apk": "57b5786b8b4b85278a391e3c77f22a8ad8861c91f5ad7201c055525c51b26f77"
+    },
+    "libwayland-server.so": {
+      "name_in_apk": "libwayland-server.so",
+      "sha256_source": "ebe69c79e77f7c8b8e8f8431ae7a9bdf6d54cbfb903264f334c2a696649ce1af",
+      "needed": [
+        "libandroid-support.so",
+        "libffi.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libwayland-server.so",
+      "sha256_apk": "86c07214158669a28c7581c2c6e7351aa6ec33ad13cba0a65a1d532f6ba8500c"
+    },
+    "libXcursor.so": {
+      "name_in_apk": "libXcursor.so",
+      "sha256_source": "9bcdd6f4d072c881d9f05d5da1f762d167515aa233312a00a8eafef739bb0fe6",
+      "needed": [
+        "libXrender.so",
+        "libXfixes.so",
+        "libX11.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libXcursor.so",
+      "sha256_apk": "4c23df7314b6088be3af7e09dd12afa442d7534fa44cb2894a72e87127c9afb6"
+    },
+    "libXfixes.so": {
+      "name_in_apk": "libXfixes.so",
+      "sha256_source": "5e3fb7d3d2b5b411b93318c8f24e321ddf5293d311a2cc340a8d01855579595b",
+      "needed": [
+        "libX11.so",
+        "libc.so"
+      ],
+      "source": "ndk-prefix/lib/libXfixes.so",
+      "sha256_apk": "26ecdd4431fb0361451ca90c640ef7909fff266140a38ab6684c6f1cc827a148"
+    },
+    "libeis.so": {
+      "name_in_apk": "libeis.so",
+      "sha256_source": "e56202dc0f18c87ed5ae370fefc70eaf2f0a5db85af1995ec0ae38c0ecf2873a",
+      "needed": [
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/libeis.so",
+      "sha256_apk": "344fb56492c1d593595e0c5daddd4ff9276d4250bb417ec4a056c790b2a326ce"
+    },
+    "libre2.so": {
+      "name_in_apk": "libre2.so",
+      "sha256_source": "0b78a3f6020986954280f18dbe6219417db9245c313814c88c2c1db7140d8673",
+      "needed": [
+        "libm.so",
+        "libc++_shared.so",
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/libre2.so",
+      "sha256_apk": "ca02b5a292a320fffe944d036b7b2e3d2d1874d6bd5d8c674f65f1a4da39f798"
+    },
+    "libmuparser.so": {
+      "name_in_apk": "libmuparser.so",
+      "sha256_source": "f21b69316b4cf5cd18ea2983e7df0e367d2665f6ca2ed8546abb91fc5a3c96b3",
+      "needed": [
+        "libm.so",
+        "libc++_shared.so",
+        "libdl.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/libmuparser.so",
+      "sha256_apk": "14da0253fb804ba6c6cf34b265df0e7e6d169af8f07c1c4fb53e8636c45cd48b"
+    },
+    "liblcms2.so": {
+      "name_in_apk": "liblcms2.so",
+      "sha256_source": "eb5922a9354e272c7c127f3ce32efaf0ef26d6beff8c1ea71134d1802af2e045",
+      "needed": [
+        "libm.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/liblcms2.so",
+      "sha256_apk": "93b7085f91d93f986a4642124e747e3fac8d6bcec7129568565960eb75334635"
+    },
+    "liblua5.5.so": {
+      "name_in_apk": "liblua5.5.so",
+      "sha256_source": "c549eaccd0089ab70e61cd2878a97fd8848d0bf78b68771d70f0e52ea290b106",
+      "needed": [
+        "libdl.so",
+        "libm.so",
+        "libc.so"
+      ],
+      "source": "anhyprland/build/android-prefix/lib/liblua5.5.so",
+      "sha256_apk": "c825335b299757a7d430f486630a2960056b77216593956bdb26b5417e0f78ff"
+    }
+  }
+}

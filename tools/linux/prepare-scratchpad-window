@@ -1,0 +1,6 @@
+#!/bin/bash
+set -euo pipefail
+[[ $(hyprctl -j activewindow | jq -r .class) == foot ]]
+hyprctl dispatch_lua_expression 'hl.dsp.window.move({workspace="special:scratchpad", follow=true})'
+sleep .2
+hyprctl -j monitors | jq -c '.[].specialWorkspace'

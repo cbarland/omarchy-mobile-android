@@ -1,0 +1,18 @@
+#!/bin/bash
+# Optional shared-Linux preparation; never starts sign-in or an agent task.
+set -euo pipefail
+[[ -d /android/shared ]] || { echo 'Run inside the Android host Linux environment.' >&2; exit 64; }
+release="${1:-latest}"
+[[ "$release" == latest || "$release" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+(\.[0-9]+)*)?$ ]] \
+  || { echo 'Expected latest or an explicit Codex release version.' >&2; exit 64; }
+installer=$(mktemp /tmp/omamobile-codex-install.XXXXXX)
+trap 'rm -f -- "$installer"' EXIT
+curl --fail --location --proto '=https' --tlsv1.2 --retry 2 \
+  https://chatgpt.com/codex/install.sh --output "$installer"
+# Exact official installer reviewed for the physical-device preparation.
+# Fail closed when it changes; review the new script before updating this pin.
+expected=150e3cf675682efeaac115aa3747add3f27887896d04ce6d0b56478d8b428bf6
+printf '%s  %s\n' "$expected" "$installer" | sha256sum --check --status \
+  || { echo 'The official installer changed; review it before updating the recorded digest.' >&2; exit 1; }
+CODEX_NON_INTERACTIVE=1 CODEX_INSTALL_DIR=/usr/local/bin sh "$installer" --release "$release"
+codex --version

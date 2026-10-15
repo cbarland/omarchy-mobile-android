@@ -1,0 +1,142 @@
+package dev.omamobile.host;
+
+import android.Manifest;
+import android.app.Activity;
+import android.app.ActivityManager;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.os.Build;
+import android.os.Bundle;
+import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+
+/** Development control panel. The desktop itself belongs to upstream Linux/Omarchy. */
+public final class MainActivity extends Activity {
+    private HostRuntime runtime;
+    private TextView status, console;
+    private EditText command;
+    private Button run, importImage, stop;
+    private CheckBox ando, androidDns;
+    private DisplaySettings displaySettings;
+    private final Runnable refresh = this::render;
+
+    @Override public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        // Older builds exposed each output as another app in Recents. Remove
+        // only those legacy screen tasks; the new hosts are explicitly hidden.
+        for (var task : getSystemService(ActivityManager.class).getAppTasks()) {
+            var info = task.getTaskInfo();
+            var component = info.baseIntent.getComponent();
+            if (component != null && (component.getClassName().equals(PhoneActivity.class.getName())
+                    || component.getClassName().equals(DesktopActivity.class.getName()))
+                    && (info.baseIntent.getFlags() & Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS) == 0)
+                task.finishAndRemoveTask();
+        }
+        runtime = HostRuntime.get(this);
+        displaySettings = new DisplaySettings(this);
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(24, 48, 24, 32);
+        layout.setBackgroundColor(Color.rgb(24, 24, 28));
+        TextView title = text("Omarchy Mobile / Android host", 24);
+        layout.addView(title);
+        layout.addView(text("Development build · one shared Linux installation\nHyprland runs the desktop and Omarchy Mobile shell on separate Android displays.", 15));
+        status = text("", 14);
+        layout.addView(status);
+        Button screens = new Button(this);
+        screens.setText(R.string.start_screens);
+        screens.setOnClickListener(v -> startForegroundService(new Intent(this, DesktopService.class)));
+        layout.addView(screens);
+        Button stopScreens = new Button(this);
+        stopScreens.setText(R.string.stop_screens);
+        stopScreens.setOnClickListener(v -> startService(new Intent(this, DesktopService.class).setAction(DesktopService.STOP_SCREENS)));
+        layout.addView(stopScreens);
+        Button displayControls = new Button(this);
+        displayControls.setText("Android displays");
+        displayControls.setOnClickListener(v -> displaySettings.show());
+        layout.addView(displayControls);
+        Button androidInput = new Button(this);
+        androidInput.setText("Authorize Android windows with Shizuku");
+        androidInput.setOnClickListener(v -> { AndroidShell.get(this).authorize(); status.postDelayed(this::render, 1200); });
+        layout.addView(androidInput);
+        importImage = new Button(this);
+        importImage.setText(R.string.import_rootfs);
+        importImage.setOnClickListener(v -> startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .setType("*/*").addCategory(Intent.CATEGORY_OPENABLE), 10));
+        layout.addView(importImage);
+        ando = new CheckBox(this);
+        ando.setText(R.string.enable_ando);
+        ando.setTextColor(Color.LTGRAY);
+        layout.addView(ando);
+        androidDns = new CheckBox(this);
+        androidDns.setText(R.string.android_dns);
+        androidDns.setTextColor(Color.LTGRAY);
+        layout.addView(androidDns);
+        command = new EditText(this);
+        command.setText(R.string.default_command);
+        command.setTextColor(Color.WHITE);
+        command.setHint("Linux shell command");
+        command.setMinLines(2);
+        layout.addView(command);
+        LinearLayout actions = new LinearLayout(this);
+        run = new Button(this);
+        run.setText(R.string.run_command);
+        run.setOnClickListener(v -> startOperation(new Intent(this, LinuxService.class)
+                .putExtra("command", command.getText().toString()).putExtra("ando", ando.isChecked())
+                .putExtra("androidDns", androidDns.isChecked())));
+        actions.addView(run, new LinearLayout.LayoutParams(0, -2, 1));
+        stop = new Button(this);
+        stop.setText(R.string.stop_command);
+        stop.setOnClickListener(v -> runtime.stop());
+        actions.addView(stop);
+        layout.addView(actions);
+        console = text("", 13);
+        console.setTypeface(android.graphics.Typeface.MONOSPACE);
+        console.setTextIsSelectable(true);
+        layout.addView(console, new LinearLayout.LayoutParams(-1, -2));
+        // External-display modes can leave the phone in landscape. Keep every
+        // setup control reachable instead of squeezing the console to zero.
+        ScrollView page = new ScrollView(this);
+        page.setFillViewport(true);
+        page.addView(layout);
+        setContentView(page);
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 11);
+        }
+    }
+    private TextView text(String value, int size) {
+        TextView view = new TextView(this);
+        view.setText(value); view.setTextSize(size); view.setTextColor(Color.LTGRAY); view.setPadding(0, 8, 0, 8);
+        return view;
+    }
+    private void startOperation(Intent intent) { startForegroundService(intent); }
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request == 10 && result == RESULT_OK && data != null && data.getData() != null) {
+            startOperation(new Intent(this, LinuxService.class).setData(data.getData()).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
+        }
+    }
+    @Override protected void onResume() { super.onResume(); runtime.observe(refresh); render(); }
+    @Override protected void onPause() { runtime.unobserve(refresh); super.onPause(); }
+    @Override protected void onDestroy() { displaySettings.dismiss(); super.onDestroy(); }
+    private void render() {
+        StringBuilder info = new StringBuilder(runtime.installed() ? "Linux rootfs installed" : "No Linux rootfs imported");
+        info.append(" · ").append(Build.SUPPORTED_ABIS[0]).append(runtime.busy() ? " · busy\n" : " · idle\n");
+        runtime.displays.snapshot().values().forEach(output -> info.append("Display ").append(output.id()).append(": ").append(output.profile()).append("\n"));
+        info.append("All displays share one Linux installation.\nShared folder: ").append(runtime.shared);
+        info.append("\n").append(AndroidShell.get(this).state());
+        status.setText(info);
+        console.setText(runtime.output());
+        run.setEnabled(runtime.installed() && !runtime.busy());
+        importImage.setEnabled(!runtime.installed() && !runtime.busy());
+        ando.setEnabled(!runtime.busy());
+        androidDns.setEnabled(!runtime.busy());
+        stop.setEnabled(runtime.busy());
+        displaySettings.refresh();
+    }
+}

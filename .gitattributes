@@ -1,0 +1,6 @@
+# Keep pinned Linux sources, patches and executable scripts reproducible on Windows.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.png binary
+*.webp binary

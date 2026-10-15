@@ -1,0 +1,387 @@
+[
+  {
+    "package": "brotli",
+    "version": "1.2.0",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/b/brotli/brotli_1.2.0_x86_64.deb",
+    "sha256": "f802caf8093b2e5dcfd22a67f2a7deee17c094eca24a0e87b9722283d954fe7a",
+    "homepage": "https://github.com/google/brotli"
+  },
+  {
+    "package": "bzip2",
+    "version": "1.0.8-8",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/b/bzip2/bzip2_1.0.8-8_x86_64.deb",
+    "sha256": "1a44821b7573ab8e1df88a517e7201954b77eb99f9368af0ba05d2cdf9a23b3e",
+    "homepage": "http://www.bzip.org/"
+  },
+  {
+    "package": "ca-certificates",
+    "version": "1:2026.09.25",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/c/ca-certificates/ca-certificates_1:2026.09.25_all.deb",
+    "sha256": "57fab24bf4561bfdd35afe71bc1929914e51c35458cfd1fca2b15e54bc8df7af",
+    "homepage": "https://curl.se/docs/caextract.html"
+  },
+  {
+    "package": "fontconfig",
+    "version": "2.18.3",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/f/fontconfig/fontconfig_2.18.3_x86_64.deb",
+    "sha256": "5c40bc38f24e22eb7d6654748aaf8d6a33a5a69ff53cf02a249e8aa3ecefc2e5",
+    "homepage": "https://www.freedesktop.org/wiki/Software/fontconfig/"
+  },
+  {
+    "package": "freetype",
+    "version": "2.15.0",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/f/freetype/freetype_2.15.0_x86_64.deb",
+    "sha256": "c82adef4b84b9ef502c64c23857e3d2cac611c7bfa6943f7d4c9d0fcfec733e3",
+    "homepage": "https://www.freetype.org"
+  },
+  {
+    "package": "fribidi",
+    "version": "1.0.17",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/f/fribidi/fribidi_1.0.17_x86_64.deb",
+    "sha256": "c187b04a5857a48f59b154cc7842bd7878172a08435d10a850f323c7fc4a6418",
+    "homepage": "https://github.com/fribidi/fribidi/"
+  },
+  {
+    "package": "gdbm",
+    "version": "1.26-1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/g/gdbm/gdbm_1.26-1_x86_64.deb",
+    "sha256": "af6c89b403d42a98898c665fc2c48da59a7d20e6e26f651a654790661844001f",
+    "homepage": "https://www.gnu.org.ua/software/gdbm/"
+  },
+  {
+    "package": "glib",
+    "version": "2.90.1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/g/glib/glib_2.90.1_x86_64.deb",
+    "sha256": "fb663e2222c3f7c7fb5c98b4694426665a719160adff0a6aec509b8285b63de4",
+    "homepage": "https://developer.gnome.org/glib/"
+  },
+  {
+    "package": "harfbuzz",
+    "version": "14.6.0",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/h/harfbuzz/harfbuzz_14.6.0_x86_64.deb",
+    "sha256": "62856b255c9b4fc34296ef9e77158c58f1ec30b9e797d2d066e48008b4762f00",
+    "homepage": "https://www.freedesktop.org/wiki/Software/HarfBuzz/"
+  },
+  {
+    "package": "libandroid-execinfo",
+    "version": "0.1-3",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/liba/libandroid-execinfo/libandroid-execinfo_0.1-3_x86_64.deb",
+    "sha256": "348582b47b4b6dec8c13147437d8bd93d029239bc95f30635074cad08efb6220",
+    "homepage": "https://man7.org/linux/man-pages/man3/backtrace.3.html"
+  },
+  {
+    "package": "libandroid-glob",
+    "version": "0.6-3",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/liba/libandroid-glob/libandroid-glob_0.6-3_x86_64.deb",
+    "sha256": "33b5d2ce934e89d50363e7ea267cea697da937d14de9fcea78cc7271956ef86e",
+    "homepage": "https://man7.org/linux/man-pages/man3/glob.3.html"
+  },
+  {
+    "package": "libandroid-posix-semaphore",
+    "version": "0.1-4",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/liba/libandroid-posix-semaphore/libandroid-posix-semaphore_0.1-4_x86_64.deb",
+    "sha256": "4bde3f8bc00fa59761544593f0606a05e4b449801f1c79038c42ce66988d0eb0",
+    "homepage": "https://man7.org/linux/man-pages/man7/sem_overview.7.html"
+  },
+  {
+    "package": "libandroid-shmem",
+    "version": "0.7",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/liba/libandroid-shmem/libandroid-shmem_0.7_x86_64.deb",
+    "sha256": "ffa9e4c87467b158b148d0ff92dda796aa038276c2075af3269cdcdb06f25797",
+    "homepage": "https://github.com/termux/libandroid-shmem"
+  },
+  {
+    "package": "libandroid-support",
+    "version": "29-1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/liba/libandroid-support/libandroid-support_29-1_x86_64.deb",
+    "sha256": "665900760c05959ec076082a0941f05bd452f301e5a70bdfa7383fd3404d44d5",
+    "homepage": "https://github.com/termux/libandroid-support"
+  },
+  {
+    "package": "libbz2",
+    "version": "1.0.8-8",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libb/libbz2/libbz2_1.0.8-8_x86_64.deb",
+    "sha256": "f6f81d38a40c1626202da1e87727e5a3e6de296b1c0eb252af8948646b164ca0",
+    "homepage": "http://www.bzip.org/"
+  },
+  {
+    "package": "libc++",
+    "version": "30",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libc/libc++/libc++_30_x86_64.deb",
+    "sha256": "c9bcd9a8067a19c9c0e4893a72d314a2e37d6b67ce8dd05c67b9bbacad044b4f",
+    "homepage": "https://libcxx.llvm.org/"
+  },
+  {
+    "package": "libcairo",
+    "version": "1.18.6",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libc/libcairo/libcairo_1.18.6_x86_64.deb",
+    "sha256": "2a49658109829355c7c2e1530f71f1fc53971b3431681c4cbd55912a6ef3e656",
+    "homepage": "https://cairographics.org"
+  },
+  {
+    "package": "libcrypt",
+    "version": "0.2-6",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libc/libcrypt/libcrypt_0.2-6_x86_64.deb",
+    "sha256": "c424f96ce977cf2e8aa44925a852fd4c6c63564490a100cc44f63b71afd943e2",
+    "homepage": "http://michael.dipperstein.com/crypt/"
+  },
+  {
+    "package": "libdrm",
+    "version": "2.4.134",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libd/libdrm/libdrm_2.4.134_x86_64.deb",
+    "sha256": "7d374e5286a4764b7329bff3b2690e9e2498c8fba86e2624cc35b276d710bb08",
+    "homepage": "https://dri.freedesktop.org/wiki/"
+  },
+  {
+    "package": "libexpat",
+    "version": "2.9.0",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libe/libexpat/libexpat_2.9.0_x86_64.deb",
+    "sha256": "4af6fa2a319696055d9b317270f6f7b54170159340e776cec53ed1ba09770293",
+    "homepage": "https://libexpat.github.io/"
+  },
+  {
+    "package": "libffi",
+    "version": "3.8.0",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libf/libffi/libffi_3.8.0_x86_64.deb",
+    "sha256": "59121ca4bc5f5735d7bb603bd99548983064e8fde97d236e97122cb87d3452a3",
+    "homepage": "https://sourceware.org/libffi/"
+  },
+  {
+    "package": "libgraphite",
+    "version": "1.3.15",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libg/libgraphite/libgraphite_1.3.15_x86_64.deb",
+    "sha256": "c82bd46d191d4cbf08547f3537200c5c459ec1dcbb82fcd05b3704f05f47bc21",
+    "homepage": "https://github.com/silnrsi/graphite"
+  },
+  {
+    "package": "libiconv",
+    "version": "1.19",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libi/libiconv/libiconv_1.19_x86_64.deb",
+    "sha256": "880e9f423b448316a4951ffca3ffcd626d79538042b60ce2c3a821b9650c594c",
+    "homepage": "https://www.gnu.org/software/libiconv/"
+  },
+  {
+    "package": "liblzma",
+    "version": "5.8.4",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libl/liblzma/liblzma_5.8.4_x86_64.deb",
+    "sha256": "100ea7503a0b9ecffa45e1f168d035651f2eb7aedbebe71dd21fc0da4a84ef16",
+    "homepage": "https://tukaani.org/xz/"
+  },
+  {
+    "package": "liblzo",
+    "version": "2.10-5",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libl/liblzo/liblzo_2.10-5_x86_64.deb",
+    "sha256": "90fe00b4b8746317c3698d50294fced19df5741e5e5f81e33cc90c86693398c7",
+    "homepage": "http://www.oberhumer.com/opensource/lzo"
+  },
+  {
+    "package": "libpixman",
+    "version": "0.46.4-1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libp/libpixman/libpixman_0.46.4-1_x86_64.deb",
+    "sha256": "169e3ce2e2adf1cbb51c39fc7e7e2532f519b3e5362fef24e895d6c98e82a8f5",
+    "homepage": "https://www.pixman.org/"
+  },
+  {
+    "package": "libpng",
+    "version": "1.6.59",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libp/libpng/libpng_1.6.59_x86_64.deb",
+    "sha256": "b5bbc3c552255d072ac5e53ec7641128f373d09e404abd01a8285b1a4a7f324c",
+    "homepage": "http://www.libpng.org/pub/png/libpng.html"
+  },
+  {
+    "package": "libsqlite",
+    "version": "3.54.0",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libs/libsqlite/libsqlite_3.54.0_x86_64.deb",
+    "sha256": "8c15e92cef3cb7dc387644c438aa35abab408e3211fcc9c0da6f35cfa0213202",
+    "homepage": "https://www.sqlite.org"
+  },
+  {
+    "package": "libwayland",
+    "version": "1.26.0",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libw/libwayland/libwayland_1.26.0_x86_64.deb",
+    "sha256": "f7baf22d7ce1c3b6677308387dee2b3c1a4f1dec420103d7aebdf1d8fecdcf9c",
+    "homepage": "https://wayland.freedesktop.org/"
+  },
+  {
+    "package": "libwayland-protocols",
+    "version": "1.49",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libw/libwayland-protocols/libwayland-protocols_1.49_all.deb",
+    "sha256": "1d7da0eb53035445ab6074bcf718e1059b1b4ee7d9e39640cba9d6f34d8e404e",
+    "homepage": "https://wayland.freedesktop.org/"
+  },
+  {
+    "package": "libx11",
+    "version": "1.8.13-1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libx/libx11/libx11_1.8.13-1_x86_64.deb",
+    "sha256": "95d7acb460930fce61c26baeafb002e9b978df569b89d4093ad4de1e7dfd78d7",
+    "homepage": "https://xorg.freedesktop.org/"
+  },
+  {
+    "package": "libxau",
+    "version": "1.0.12-2",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libx/libxau/libxau_1.0.12-2_x86_64.deb",
+    "sha256": "b964143f84f11270ba14baf9a747b9732f5a9b84d2ca0e70ca26ba0364e0ce0b",
+    "homepage": "https://xorg.freedesktop.org/"
+  },
+  {
+    "package": "libxcb",
+    "version": "1.17.0-1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libx/libxcb/libxcb_1.17.0-1_x86_64.deb",
+    "sha256": "38da04c89e95026282c1277ca475fe02aca78735e0af48e3aada6b5aed78b894",
+    "homepage": "https://xcb.freedesktop.org/"
+  },
+  {
+    "package": "libxcursor",
+    "version": "1.2.3-1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libx/libxcursor/libxcursor_1.2.3-1_x86_64.deb",
+    "sha256": "dae8a1b5fca932de6e1cdfe858914bab26a207fdfca47199bfd47475c96887d9",
+    "homepage": "https://xorg.freedesktop.org/"
+  },
+  {
+    "package": "libxdmcp",
+    "version": "1.1.5-2",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libx/libxdmcp/libxdmcp_1.1.5-2_x86_64.deb",
+    "sha256": "814a80d52fdfd193286f3a2e50215a10f03f6e64579cbdef3886cf499adf896d",
+    "homepage": "https://xorg.freedesktop.org/"
+  },
+  {
+    "package": "libxext",
+    "version": "1.3.7",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libx/libxext/libxext_1.3.7_x86_64.deb",
+    "sha256": "91e33ce5d5ebc26118bc3e2f3266f508fd94ea512b6df4ed633118f4d754eb2c",
+    "homepage": "https://xorg.freedesktop.org/"
+  },
+  {
+    "package": "libxfixes",
+    "version": "6.0.2",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libx/libxfixes/libxfixes_6.0.2_x86_64.deb",
+    "sha256": "5f3cc1d05ba6bb50960ef8da41928c6bf045a20e52d46df3c74dfde782cb9f8b",
+    "homepage": "https://xorg.freedesktop.org/"
+  },
+  {
+    "package": "libxft",
+    "version": "2.3.9-1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libx/libxft/libxft_2.3.9-1_x86_64.deb",
+    "sha256": "e329250eda83a37cb83d1f3381d801da0c57e883418f3af4d9604dde16ce776f",
+    "homepage": "https://xorg.freedesktop.org/"
+  },
+  {
+    "package": "libxkbcommon",
+    "version": "1.13.2",
+    "url": "https://packages.termux.dev/apt/termux-x11/pool/main/libx/libxkbcommon/libxkbcommon_1.13.2_x86_64.deb",
+    "sha256": "accbfe1a05165d16f1d66c602ed8d1f18acce48157a52510ffdc73e21131fc2b",
+    "homepage": "https://xkbcommon.org/"
+  },
+  {
+    "package": "libxml2",
+    "version": "2.15.4-1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libx/libxml2/libxml2_2.15.4-1_x86_64.deb",
+    "sha256": "b25b5b18185b4d9f61fc63d2d8ec11fadb5755b42e01c6afef9f5ad2abd6fb78",
+    "homepage": "https://gitlab.gnome.org/GNOME/libxml2/-/wikis/home"
+  },
+  {
+    "package": "libxrender",
+    "version": "0.9.12-1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libx/libxrender/libxrender_0.9.12-1_x86_64.deb",
+    "sha256": "4a32680f188ba6a262392e0d8d671cd144f3513ea97ab51ed92e58d67b8f08a6",
+    "homepage": "https://xorg.freedesktop.org/"
+  },
+  {
+    "package": "ncurses",
+    "version": "6.6.20260307+really6.5.20250830",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/n/ncurses/ncurses_6.6.20260307+really6.5.20250830_x86_64.deb",
+    "sha256": "3f30f53c6a41c8450d146d4d42611a44be6ba0a8de1e8bb4dc903109a5fc3ff1",
+    "homepage": "https://invisible-island.net/ncurses/"
+  },
+  {
+    "package": "ncurses-ui-libs",
+    "version": "6.6.20260307+really6.5.20250830",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/n/ncurses-ui-libs/ncurses-ui-libs_6.6.20260307+really6.5.20250830_x86_64.deb",
+    "sha256": "1193618e18f579eb86064e00648d80648eaec5da70c0a5b944ac1315d209d16e",
+    "homepage": "https://invisible-island.net/ncurses/"
+  },
+  {
+    "package": "openssl",
+    "version": "1:3.6.5",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/o/openssl/openssl_1:3.6.5_x86_64.deb",
+    "sha256": "540f144592d23d35672976e175ede1b5d8cf464f153f646df5d4e6dcd8491a15",
+    "homepage": "https://www.openssl.org/"
+  },
+  {
+    "package": "pango",
+    "version": "1.58.2",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/p/pango/pango_1.58.2_x86_64.deb",
+    "sha256": "ca265b3938a02f0309e2dcbe9cad0a8015a273f2952d86d8d8f696a779b90387",
+    "homepage": "https://www.gtk.org/docs/architecture/pango"
+  },
+  {
+    "package": "pcre2",
+    "version": "10.49",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/p/pcre2/pcre2_10.49_x86_64.deb",
+    "sha256": "4a6f66ac12565342897ce9b5cd11ba8ce6fce1fd1a91ae679c3468d7fc2ee541",
+    "homepage": "https://pcre2project.github.io/pcre2/"
+  },
+  {
+    "package": "python",
+    "version": "3.14.6-1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/p/python/python_3.14.6-1_x86_64.deb",
+    "sha256": "7fa420e055367c5c14a4cc18158046451aae16f5d82ba4d4a95ef90592f7e15f",
+    "homepage": "https://python.org/"
+  },
+  {
+    "package": "readline",
+    "version": "8.3.6",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/r/readline/readline_8.3.6_x86_64.deb",
+    "sha256": "e9684798d13ede05f785315f68d3ff739563db2abef0e73db4dc9b8e17ded368",
+    "homepage": "https://tiswww.case.edu/php/chet/readline/rltop.html"
+  },
+  {
+    "package": "resolv-conf",
+    "version": "1.3",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/r/resolv-conf/resolv-conf_1.3_x86_64.deb",
+    "sha256": "0fcf8c5447bc5fbb0d411a47dc5c67d2aced861227e09052fc423220291a22c7",
+    "homepage": "https://man7.org/linux/man-pages/man5/resolv.conf.5.html"
+  },
+  {
+    "package": "ttf-dejavu",
+    "version": "2.37-8",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/ttf-dejavu/ttf-dejavu_2.37-8_all.deb",
+    "sha256": "3fa9352d528cb19aebcdd2de5d1fb0cb67b201be3ae264207fc1a277d2cfd6da",
+    "homepage": "https://dejavu-fonts.github.io/"
+  },
+  {
+    "package": "xkeyboard-config",
+    "version": "2.48-1",
+    "url": "https://packages.termux.dev/apt/termux-x11/pool/main/x/xkeyboard-config/xkeyboard-config_2.48-1_all.deb",
+    "sha256": "5e7317d47130aee16d8e18014423f1b1ab23601ca57cea81cd160ec4c1424167",
+    "homepage": "https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config"
+  },
+  {
+    "package": "xorg-util-macros",
+    "version": "1.20.2",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/x/xorg-util-macros/xorg-util-macros_1.20.2_all.deb",
+    "sha256": "11765ad1a6f181e36f807464f7b4360593d847dce245202a393eb2ca156520d0",
+    "homepage": "https://xorg.freedesktop.org/"
+  },
+  {
+    "package": "xorgproto",
+    "version": "2026.1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/x/xorgproto/xorgproto_2026.1_all.deb",
+    "sha256": "2463651143a386eba0d7baebac87ca5d2db5239d36cf38f9b2086f3c1bfdcbce",
+    "homepage": "https://xorg.freedesktop.org/"
+  },
+  {
+    "package": "zlib",
+    "version": "1.3.2",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/z/zlib/zlib_1.3.2_x86_64.deb",
+    "sha256": "c61b089dd30981452f5953b2bad4c4e7857062b2abd971f87fb0aec441bc02f4",
+    "homepage": "https://www.zlib.net/"
+  },
+  {
+    "package": "zstd",
+    "version": "1.5.7-1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/z/zstd/zstd_1.5.7-1_x86_64.deb",
+    "sha256": "a76ba6c3d8742819bf4fff7780eb2e022269412700fc8f4471f530cc0d81833f",
+    "homepage": "https://github.com/facebook/zstd"
+  }
+]

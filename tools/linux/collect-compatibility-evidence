@@ -1,0 +1,39 @@
+#!/bin/bash
+set -euo pipefail
+python - <<'PY'
+import datetime, hashlib, json, os, pathlib, subprocess
+def run(*argv, env=None):
+    return subprocess.check_output(argv, text=True, env=env).strip()
+home = pathlib.Path.home()
+widget = "simonschubert.todo"
+store_id = "simonschubert/todo"
+index = json.loads(pathlib.Path("/usr/share/omamobile/owl-widgets/index.json").read_text())
+expected = next(w for w in index["widgets"] if w["id"] == store_id)
+sha = hashlib.sha256((home / ".config/omamobile/widgets" / widget / "widget.owl").read_bytes()).hexdigest()
+assert sha == expected["sha256"], "The widget source was modified"
+phone_env = dict(os.environ, XDG_RUNTIME_DIR="/run/omamobile/p")
+status = json.loads(run("omarchy-shell", "shell", "call", "omamobile.home", "owlStatus", widget, env=phone_env))
+assert status["status"] == "ok" and status["approved"]
+guard = json.loads((home / ".config/omamobile/widget-guard.json").read_text())
+assert not guard["loading"] and widget not in guard["crashed"]
+notes = (home / "notes/todo.md").read_text()
+assert "- [x] tap an item to check it off" in notes
+clients = json.loads(run("hyprctl", "-j", "clients"))
+android = next(w for w in clients if w["class"] == "omamobile-android")
+linux = next(w for w in clients if w["class"] == "foot")
+assert android["mapped"] and not android["floating"] and not android["xwayland"]
+assert linux["mapped"] and not linux["floating"] and not linux["xwayland"]
+assert android["workspace"]["id"] == linux["workspace"]["id"] and android["monitor"] == linux["monitor"]
+revision = run("git", "-C", str(home / ".config/omarchy/plugins/rob.scratchpad"), "rev-parse", "HEAD")
+assert revision == "ce789b627c66134b8f020b283b04dcdca014924a"
+plugin = next(p for p in json.loads(run("omarchy", "plugin", "list", "--json")) if p["id"] == "rob.scratchpad")
+assert plugin["enabled"] and not plugin["firstParty"]
+report = dict(time_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              widget=dict(id=widget, sha256=sha, source_unchanged=True, status=status, guard=guard, notes_after_tap=notes),
+              mixed_windows=dict(android=android, linux=linux),
+              resize=json.loads((home / ".cache/omamobile-verified-resize.json").read_text()),
+              plugin=dict(revision=revision, state=plugin))
+path = pathlib.Path("/run/omamobile/compatibility-evidence.json")
+path.write_text(json.dumps(report, indent=2) + "\n")
+print(path)
+PY

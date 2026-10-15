@@ -1,0 +1,21 @@
+#!/bin/bash
+set -euo pipefail
+profile=${1:?phone or desktop}
+case $profile in phone|desktop) ;; *) exit 64 ;; esac
+export OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+export OMAMOBILE_SESSION_HOST=android
+# Android accessibility integration is still pending. Avoid trying to activate
+# a nonexistent Linux AT-SPI service before every GTK desktop-entry launch.
+export NO_AT_BRIDGE=1
+# Preserve the settings backend used by existing profiles. Native dconf now
+# works through the credential adapter; migrating saved keyfile preferences
+# remains separate from enabling that transport.
+export GSETTINGS_BACKEND=${GSETTINGS_BACKEND:-keyfile}
+export OMARCHY_SHELL_CONFIG=$HOME/.local/share/omamobile/profiles/$profile.json
+export PATH=/usr/lib/omamobile/session-bin:$OMARCHY_PATH/bin:${PATH:-/usr/local/bin:/usr/bin:/bin}
+export OMARCHY_STARTUP_BACKGROUND=$HOME/.local/state/omarchy/current/background
+export QS_DISABLE_FILE_WATCHER=1 QS_NO_RELOAD_POPUP=1
+# Android's Surface renderer owns GPU presentation. Standard Linux Qt clients
+# initially send wl_shm buffers; neither client-side EGL nor a DRM device is required.
+export QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software QSG_RENDER_LOOP=basic
+exec quickshell -n -p "$OMARCHY_PATH/shell"

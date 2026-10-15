@@ -1,0 +1,9 @@
+#!/bin/bash
+# Development check, run in the active emulator desktop session.
+set -euo pipefail
+omarchy-shell shell ping
+test "$(git -C ~/.config/omarchy/plugins/rob.scratchpad rev-parse HEAD)" = ce789b627c66134b8f020b283b04dcdca014924a
+omarchy plugin enable rob.scratchpad --section center
+omamobile-android sync
+hyprctl dispatch_lua_expression 'hl.dsp.exec_cmd("foot --title=Linux-alongside-Android")'
+hyprctl dispatch_lua_expression 'hl.dsp.exec_cmd("omamobile-android open com.android.settings > /root/.cache/android-settings-window.log 2>&1")'
