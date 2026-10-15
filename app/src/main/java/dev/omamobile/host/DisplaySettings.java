@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.graphics.Color;
 import android.widget.LinearLayout;
+import android.widget.Button;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.ScrollView;
@@ -17,6 +18,8 @@ final class DisplaySettings {
     private LinearLayout content;
     private List<DisplayCatalog.Output> shown;
     private String shownPreference;
+    private DisplayPreviewController preview;
+    private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
 
     DisplaySettings(Activity activity) { this.activity = activity; }
 
@@ -45,6 +48,9 @@ final class DisplaySettings {
         content.removeAllViews();
         addText("One external desktop is supported. Windows cannot move between phone and desktop.");
         addText("For desktop scaling, open Omarchy’s Display panel: Super + Ctrl + D. Android modes and rotation are read-only here.");
+        preview = new DisplayPreviewController(activity);
+        recoverExpiredPreview();
+        addScaleControls();
         addText(DisplayCatalog.selectionSummary(activity, outputs));
         addText("Choose the desktop display. Apply with Stop screens, then Start screens. The phone keeps its Mobile profile.");
         RadioGroup choices = new RadioGroup(activity);
@@ -77,6 +83,41 @@ final class DisplaySettings {
     }
 
     void dismiss() { if (dialog != null) dialog.dismiss(); }
+    private void addScaleControls() {
+        addText("Desktop scale preview applies for 30 seconds. Keep it or revert it; custom monitor files are preserved.");
+        if (preview.hasPending()) {
+            Button keep = new Button(activity); keep.setText("Keep desktop scale preview");
+            keep.setOnClickListener(v -> { try { preview.keep(); refresh(); } catch (java.io.IOException e) { addText(e.getMessage()); } });
+            content.addView(keep);
+            Button revert = new Button(activity); revert.setText("Revert desktop scale preview");
+            revert.setOnClickListener(v -> revertPreview()); content.addView(revert);
+            long delay = Math.max(0, previewDeadline() - System.currentTimeMillis());
+            handler.postDelayed(this::revertPreview, delay);
+            return;
+        }
+        for (int scale : new int[]{100, 125, 150, 200, 300}) {
+            Button button = new Button(activity);
+            button.setText("Preview desktop scale " + (scale / 100f) + "×");
+            button.setOnClickListener(v -> beginPreview(scale));
+            content.addView(button);
+        }
+    }
+    private long previewDeadline() { try { return preview.deadline(); } catch (Exception ignored) { return 0; } }
+    private void beginPreview(int scale) {
+        try { preview.preview(scale); shown = null; restartScreens(); refresh(); }
+        catch (Exception error) { addText("Preview unavailable: " + error.getMessage()); }
+    }
+    private void revertPreview() {
+        try { if (preview.revert() == DisplayConfigTransaction.RevertResult.REVERTED) restartScreens(); shown = null; refresh(); }
+        catch (Exception error) { addText("Revert unavailable: " + error.getMessage()); }
+    }
+    private void recoverExpiredPreview() {
+        DisplayPreviewController.recoverExpired(activity);
+    }
+    private void restartScreens() {
+        activity.startService(new android.content.Intent(activity, DesktopService.class).setAction(DesktopService.STOP_SCREENS));
+        handler.postDelayed(() -> activity.startForegroundService(new android.content.Intent(activity, DesktopService.class)), 700);
+    }
     private void addText(String value) {
         TextView view = new TextView(activity);
         view.setText(value);

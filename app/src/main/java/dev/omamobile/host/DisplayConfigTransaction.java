@@ -101,6 +101,13 @@ final class DisplayConfigTransaction {
         else atomicWrite(entry.path(), entry.before());
     }
 
+    static void restore(Path path, byte[] expected, byte[] original) throws IOException {
+        if (!Files.exists(path) || !java.util.Arrays.equals(Files.readAllBytes(path), expected))
+            throw new IOException("Display configuration changed during preview");
+        if (original == null) Files.deleteIfExists(path);
+        else atomicWrite(path, original);
+    }
+
     private static void atomicWrite(Path path, byte[] bytes) throws IOException {
         Path parent = path.getParent();
         if (parent == null) throw new IOException("Display config has no parent: " + path);
