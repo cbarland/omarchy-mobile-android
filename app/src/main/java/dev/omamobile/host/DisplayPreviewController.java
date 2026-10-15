@@ -61,7 +61,7 @@ final class DisplayPreviewController {
     void preview(int scale) throws IOException {
         if (scale < 100 || scale > 300) throw new IllegalArgumentException("Unsupported desktop scale");
         if (hasPending()) revert();
-        if (!Files.isRegularFile(monitor, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(monitor))
+        if (!Files.isRegularFile(monitor, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(monitor) || hasSymlinkAncestor())
             throw new IOException("Desktop monitor config is missing or custom");
         String original = new String(Files.readAllBytes(monitor), StandardCharsets.UTF_8);
         if (!original.startsWith(MARKER + "\n")) throw new IOException("Custom desktop monitor config preserved");
@@ -100,6 +100,11 @@ final class DisplayPreviewController {
         Properties properties = new Properties();
         try (var input = Files.newInputStream(state)) { properties.load(input); }
         return properties;
+    }
+    private boolean hasSymlinkAncestor() {
+        for (Path path = monitor.getParent(); path != null && path.startsWith(root); path = path.getParent())
+            if (Files.isSymbolicLink(path)) return true;
+        return false;
     }
     private void clear() throws IOException {
         Files.deleteIfExists(state); Files.deleteIfExists(before); Files.deleteIfExists(applied);
