@@ -8,6 +8,7 @@ import org.junit.rules.TemporaryFolder;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.zip.GZIPInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import static org.junit.Assert.*;
@@ -83,5 +84,32 @@ public class RootfsImporterTest {
             Files.write(staging.resolve("prepared"), "ready".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         });
         assertEquals("ready", new String(Files.readAllBytes(base.resolve("rootfs/prepared")), java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    @Test public void userDataExportContainsOnlySupportedUserTreesAndRoundTrips() throws Exception {
+        Path root = base();
+        Files.createDirectories(root.resolve("root/.config"));
+        Files.write(root.resolve("root/.config/settings"), "keep me".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Files.createDirectories(root.resolve("home/alice"));
+        Files.write(root.resolve("home/alice/note"), "hello".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Files.createDirectories(root.resolve("usr/bin"));
+        Files.write(root.resolve("usr/bin/secret"), "excluded".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        ByteArrayOutputStream archive = new ByteArrayOutputStream();
+        importer(1000).exportUserData(root, archive, message -> {});
+        Path restored = base();
+        try (var gzip = new GZIPInputStream(new ByteArrayInputStream(archive.toByteArray()));
+             var tar = new org.apache.commons.compress.archivers.tar.TarArchiveInputStream(gzip)) {
+            org.apache.commons.compress.archivers.tar.TarArchiveEntry entry;
+            while ((entry = tar.getNextTarEntry()) != null) {
+                Path target = restored.resolve(entry.getName()).normalize();
+                assertTrue(target.startsWith(restored));
+                if (entry.isDirectory()) Files.createDirectories(target);
+                else if (entry.isSymbolicLink()) Files.createSymbolicLink(target, java.nio.file.Paths.get(entry.getLinkName()));
+                else { Files.createDirectories(target.getParent()); Files.copy(tar, target); }
+            }
+        }
+        assertEquals("keep me", new String(Files.readAllBytes(restored.resolve("root/.config/settings")), java.nio.charset.StandardCharsets.UTF_8));
+        assertEquals("hello", new String(Files.readAllBytes(restored.resolve("home/alice/note")), java.nio.charset.StandardCharsets.UTF_8));
+        assertFalse(Files.exists(restored.resolve("usr")));
     }
 }

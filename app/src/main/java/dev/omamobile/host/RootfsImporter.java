@@ -2,6 +2,8 @@ package dev.omamobile.host;
 
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -11,6 +13,9 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.FileVisitResult;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -89,6 +94,50 @@ final class RootfsImporter {
             return fingerprint;
         } finally {
             if (!activated) GuestPaths.deleteTree(staging);
+        }
+    }
+
+    /** Export user-owned Linux data without including the system/package tree. */
+    void exportUserData(Path root, java.io.OutputStream destination, Progress progress) throws IOException {
+        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) throw new IOException("Linux installation is not available");
+        try (var gzip = new GzipCompressorOutputStream(destination);
+             var tar = new TarArchiveOutputStream(gzip)) {
+            tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
+            for (String top : List.of("root", "home")) {
+                Path source = root.resolve(top);
+                if (!Files.exists(source, LinkOption.NOFOLLOW_LINKS)) continue;
+                Files.walkFileTree(source, java.util.EnumSet.noneOf(java.nio.file.FileVisitOption.class),
+                        Integer.MAX_VALUE, new SimpleFileVisitor<>() {
+                    private int count;
+                    private String archive(Path path) { return top + "/" + source.relativize(path).toString().replace('\\', '/'); }
+                    private void add(Path path, BasicFileAttributes attrs, boolean directory) throws IOException {
+                        if (Thread.currentThread().isInterrupted()) throw new IOException("Export cancelled");
+                        if (++count > 500_000) throw new IOException("Too many data files");
+                        String name = archive(path);
+                        TarArchiveEntry entry;
+                        if (attrs.isSymbolicLink()) {
+                            entry = new TarArchiveEntry(name, TarArchiveEntry.LF_SYMLINK);
+                            entry.setLinkName(Files.readSymbolicLink(path).toString().replace('\\', '/'));
+                        } else if (directory) entry = new TarArchiveEntry(name, TarArchiveEntry.LF_DIR);
+                        else if (attrs.isRegularFile()) {
+                            entry = new TarArchiveEntry(name, TarArchiveEntry.LF_NORMAL);
+                            entry.setSize(attrs.size());
+                        } else return; // Device nodes and other host-only objects cannot be restored safely.
+                        try { entry.setMode((int) (Files.getAttribute(path, "unix:mode", LinkOption.NOFOLLOW_LINKS) instanceof Integer mode ? mode & 0777 : 0600)); }
+                        catch (UnsupportedOperationException ignored) { entry.setMode(directory ? 0700 : 0600); }
+                        tar.putArchiveEntry(entry);
+                        if (attrs.isRegularFile()) try (InputStream in = Files.newInputStream(path)) {
+                            byte[] buffer = new byte[64 * 1024]; int read;
+                            while ((read = in.read(buffer)) != -1) { if (Thread.currentThread().isInterrupted()) throw new IOException("Export cancelled"); tar.write(buffer, 0, read); }
+                        }
+                        tar.closeArchiveEntry();
+                        if (count % 500 == 0) progress.update("Exporting Linux data: " + count + " entries");
+                    }
+                    @Override public FileVisitResult preVisitDirectory(Path path, BasicFileAttributes attrs) throws IOException { add(path, attrs, true); return FileVisitResult.CONTINUE; }
+                    @Override public FileVisitResult visitFile(Path path, BasicFileAttributes attrs) throws IOException { add(path, attrs, false); return FileVisitResult.CONTINUE; }
+                });
+            }
+            tar.finish();
         }
     }
 

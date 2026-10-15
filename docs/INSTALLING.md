@@ -94,6 +94,13 @@ installation is not activated over an existing rootfs. An existing Linux
 installation is retained rather than merged with or silently replaced by another
 archive. Do not clear application storage to diagnose a small setup failure.
 
+After installation, **Export Linux user data** writes a gzip-compressed tar archive
+through Android's document picker. It contains only `/root` and `/home` (including
+their file modes and symlinks); package files, `/usr`, and Android-private metadata
+are excluded. Keep the export with the archive fingerprint and verify the resulting
+file before moving it. An in-app restore/replacement flow is not yet provided; do
+not select an export as a base Linux archive.
+
 ## 3. Start phone and desktop sessions
 
 After preparation completes, choose **Start Omarchy screens**. The phone uses
