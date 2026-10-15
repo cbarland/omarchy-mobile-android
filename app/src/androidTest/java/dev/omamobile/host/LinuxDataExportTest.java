@@ -18,7 +18,8 @@ import org.junit.Assume;
 import org.junit.Test;
 import static org.junit.Assert.*;
 
-/** Opt-in end-to-end export proof on a prepared disposable emulator. */
+/** Opt-in end-to-end export proof on a prepared disposable emulator.
+ * The file URI keeps this test offline; SAF picker grants are a separate UI check. */
 public class LinuxDataExportTest {
     @Test public void exportsUserTreesAndPreservesInstalledData() throws Exception {
         Assume.assumeTrue("Prepared disposable Linux required", "true".equals(
@@ -41,22 +42,26 @@ public class LinuxDataExportTest {
             assertFalse(runtime.busy());
             assertTrue(runtime.output(), Files.isRegularFile(destination));
             assertTrue("Export phase was not persisted", Files.readAllBytes(runtime.linux.resolve("install.log")).length > 0);
+            String prefix = "root/" + fixture.getFileName().toString() + "/";
             Map<String, byte[]> files = new HashMap<>();
             Map<String, String> links = new HashMap<>();
+            Map<String, Integer> modes = new HashMap<>();
             try (InputStream input = Files.newInputStream(destination);
                  GZIPInputStream gzip = new GZIPInputStream(input);
                  TarArchiveInputStream tar = new TarArchiveInputStream(gzip)) {
                 TarArchiveEntry entry;
                 while ((entry = tar.getNextTarEntry()) != null) {
                     assertTrue("Unexpected system path", entry.getName().startsWith("root/") || entry.getName().startsWith("home/"));
-                    if (entry.isSymbolicLink()) links.put(entry.getName(), entry.getLinkName());
-                    else if (entry.isFile()) { ByteArrayOutputStream bytes = new ByteArrayOutputStream(); tar.transferTo(bytes); files.put(entry.getName(), bytes.toByteArray()); }
-                    if (entry.getName().endsWith("/settings")) assertEquals(0600, entry.getMode() & 0777);
+                    if (entry.getName().startsWith(prefix)) {
+                        modes.put(entry.getName(), entry.getMode() & 0777);
+                        if (entry.isSymbolicLink()) links.put(entry.getName(), entry.getLinkName());
+                        else if (entry.isFile()) { ByteArrayOutputStream bytes = new ByteArrayOutputStream(); tar.transferTo(bytes); files.put(entry.getName(), bytes.toByteArray()); }
+                    }
                 }
             }
-            String prefix = "root/" + fixture.getFileName().toString() + "/";
             assertArrayEquals("preserve me".getBytes(java.nio.charset.StandardCharsets.UTF_8), files.get(prefix + "settings"));
             assertEquals("settings", links.get(prefix + "settings-link"));
+            assertEquals(Integer.valueOf(0600), modes.get(prefix + "settings"));
             assertFalse(files.keySet().stream().anyMatch(name -> name.startsWith("usr/")));
             assertEquals("preserve me", new String(Files.readAllBytes(data), java.nio.charset.StandardCharsets.UTF_8));
         } finally {
@@ -65,6 +70,24 @@ public class LinuxDataExportTest {
             GuestPaths.deleteTree(fixture);
             Files.deleteIfExists(destination);
         }
+    }
+
+    @Test public void rejectedInvalidExportStopsItsIdleForegroundService() throws Exception {
+        Assume.assumeTrue("Prepared disposable Linux required", "true".equals(
+                InstrumentationRegistry.getArguments().getString("export")));
+        var instrumentation = InstrumentationRegistry.getInstrumentation();
+        var context = instrumentation.getTargetContext();
+        assertTrue(HostRuntime.get(context).installed());
+        instrumentation.runOnMainSync(() -> context.startForegroundService(
+                new android.content.Intent(context, LinuxService.class).putExtra("exportData", true)));
+        long deadline = SystemClock.uptimeMillis() + 10000;
+        boolean running;
+        do {
+            running = context.getSystemService(android.app.ActivityManager.class).getRunningServices(100).stream()
+                    .anyMatch(service -> service.service.getClassName().equals(LinuxService.class.getName()));
+            if (running) SystemClock.sleep(50);
+        } while (running && SystemClock.uptimeMillis() < deadline);
+        assertFalse("Invalid export request left an idle foreground service", running);
     }
 
     @Test public void cancellationRemovesPrivatePartialArchive() throws Exception {
