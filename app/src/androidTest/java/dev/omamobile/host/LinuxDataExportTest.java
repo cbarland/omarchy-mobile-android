@@ -29,6 +29,10 @@ public class LinuxDataExportTest {
         assertTrue("Linux installation required", runtime.installed());
         Path fixture = runtime.root.resolve("root/.omamobile-export-fixture-" + SystemClock.uptimeMillis());
         Path destination = context.getFilesDir().toPath().resolve("export-result.tar.gz");
+        Path abandoned = runtime.linux.resolve("export-01234567-89ab-cdef-0123-456789abcdef.tmp");
+        Path unrelated = runtime.linux.resolve("export-keep.txt");
+        Files.write(abandoned, "abandoned archive".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Files.write(unrelated, "leave me".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         Files.createDirectories(fixture);
         Path data = fixture.resolve("settings");
         Path link = fixture.resolve("settings-link");
@@ -38,6 +42,8 @@ public class LinuxDataExportTest {
         try {
             assertTrue("Null destination must be refused", !runtime.exportData(null, () -> { }));
             assertTrue("Export did not start", runtime.exportData(Uri.fromFile(destination.toFile()), () -> { }));
+            assertFalse("Abandoned private export was not reclaimed", Files.exists(abandoned, java.nio.file.LinkOption.NOFOLLOW_LINKS));
+            assertTrue("Unrelated export file was removed", Files.exists(unrelated, java.nio.file.LinkOption.NOFOLLOW_LINKS));
             waitIdle(runtime, 30000);
             assertFalse(runtime.busy());
             assertTrue(runtime.output(), Files.isRegularFile(destination));
@@ -69,6 +75,7 @@ public class LinuxDataExportTest {
             waitIdle(runtime, 30000);
             GuestPaths.deleteTree(fixture);
             Files.deleteIfExists(destination);
+            Files.deleteIfExists(unrelated);
         }
     }
 

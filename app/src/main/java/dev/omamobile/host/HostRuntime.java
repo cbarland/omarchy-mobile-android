@@ -111,6 +111,19 @@ final class HostRuntime {
 
     synchronized boolean exportData(Uri destination, Runnable done) {
         if (busy || destination == null || !installed()) return false;
+        try {
+            // A force-stop can bypass the worker's finally block. Reclaim only
+            // our exact private export names before admitting the next writer.
+            try (var children = Files.list(linux)) {
+                for (Path child : (Iterable<Path>) children::iterator) {
+                    if (child.getFileName().toString().matches("export-[0-9a-f-]{36}\\.tmp"))
+                        GuestPaths.deleteTree(child);
+                }
+            }
+        } catch (IOException error) {
+            appendLine("Cannot reclaim an abandoned export archive: " + error.getMessage());
+            return false;
+        }
         busy = true; stopping = false; recordingSetup = true; changed();
         worker.execute(() -> {
             activeWorker = Thread.currentThread();
