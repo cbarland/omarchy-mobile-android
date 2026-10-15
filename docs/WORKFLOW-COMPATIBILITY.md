@@ -48,3 +48,25 @@ desktop-entry filtering path is part of the normal app library. The focused
 index was live and returned bounded passages. No upstream source was copied;
 the audit confirmed the current environment already satisfies the relevant
 desktop filtering contract.
+
+## Public HTTPS theme check
+
+`tools/linux/verify-theme-download-persistence` accepts a reviewed public
+theme explicitly during `prepare`:
+
+```text
+python3 /root/.local/share/omamobile/verify-theme-download-persistence prepare \
+  /tmp/omamobile-theme-download-reviewed \
+  --repository-url https://example.invalid/omarchy-reviewed-theme.git \
+  --expected-commit <full-40-character-commit>
+```
+
+The URL must be HTTPS without embedded credentials. Before invoking the
+unchanged upstream installer, the harness performs a shallow bare Git fetch,
+checks the exact pinned commit, and rejects symlinks, executable entries, and
+script or service-like suffixes (`.sh`, `.lua`, `.qml`, `.desktop`, `.service`,
+and related forms). Git's normal CA verification remains enabled; a bad or
+untrusted certificate fails before the user's theme state is touched. The
+subsequent `install`, `check`, and `restore` phases retain the existing
+observations of installed commit, peer IPC acknowledgments, live shell state,
+and exact snapshot restoration.
