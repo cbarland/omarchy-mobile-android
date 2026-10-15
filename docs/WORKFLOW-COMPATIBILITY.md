@@ -6,11 +6,13 @@ desktop-entry or plugin compatibility.
 
 ## Session identity
 
-The pinned Omarchy source checkout is `e71a816e9032f040225e086c7256f73e8080ae45`
-(MIT license, `C:/Users/daneb/AndroidStudioProjects/_omarchy_upstream_20261011/LICENSE`).
-At `shell/services/AppLibrary.qml:150-151`, the upstream app library builds its
+The pinned Omarchy source is commit
+`e71a816e9032f040225e086c7256f73e8080ae45` from
+[basecamp/omarchy](https://github.com/basecamp/omarchy), under its
+[MIT license](https://github.com/basecamp/omarchy/blob/e71a816e9032f040225e086c7256f73e8080ae45/LICENSE).
+At [`shell/services/AppLibrary.qml`](https://github.com/basecamp/omarchy/blob/e71a816e9032f040225e086c7256f73e8080ae45/shell/services/AppLibrary.qml#L150-L151), the upstream app library builds its
 hidden-entry scan input from `XDG_CURRENT_DESKTOP`, `XDG_SESSION_DESKTOP`, and
-`DESKTOP_SESSION`. At `shell/services/hidden-entries.sh:59-67`, entries are
+`DESKTOP_SESSION`. At [`shell/services/hidden-entries.sh`](https://github.com/basecamp/omarchy/blob/e71a816e9032f040225e086c7256f73e8080ae45/shell/services/hidden-entries.sh#L59-L67), entries are
 filtered according to `Hidden`, `NoDisplay`, `OnlyShowIn`, and `NotShowIn`.
 
 `RuntimeSpec.graphicalEnvironment` supplies `XDG_SESSION_TYPE` and

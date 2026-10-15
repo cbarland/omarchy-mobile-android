@@ -307,6 +307,14 @@ def install(work, state, untrusted_cert=False):
                 require(not target.exists(), "Untrusted certificate created a theme checkout")
                 require((HOME / ".local/state/omarchy/current/theme.name").read_text().strip() == state["originalTheme"],
                         "Untrusted certificate changed the selected theme")
+                # Leave the recovery record and original home intact, while
+                # removing only generated transport state so a trusted retry
+                # converges on a fresh two-file fixture.
+                for generated in (work / "source", work / "www", work / "tls-cert.pem", work / "tls-key.pem"):
+                    if generated.is_dir():
+                        shutil.rmtree(generated)
+                    elif generated.exists():
+                        generated.unlink()
                 state["phase"] = "prepared"
                 write_json(work / "state.json", state)
                 print("Untrusted certificate rejected before theme mutation")
