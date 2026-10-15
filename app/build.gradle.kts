@@ -1,4 +1,13 @@
 plugins { id("com.android.application") }
+val attributionDirectory = objects.directoryProperty().value(layout.buildDirectory.dir("generated/attribution-assets"))
+val attributionAssets by tasks.registering(Copy::class) {
+    into(attributionDirectory)
+    from(rootProject.file("CREDITS.md"))
+    from(rootProject.file("docs/REFERENCES.md")) {
+        into("licenses")
+        rename("REFERENCES.md", "REFERENCES.txt")
+    }
+}
 android {
     namespace = "dev.omamobile.host"
     compileSdk = 35
@@ -22,6 +31,9 @@ android {
         cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "4.1.2" }
     }
     packaging { jniLibs { useLegacyPackaging = true; keepDebugSymbols += "**/libtawcroot.so" } }
+}
+androidComponents.onVariants { variant ->
+    variant.sources.assets?.addGeneratedSourceDirectory(attributionAssets) { attributionDirectory }
 }
 dependencies {
     implementation("dev.rikka.shizuku:api:13.1.5")

@@ -1,5 +1,12 @@
 # Omarchy Mobile on Android
 
+**Built on [Omarchy](https://github.com/omacom/omarchy),
+[Omarchy Mobile](https://github.com/derekross/omarchy-mobile) and
+[TAWC](https://github.com/wmww/tawc), with
+[Taowen's Android Hyprland port](https://github.com/taowen/anhyprland).**
+These projects and their contributors provide the foundation.
+[Full credits and source acknowledgements](CREDITS.md).
+
 Run a real Omarchy desktop and Omarchy Mobile on an existing Android device, with
 one shared Linux installation. The phone uses the upstream touch shell and
 widgets; an external Android display uses genuine Hyprland and Omarchy's desktop

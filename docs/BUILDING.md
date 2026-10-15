@@ -158,5 +158,6 @@ core debug artifacts.
 
 The workflow uses read-only repository permissions, no project secrets, and full
 commit pins for its official GitHub actions. Fork PRs run through `pull_request`,
-not `pull_request_target`. Its first hosted run must still confirm the complete
-clean-checkout/toolchain path on GitHub's runner image.
+not `pull_request_target`. The first hosted run passed the clean-checkout,
+toolchain, core APK, JVM/lint and host checks on 2026-10-15. Each commit has its
+own validation result in the repository's Actions tab.

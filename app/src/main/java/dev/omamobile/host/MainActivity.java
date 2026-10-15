@@ -23,6 +23,7 @@ public final class MainActivity extends Activity {
     private Button run, importImage, install, screens, stop;
     private CheckBox ando, androidDns;
     private DisplaySettings displaySettings;
+    private android.app.AlertDialog credits;
     private final Runnable refresh = this::render;
 
     @Override public void onCreate(Bundle savedInstanceState) {
@@ -46,6 +47,10 @@ public final class MainActivity extends Activity {
         TextView title = text("Omarchy Mobile / Android host", 24);
         layout.addView(title);
         layout.addView(text("Preview · one shared Linux installation\nOmarchy Mobile on the phone, Omarchy desktop on an external display.", 15));
+        Button attribution = new Button(this);
+        attribution.setText("Built on Omarchy · Omarchy Mobile · TAWC — credits");
+        attribution.setOnClickListener(v -> showCredits());
+        layout.addView(attribution);
         status = text("", 14);
         layout.addView(status);
         install = new Button(this);
@@ -121,6 +126,26 @@ public final class MainActivity extends Activity {
         return view;
     }
     private void startOperation(Intent intent) { startForegroundService(intent); }
+    private void showCredits() {
+        try (var in = getAssets().open("CREDITS.md")) {
+            var bytes = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = in.read(buffer)) != -1) bytes.write(buffer, 0, count);
+            TextView content = new TextView(this);
+            content.setTextSize(15);
+            content.setPadding(32, 16, 32, 16);
+            content.setText(android.text.Html.fromHtml(bytes.toString(java.nio.charset.StandardCharsets.UTF_8.name()),
+                    android.text.Html.FROM_HTML_MODE_LEGACY));
+            content.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
+            ScrollView page = new ScrollView(this);
+            page.addView(content);
+            credits = new android.app.AlertDialog.Builder(this).setTitle("Credits and upstream projects")
+                    .setView(page).setPositiveButton("Close", null).show();
+        } catch (java.io.IOException error) {
+            android.util.Log.e("OmamobileCredits", "Cannot read packaged credits", error);
+        }
+    }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if ((request == 10 || request == 12) && result == RESULT_OK && data != null && data.getData() != null) {
@@ -130,7 +155,11 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onResume() { super.onResume(); runtime.observe(refresh); render(); }
     @Override protected void onPause() { runtime.unobserve(refresh); super.onPause(); }
-    @Override protected void onDestroy() { displaySettings.dismiss(); super.onDestroy(); }
+    @Override protected void onDestroy() {
+        displaySettings.dismiss();
+        if (credits != null) credits.dismiss();
+        super.onDestroy();
+    }
     private void render() {
         StringBuilder info = new StringBuilder(runtime.graphicsReady() ? "Omarchy is installed" : runtime.installed()
                 ? "Linux imported · Omarchy setup not complete" : "Ready for first installation");

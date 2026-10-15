@@ -56,8 +56,8 @@ XERJ's shared local indexes were used for concrete mechanism lookup, followed by
 
 - Repository: https://github.com/derekross/omarchy-mobile
 - Revision: `953bcb3058347459cdf7faaa1e149f16e0f7cfa6`
-- Reference only: `packages/omamobile-shell/README.md`, `PKGBUILD`, `profile/shell.json`, phone plugins and setup lifecycle. XERJ's shell scope was used to locate the package/profile mechanisms, then files were read directly.
-- Main project MIT; the shell package also declares GPL-3.0-or-later for its squeekboard layout. No package code/assets/layouts have been copied into the APK. Future redistribution must retain the relevant per-component licenses.
+- Included in the pinned installer payload: phone shell plugins, profiles, QML widgets and setup helpers. XERJ's shell scope located the package/profile mechanisms before direct source inspection. The payload is staged into the shared Linux installation.
+- Main project MIT; retained shell and OWL-guide notices accompany the payload. The package also declares GPL-3.0-or-later for its squeekboard layout, which this payload does not include. The Android APK's installed credits name this upstream foundation prominently.
 - The Android app is an adapter project, not a fork of the Linux phone hardware stack. Upstream device flashing scripts are not used.
 - Session launch reference: XERJ `ax-omamobile-shell-docs` retrieved
   `test/launch.py` and `test/all`, then source inspection verified
