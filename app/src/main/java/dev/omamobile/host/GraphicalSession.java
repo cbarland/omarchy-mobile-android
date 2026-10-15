@@ -29,7 +29,6 @@ final class GraphicalSession {
         files = context.getFilesDir().toPath();
         root = files.resolve("linux/rootfs");
         if (!Files.isDirectory(root)) throw new IOException("Import and prepare the shared Linux installation first");
-        DisplayPreviewController.recoverExpired(context);
         xkb = GuestPaths.resolve(root, "/usr/share/X11/xkb");
         if (!Files.isRegularFile(xkb.resolve("rules/evdev"))) throw new IOException("Install Linux xkeyboard-config before starting Hyprland");
         if (!Files.isRegularFile(GuestPaths.resolve(root, "/root/.local/share/omamobile/start-shell")))

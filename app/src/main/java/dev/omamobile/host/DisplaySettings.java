@@ -19,7 +19,6 @@ final class DisplaySettings {
     private List<DisplayCatalog.Output> shown;
     private String shownPreference;
     private DisplayPreviewController preview;
-    private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
 
     DisplaySettings(Activity activity) { this.activity = activity; }
 
@@ -87,12 +86,10 @@ final class DisplaySettings {
         addText("Desktop scale preview applies for 30 seconds. Keep it or revert it; custom monitor files are preserved.");
         if (preview.hasPending()) {
             Button keep = new Button(activity); keep.setText("Keep desktop scale preview");
-            keep.setOnClickListener(v -> { try { preview.keep(); refresh(); } catch (java.io.IOException e) { addText(e.getMessage()); } });
+            keep.setOnClickListener(v -> { activity.startService(new android.content.Intent(activity, DesktopService.class).setAction(DesktopService.KEEP_PREVIEW)); shown = null; refresh(); });
             content.addView(keep);
             Button revert = new Button(activity); revert.setText("Revert desktop scale preview");
-            revert.setOnClickListener(v -> revertPreview()); content.addView(revert);
-            long delay = Math.max(0, previewDeadline() - System.currentTimeMillis());
-            handler.postDelayed(this::revertPreview, delay);
+            revert.setOnClickListener(v -> { activity.startService(new android.content.Intent(activity, DesktopService.class).setAction(DesktopService.REVERT_PREVIEW)); shown = null; refresh(); }); content.addView(revert);
             return;
         }
         for (int scale : new int[]{100, 125, 150, 200, 300}) {
@@ -104,20 +101,10 @@ final class DisplaySettings {
     }
     private long previewDeadline() { try { return preview.deadline(); } catch (Exception ignored) { return 0; } }
     private void beginPreview(int scale) {
-        try { preview.preview(scale); shown = null; restartScreens(); refresh(); }
+        try { activity.startService(new android.content.Intent(activity, DesktopService.class).setAction(DesktopService.PREVIEW_SCALE).putExtra("scale", scale)); shown = null; refresh(); }
         catch (Exception error) { addText("Preview unavailable: " + error.getMessage()); }
     }
-    private void revertPreview() {
-        try { if (preview.revert() == DisplayConfigTransaction.RevertResult.REVERTED) restartScreens(); shown = null; refresh(); }
-        catch (Exception error) { addText("Revert unavailable: " + error.getMessage()); }
-    }
-    private void recoverExpiredPreview() {
-        DisplayPreviewController.recoverExpired(activity);
-    }
-    private void restartScreens() {
-        activity.startService(new android.content.Intent(activity, DesktopService.class).setAction(DesktopService.STOP_SCREENS));
-        handler.postDelayed(() -> activity.startForegroundService(new android.content.Intent(activity, DesktopService.class)), 700);
-    }
+    private void recoverExpiredPreview() { }
     private void addText(String value) {
         TextView view = new TextView(activity);
         view.setText(value);
