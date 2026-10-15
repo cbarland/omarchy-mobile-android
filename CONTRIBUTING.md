@@ -10,6 +10,14 @@ build tooling, archive-import edge cases, Android display lifetime tests, keyboa
 and IME compatibility, documentation, and reproducible application compatibility
 reports. A focused issue describing a concrete user problem is enough to begin.
 
+## Where to work
+
+- `app/src/main/java/`: installation, Android services, displays, input and window ownership.
+- `app/src/main/cpp/` and `vendor/`: JNI/native adapters and the recorded upstream runtime patches.
+- `tools/linux/`: Linux-side setup and session integration; upstream shells keep their own UI.
+- `tools/native/`: pinned compositor builds, dependency locks, staging and release verification.
+- `app/src/test/`, `app/src/androidTest/` and `tools/tests/`: JVM, Android and Linux host regressions.
+
 ## Keep changes reviewable
 
 Prefer a small fix with a reproducer over a broad rewrite. Preserve upstream

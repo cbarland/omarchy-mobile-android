@@ -115,7 +115,7 @@ flashing, or permission-policy modification is part of the Linux installation.
 ## Validation status
 
 The new flow passed on a disposable API35 x86_64 emulator: an empty installation
-became both real graphical shells in215.296s, including packaged-asset checks.
+became both real graphical shells in 215.296s, including packaged-asset checks.
 The actual Android document picker, foreground service, setup wake lock and
 cancellation during signed package downloads were exercised separately. Cancel
 left no active setup processes or unpublished rootfs. Service completion/retry

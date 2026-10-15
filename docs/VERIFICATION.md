@@ -20,8 +20,8 @@ Its original upstream checksum had been checked; this test does not add an
 independent PGP-verification claim. Users verify bootstrap signatures separately.
 The importer extracts to unpublished staging, verifies packaged source assets,
 installs signed packages, prepares both profiles and activates only on success.
-The packaged-asset test plus fresh-install/real-layer check passed in215.296s.
-Hyprland0.56.2, Quickshell0.3.2, Foot1.28.0 and glibc2.44 were installed through
+The packaged-asset test plus fresh-install/real-layer check passed in 215.296s.
+Hyprland 0.56.2, Quickshell 0.3.2, Foot 1.28.0 and glibc 2.44 were installed through
 pacman. Both upstream phone and desktop layers mapped without config errors.
 The first attempt exposed AAPT's transparent `.gz` expansion; `.tgz` preserves
 the payload bytes and the Android packaged-hash/unpack regression now covers it.
@@ -32,16 +32,16 @@ bounded setup wake lock. Cancelling during signed package downloads left no
 active setup children, service, wake lock, staging rootfs or setup directory.
 The stopped verified installation was temporarily parked for this disposable
 test, then restored. It was not merged with the cancelled attempt. Two service
-generation/duplicate-start regressions plus packaged assets passed in9.286s.
+generation/duplicate-start regressions plus packaged assets passed in 9.286s.
 The new flow has not been exercised as a fresh ARM64 phone install. The Nubia and
 the prepared emulator's Linux data/Shizuku grant were not changed by this batch.
 
 A source-only snapshot with no generated compositor/installer assets passed the
-core APK,25 JVM tests and lint in18s. The Linux host suite passed36 tests, and
-the CI C credential probe passed19 checks. Full graphical debug APK assembly and
+core APK, 25 JVM tests and lint in 18s. The Linux host suite passed 36 tests, and
+the CI C credential probe passed 19 checks. Full graphical debug APK assembly and
 lint pass separately; both ABIs remain included. Release preflight correctly
 rejects public binary release while seven version-specific corresponding-source
-mappings are missing. Mechanical checks pass114 library hashes,3 installer
+mappings are missing. Mechanical checks pass 114 library hashes, 3 installer
 files/pins, closure and restored notices. Hosted GitHub CI is separate from
 these local checks. Fresh-install screenshots in `docs/images/` are genuine
 SurfaceFlinger captures from the disposable emulator after reopening both shells.
