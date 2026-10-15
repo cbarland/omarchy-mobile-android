@@ -66,15 +66,18 @@ an archive independently verified by its user. Fail closed on an unexpected sign
 key rotation needs an explicit trust update. The current remote archive/signature
 were not downloaded or verified during this audit.
 
-## Before public source publication
+## Public source checkpoint
 
-Keep contributor setup and CI honest about the command-only build versus the
-separately staged graphical build. Publish the native patches and provenance.
-Review operational notes
-in INTENT/VERIFICATION for personal context before making them public.
+The [source repository](https://github.com/cbarland/omarchy-mobile-android) is
+public as of 2026-10-15, with private vulnerability reporting enabled. Contributor
+setup distinguishes the core CI APK from the separately staged graphical build;
+native patches, provenance and prominent upstream credits are published. Both
+hosted validation jobs passed for the implementation checkpoint `c16b480`.
 
-A pattern scan of the 450 files tracked at the start of this audit found no
+A pattern scan of the files tracked at the start of this audit found no
 private-key blocks, common GitHub/provider/AWS credential patterns, credentialed
-HTTP URLs or local Windows user paths. This was a current tracked-file check,
-not a credential-store, Git-history, ignored-artifact or exhaustive secret audit.
-No credentials, device actions or GitHub mutations were used.
+HTTP URLs or local Windows user paths. A follow-up scan across all six source
+commits before publication found no matches for the same patterns. These checks
+did not inspect credential stores or ignored artifacts and are not an exhaustive
+secret or security audit. Public source publication does not clear the binary
+release work above.

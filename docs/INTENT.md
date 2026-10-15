@@ -30,7 +30,7 @@ These are engineering goals, not additional acceptance gates. Omalauncher and Om
 - **Native environment contract:** present the paths, session environment, command interfaces and Linux services expected by Omarchy ARM/Mobile through a small adapter layer. Install normal upstream packages when they can run here; translate Android-owned facilities at their boundary. Prefer this to feature-specific edits in upstream shells. Preserve argv, exit status and diagnostics; document unsupported service/hardware semantics rather than returning false success. Reference coding tools are optional; contributor builds require no agent, model-provider account or private reference library.
 - **Lifecycle:** user-started foreground work; no boot persistence or disabled Android process limits. Real Linux PTY terminals work inside the graphical session. Complete detached-daemon cleanup and suspend/resume still need validation.
 
-## Next development sequence
+## Emulator development backlog — 2026-10-15
 
 Use disposable emulator data for destructive clean-install and recovery tests.
 Preserve prepared installations and explicitly authorize each physical-device
@@ -44,43 +44,85 @@ reopening. Current new-installer development uses the emulator; physical
 verification of the new installation flow remains separate. Keep an existing
 Shizuku authorization unless a specific test requires changing it.
 
-1. Keep the green emulator lifecycle baseline under regression coverage:
-   full lifecycle 26.236s and slow broker 11.151s on prepared emulator-5554,
-   plus graphical Ando 14.874s and ordinary and rapid saved-selection reconnect
-   on disposable emulator-5556. Repeat normal phone/desktop and Android-window
-   recovery checks when related changes land.
-2. Restore basic Omarchy functions, alongside display management as the next
-   priority. Start with the user-reported silent theme-install failure;
-   reproduce through the normal UI, diagnose the actual failed command and
-   dependencies, and verify install/apply/switch/persistence across both
-   profiles. Generated data-only theme Git loopback HTTP install/apply/restore,
-   peer IPC and screenshots are verified; public HTTPS/TLS third-party theme
-   networking remains unverified. Audit everyday menu actions, app launching,
-   configuration,
-   package/plugin operations and shell reloads. Align error reporting with
-   upstream Omarchy conventions; useful logs and command exit status can be
-   sufficient, without requiring new visible error UI. Unsupported
-   Android-host operations must be identifiable in the appropriate existing
-   reporting path. Rendering the shell alone is
-   not evidence that these workflows work. See the
-   [basic-function checks](VERIFICATION.md#basic-omarchy-function-checks).
-3. Continue the display helper using upstream Omarchy display controls where
-   possible, evaluating Hyprmon for arrangement. Desktop panel mapping,
-   per-profile scale isolation, atomic reload and restart persistence are
-   verified. Ordinary and rapid Android display-selection UI persistence passed
-   on disposable emulator-5556. Physical display modes and cross-session window
-   movement are unsupported. See [the display plan](GRAPHICS.md#display-management-helper-prototype).
-4. The in-app archive installer now prepares signed Linux packages and pinned
-   shell sources before activation; fresh x86_64 emulator setup and cancellation
-   pass. Broaden fresh ARM64 coverage, automate authenticated image downloading,
-   and implement data export/recovery. Native inputs use committed package locks;
-   full reproducibility and binary corresponding-source delivery remain open.
-5. Complete Linux/Android integration: storage/document adapters,
-   IME/clipboard/notifications, audio and hardware/status services.
-6. Broaden lifecycle and app compatibility: hotplug, rotation, sleep/resume,
-   HOME registration and Android work profiles. Validate Wallet independently
-   when physical-device testing is resumed.
-7. Measure graphics transport, CPU, latency, battery and thermals; validate
-   accelerated Linux clients and broader Omarchy programs/plugins.
+The current baseline includes fresh x86_64 archive installation, cancellation,
+both real shells, basic theme/package/config workflows, representative OWL and
+Scratchpad integrations, saved display routing, and targeted lifecycle tests.
+The source repository is public and contributor CI passes. These are completed
+milestones, not evidence that every upstream feature or Android app works.
+
+1. **Complete everyday Omarchy workflows.** Preserve the passing theme
+   install/apply/restore and reopen checks. Verify public HTTPS/TLS theme
+   downloads, reviewed theme/plugin compatibility, normal menus and shortcuts,
+   app launching, configuration and shell reload/discovery. Supply missing normal
+   packages or session adapters rather than per-feature shell rewrites. Completion
+   means each audited workflow passes or records a specific unavailable
+   capability through upstream-aligned logs and exit status. New error UI is not
+   required. See the [basic-function checks](VERIFICATION.md#basic-omarchy-function-checks).
+2. **Finish display recovery and controls.** Existing inventory, target
+   persistence, independent scale values and reconnect checks stay covered. Add
+   safe apply/revert and a reachable phone recovery path; test rotation, virtual
+   resolution/density changes, ambiguous/missing targets, lock/unlock and
+   sleep/resume. Extend the existing upstream display UI where feasible. Hyprmon
+   evaluation cannot turn the current two sessions into one extended desktop.
+   Physical mode control remains conditional on Android capabilities. See
+   [the display plan](GRAPHICS.md#display-management-helper-prototype).
+3. **Complete installation and data recovery.** Build authenticated image
+   download with a pinned signer and bad-signature rejection, bounded retries,
+   interrupted-setup recovery and useful persistent logs. Add user-requested
+   Linux data export/restore and safe replacement without overwriting a live
+   installation. Verify round-trip home/configuration/permissions and failed
+   restores on a disposable emulator. Existing archive setup/cancellation already
+   passes; fresh ARM64 installation remains a separate physical checkpoint.
+4. **Make full graphical builds reproducible and distributable.** Rebuild and
+   stage native inputs from empty documented caches; detect stale staging files.
+   Complete the seven native dependency versions' corresponding-source bundles,
+   recipes and patches. Exercise the full payload gate, signing/update path and
+   same-key APK updates preserving Linux data. Core CI is already green but does
+   not build or verify the complete graphics payload. See
+   [release readiness](RELEASE-READINESS.md).
+5. **Finish text, clipboard and file integration.** The simple committed-text
+   InputConnection is not full IME support. Add/test composition, Unicode,
+   selection and editing semantics, Android/Wayland clipboard synchronization,
+   and permission-aware document open/save operations. Retain existing shared
+   directory binds; do not present SAF URIs as ordinary POSIX paths. Verify
+   revoked permissions, large files and cancellation without data loss.
+6. **Broaden Android app and phone-shell integration.** Test multiple hosted
+   apps, focus, resize, close/crash recovery and helper reconnection; extend
+   ASCII/touch forwarding for Unicode, hover and context menus. Add optional HOME
+   registration and app launching from the phone shell. Use a disposable managed
+   profile to develop work-app discovery/launch behavior. Native Android
+   AppWidgets would be a separate hosting feature; current OWL widgets already
+   have direct evidence. Preserve grants unless a particular test requires a
+   permission change.
+7. **Implement Android-owned service adapters.** Start with Linux audio output
+   and volume, then media controls, notifications, network and battery status.
+   Expose the Linux-facing interfaces expected by upstream where feasible and
+   report unsupported operations accurately. Emulators can verify transport,
+   permissions, events and restart behavior; real Bluetooth, cellular and power
+   behavior require physical validation. Linux systemd is not Android's PID 1.
+8. **Reduce idle work and improve graphics transport.** Measure CPU, memory,
+   frame latency and child-process counts for idle/active/hidden sessions and
+   multiple Android windows. Replace or throttle the JPEG polling path, stop
+   inactive work and verify cleanup across repeated reopen/hotplug cycles.
+   Prototype accelerated Linux clients and assess Xwayland compatibility
+   separately; neither is established by compositor GLES rendering. Emulator
+   results cannot establish device battery life, thermals or driver compatibility.
+
+Keep the existing Ando, widget, pointer-release, slow-broker, detached-process
+and saved-selection regressions green when related changes land. Broader runtime
+ownership for batch-console detached daemons also needs explicit validation.
+
+**Larger architectural track:** a shared multi-output compositor/backend, or
+another explicit window-transfer design, is needed for live window movement,
+one monitor inventory and multiple external monitors. This can be prototyped with
+emulator displays, but is a substantial change beyond finishing the current
+phone-plus-one-external arrangement. Two sessions sharing a rootfs are not one
+extended desktop.
+
+**Physical checkpoints:** fresh ARM64 installation, USB-C/display modes and
+reconnect behavior, real Bluetooth/IME combinations, audio routing, GPU drivers,
+battery/thermal measurements, OEM work-profile policy, protected content and
+Google Wallet. Emulator coverage of managed profiles does not establish Wallet
+or real-device policy compatibility.
 
 Do not execute Omarchy Mobile's device flashing, kernel, modem, firmware or partition-install tools in this host. Its current device-specific installation workflow is a reference for a different base system; only compatible userland packages belong here.

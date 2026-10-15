@@ -188,8 +188,9 @@ status propagation and rejected calls under Linux bash.
 bus; an Android accessibility adapter remains future work.
 The phone and desktop still share the source tree,
 ordinary plugin registry and user theme. Linux launch/initial setup scripts
-are in `tools/linux/`. The GUI installer for this preparation is future work;
-the development recipe is reproducible with the test-APK helper.
+are in `tools/linux/`. The in-app archive installer now runs this preparation
+before activating a new rootfs; fresh x86_64 setup and cancellation are verified.
+The development recipe remains available through the test-APK helper.
 
 ## Emulator verification
 

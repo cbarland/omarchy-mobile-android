@@ -241,12 +241,16 @@ read-only review found no additional actionable defects in the cleanup delta.
    plugins and advanced GPU paths are unverified. Android app windows use
    CPU-copy JPEG at up to ten polls/second. Latency, battery, thermal and
    sustained-performance measurements are outstanding.
-7. **Installation/data/release:** the prototype requires manually prepared
-   Linux packages/shell payload. In-app authenticated bootstrap download,
-   setup automation, data export/recovery and safe rootfs replacement remain
-   pending. Imported hardlinks can become relative symlink aliases. The new
-   project now has a local source checkpoint; no PR or release has been
-   published. The frozen Omalauncher work is separate.
+7. **Installation/data/release:** the in-app archive installer now prepares
+   signed Linux packages and pinned shells before activation; fresh x86_64
+   installation and cancellation pass. Authenticated bootstrap download,
+   fresh ARM64 installer coverage, data export/recovery and safe rootfs
+   replacement remain pending. Imported hardlinks can become relative symlink
+   aliases. Native package locks exist, but full clean-cache reconstruction and
+   seven dependency source bundles remain open. The source repository is public,
+   private vulnerability reporting is enabled and core contributor CI passes;
+   no public graphical APK release is published. The frozen Omalauncher work is
+   separate. See the [current emulator backlog](INTENT.md#emulator-development-backlog--2026-10-15).
 8. **Device security/product validation:** work-app and Google Wallet behavior,
    protected content, phone roles and wider device coverage remain untested.
    Preserving the stock boot/security configuration has been observed; those
