@@ -4,14 +4,6 @@ profile=${1:?phone or desktop}
 case $profile in phone|desktop) ;; *) exit 64 ;; esac
 export OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 export OMAMOBILE_SESSION_HOST=android
-# Keep upstream desktop-entry filtering and browser/default-app helpers
-# meaningful in the Android-owned session.  Omarchy's UWSM environment would
-# normally provide these values; this adapter is the session boundary here.
-export XDG_CURRENT_DESKTOP=${XDG_CURRENT_DESKTOP:-Hyprland}
-export XDG_SESSION_DESKTOP=${XDG_SESSION_DESKTOP:-hyprland}
-export DESKTOP_SESSION=${DESKTOP_SESSION:-hyprland}
-export XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-wayland}
-export TERMINAL=${TERMINAL:-xdg-terminal-exec}
 # Android accessibility integration is still pending. Avoid trying to activate
 # a nonexistent Linux AT-SPI service before every GTK desktop-entry launch.
 export NO_AT_BRIDGE=1

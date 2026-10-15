@@ -19,25 +19,26 @@ filtered according to `Hidden`, `NoDisplay`, `OnlyShowIn`, and `NotShowIn`.
 profiles use the same map: `GraphicalSession` clears the child environment,
 adds that map, and starts the packaged `start-shell` at
 `app/src/main/java/dev/omamobile/host/GraphicalSession.java:169-208`.
-The shell adapter now fills the two remaining desktop identity variables and
-`TERMINAL`, while preserving any deliberately inherited value.
+The shell adapter remains intentionally small. It does not need to duplicate
+those values: the compositor launch path already supplies the required
+`XDG_CURRENT_DESKTOP` and `XDG_SESSION_TYPE` values to both profiles.
 
 ## Reproducible proof
 
 Run from the repository root in Linux bash:
 
 ```text
-python3 tools/tests/test_start_shell.py
 python3 tools/tests/test_session_exec.py
 ```
 
-Observed on WSL Ubuntu on 2026-10-15: both checks passed (`2` and `8` tests,
-respectively). The test uses a fake `quickshell` executable, so it observes the
-actual environment exported by `start-shell` without requiring an emulator or
-mutating Linux user data. The Android launch path is covered by the source
-inspection above; the decisive emulator check is to inspect the launcher state
-and open a desktop entry marked with `OnlyShowIn=Hyprland` or
-`NotShowIn=GNOME` from both phone and desktop profiles.
+Observed on WSL Ubuntu on 2026-10-15: the session adapter regression passed
+(8 tests). The decisive emulator check was also performed: both live quickshell
+processes already had `XDG_CURRENT_DESKTOP=Hyprland` and
+`XDG_SESSION_TYPE=wayland`. A direct fixture audit of the upstream
+`OnlyShowIn`/`NotShowIn` matcher shows that `XDG_CURRENT_DESKTOP=Hyprland`
+alone makes the normal Hyprland entries visible; no missing-entry failure was
+reproduced. `XDG_SESSION_DESKTOP`, `DESKTOP_SESSION`, and `TERMINAL` therefore
+remain unmodified pending a consumer failure.
 
 ## XERJ retrieval record
 
@@ -45,5 +46,5 @@ The focused `ax-omamobile-shell-*` index returned the upstream launch contract
 in `plugins/README.md`: app launches use `uwsm-app -- gtk-launch`, and the
 desktop-entry filtering path is part of the normal app library. The focused
 index was live and returned bounded passages. No upstream source was copied;
-the adapter change supplies the environment expected by that MIT-licensed
-source.
+the audit confirmed the current environment already satisfies the relevant
+desktop filtering contract.
