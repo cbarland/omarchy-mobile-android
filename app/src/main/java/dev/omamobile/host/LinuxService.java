@@ -34,6 +34,10 @@ public final class LinuxService extends Service {
         });
         if (!accepted) {
             // Existing operation owns this foreground service until its completion callback.
+            if (export && !runtime.busy()) {
+                stopForeground(STOP_FOREGROUND_REMOVE);
+                stopSelfResult(latestStartId);
+            }
             return START_NOT_STICKY;
         }
         if (intent.getBooleanExtra("installOmarchy", false) || export) {

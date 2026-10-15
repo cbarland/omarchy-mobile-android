@@ -97,9 +97,12 @@ archive. Do not clear application storage to diagnose a small setup failure.
 After installation, **Export Linux user data** writes a gzip-compressed tar archive
 through Android's document picker. It contains only `/root` and `/home` (including
 their file modes and symlinks); package files, `/usr`, and Android-private metadata
-are excluded. Keep the export with the archive fingerprint and verify the resulting
-file before moving it. An in-app restore/replacement flow is not yet provided; do
-not select an export as a base Linux archive.
+are excluded. The export walks live files at one point in time; stop graphical and
+Linux sessions first if you need a quiescent user-data copy. Keep the export with
+the archive fingerprint and verify the resulting file before moving it. A failed
+copy can leave an incomplete newly-created document in the selected provider; do
+not use that file. An in-app restore/replacement flow is not yet provided; do not
+select an export as a base Linux archive.
 
 ## 3. Start phone and desktop sessions
 

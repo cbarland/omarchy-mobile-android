@@ -111,7 +111,7 @@ final class HostRuntime {
 
     synchronized boolean exportData(Uri destination, Runnable done) {
         if (busy || destination == null || !installed()) return false;
-        busy = true; stopping = false; changed();
+        busy = true; stopping = false; recordingSetup = true; changed();
         worker.execute(() -> {
             activeWorker = Thread.currentThread();
             Path temporary = linux.resolve("export-" + java.util.UUID.randomUUID() + ".tmp");
@@ -134,7 +134,7 @@ final class HostRuntime {
             } finally {
                 try { GuestPaths.deleteTree(temporary); }
                 catch (IOException error) { android.util.Log.w("OmamobileLinux", "Cannot remove temporary export", error); }
-                Thread.interrupted(); activeWorker = null; synchronized (this) { busy = false; }
+                Thread.interrupted(); activeWorker = null; recordingSetup = false; synchronized (this) { busy = false; }
                 changed(); main.post(done);
             }
         });
