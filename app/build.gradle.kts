@@ -1,11 +1,14 @@
 plugins { id("com.android.application") }
-val attributionDirectory = objects.directoryProperty().value(layout.buildDirectory.dir("generated/attribution-assets"))
-val attributionAssets by tasks.registering(Copy::class) {
-    into(attributionDirectory)
-    from(rootProject.file("CREDITS.md"))
-    from(rootProject.file("docs/REFERENCES.md")) {
-        into("licenses")
-        rename("REFERENCES.md", "REFERENCES.txt")
+abstract class AttributionAssets : DefaultTask() {
+    @get:InputFile abstract val credits: org.gradle.api.file.RegularFileProperty
+    @get:InputFile abstract val provenance: org.gradle.api.file.RegularFileProperty
+    @get:OutputDirectory abstract val outputDirectory: org.gradle.api.file.DirectoryProperty
+    @TaskAction fun generate() {
+        val directory = outputDirectory.get().asFile
+        directory.mkdirs()
+        credits.get().asFile.copyTo(directory.resolve("CREDITS.md"), overwrite = true)
+        directory.resolve("licenses").mkdirs()
+        provenance.get().asFile.copyTo(directory.resolve("licenses/REFERENCES.txt"), overwrite = true)
     }
 }
 android {
@@ -33,7 +36,11 @@ android {
     packaging { jniLibs { useLegacyPackaging = true; keepDebugSymbols += "**/libtawcroot.so" } }
 }
 androidComponents.onVariants { variant ->
-    variant.sources.assets?.addGeneratedSourceDirectory(attributionAssets) { attributionDirectory }
+    val attribution = tasks.register<AttributionAssets>("${variant.name}AttributionAssets") {
+        credits.set(rootProject.layout.projectDirectory.file("CREDITS.md"))
+        provenance.set(rootProject.layout.projectDirectory.file("docs/REFERENCES.md"))
+    }
+    variant.sources.assets?.addGeneratedSourceDirectory(attribution, AttributionAssets::outputDirectory)
 }
 dependencies {
     implementation("dev.rikka.shizuku:api:13.1.5")

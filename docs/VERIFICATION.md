@@ -46,6 +46,13 @@ files/pins, closure and restored notices. Hosted GitHub CI is separate from
 these local checks. Fresh-install screenshots in `docs/images/` are genuine
 SurfaceFlinger captures from the disposable emulator after reopening both shells.
 
+The final attribution build was installed on the disposable emulator. Its visible
+credits control opened the scrollable, linked upstream acknowledgements with
+readable theme colors. The APK's generated `CREDITS.md` and
+`licenses/REFERENCES.txt` assets match the canonical repository files byte for
+byte. The first hosted source-only GitHub validation run also passed both jobs:
+[run 38775780730](https://github.com/cbarland/omarchy-mobile-android/actions/runs/38775780730).
+
 ### Cleanup review — 2026-10-15
 
 An independent Sol PR reviewer evaluated baseline `09b3109` against INTENT.md.
