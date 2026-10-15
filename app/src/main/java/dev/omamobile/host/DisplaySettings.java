@@ -2,6 +2,10 @@ package dev.omamobile.host;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Color;
 import android.widget.LinearLayout;
 import android.widget.Button;
@@ -19,6 +23,9 @@ final class DisplaySettings {
     private List<DisplayCatalog.Output> shown;
     private String shownPreference;
     private DisplayPreviewController preview;
+    private final BroadcastReceiver previewChanged = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) { shown = null; refresh(); }
+    };
 
     DisplaySettings(Activity activity) { this.activity = activity; }
 
@@ -32,7 +39,13 @@ final class DisplaySettings {
         scroll.addView(content);
         dialog = new AlertDialog.Builder(activity).setTitle("Android displays")
                 .setView(scroll).setPositiveButton("Done", null).create();
-        dialog.setOnDismissListener(ignored -> { dialog = null; shown = null; });
+        dialog.setOnDismissListener(ignored -> {
+            activity.unregisterReceiver(previewChanged);
+            dialog = null; shown = null;
+        });
+        IntentFilter changes = new IntentFilter(DesktopService.DISPLAY_SETTINGS_CHANGED);
+        if (android.os.Build.VERSION.SDK_INT >= 33) activity.registerReceiver(previewChanged, changes, Context.RECEIVER_NOT_EXPORTED);
+        else registerLegacyReceiver(changes);
         refresh();
         dialog.show();
     }
@@ -48,7 +61,6 @@ final class DisplaySettings {
         addText("One external desktop is supported. Windows cannot move between phone and desktop.");
         addText("For desktop scaling, open Omarchy’s Display panel: Super + Ctrl + D. Android modes and rotation are read-only here.");
         preview = new DisplayPreviewController(activity);
-        recoverExpiredPreview();
         addScaleControls();
         addText(DisplayCatalog.selectionSummary(activity, outputs));
         addText("Choose the desktop display. Apply with Stop screens, then Start screens. The phone keeps its Mobile profile.");
@@ -86,25 +98,27 @@ final class DisplaySettings {
         addText("Desktop scale preview applies for 30 seconds. Keep it or revert it; custom monitor files are preserved.");
         if (preview.hasPending()) {
             Button keep = new Button(activity); keep.setText("Keep desktop scale preview");
-            keep.setOnClickListener(v -> { activity.startService(new android.content.Intent(activity, DesktopService.class).setAction(DesktopService.KEEP_PREVIEW)); shown = null; refresh(); });
+            keep.setOnClickListener(v -> sendPreviewAction(DesktopService.KEEP_PREVIEW, -1));
             content.addView(keep);
             Button revert = new Button(activity); revert.setText("Revert desktop scale preview");
-            revert.setOnClickListener(v -> { activity.startService(new android.content.Intent(activity, DesktopService.class).setAction(DesktopService.REVERT_PREVIEW)); shown = null; refresh(); }); content.addView(revert);
+            revert.setOnClickListener(v -> sendPreviewAction(DesktopService.REVERT_PREVIEW, -1)); content.addView(revert);
             return;
         }
-        for (int scale : new int[]{100, 125, 150, 200, 300}) {
+        for (int scale : DisplayPreviewController.SCALES) {
             Button button = new Button(activity);
             button.setText("Preview desktop scale " + (scale / 100f) + "×");
-            button.setOnClickListener(v -> beginPreview(scale));
+            button.setOnClickListener(v -> sendPreviewAction(DesktopService.PREVIEW_SCALE, scale));
             content.addView(button);
         }
     }
-    private long previewDeadline() { try { return preview.deadline(); } catch (Exception ignored) { return 0; } }
-    private void beginPreview(int scale) {
-        try { activity.startService(new android.content.Intent(activity, DesktopService.class).setAction(DesktopService.PREVIEW_SCALE).putExtra("scale", scale)); shown = null; refresh(); }
+    private void sendPreviewAction(String action, int scale) {
+        try { activity.startService(new Intent(activity, DesktopService.class).setAction(action).putExtra("scale", scale)); }
         catch (Exception error) { addText("Preview unavailable: " + error.getMessage()); }
     }
-    private void recoverExpiredPreview() { }
+    @android.annotation.SuppressLint("UnspecifiedRegisterReceiverFlag")
+    private void registerLegacyReceiver(IntentFilter changes) {
+        activity.registerReceiver(previewChanged, changes, "dev.omamobile.host.permission.CONTROL_SCREENS", null);
+    }
     private void addText(String value) {
         TextView view = new TextView(activity);
         view.setText(value);

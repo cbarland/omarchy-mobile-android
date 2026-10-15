@@ -1,112 +1,137 @@
 package dev.omamobile.host;
 
 import android.content.Context;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.Locale;
 import java.util.Properties;
+import java.util.regex.Pattern;
 
-/** Owns the single adapter-generated desktop monitor file during a preview. */
+/** One service owns one desktop monitor preview; its journal precedes the live write. */
 final class DisplayPreviewController {
     static final long TIMEOUT_MS = 30_000L;
-    private static final String MARKER = "-- Per-profile Wayland output scale; GTK text scale is separate.";
-    private final Path root;
-    private final Path monitor;
-    private final Path state;
-    private final Path before;
-    private final Path applied;
+    static final int[] SCALES = {100, 125, 150, 200, 300};
+    private static final int MAX_BYTES = 8192;
+    private static final Pattern GENERATED = Pattern.compile(
+            "\\Q-- Per-profile Wayland output scale; GTK text scale is separate.\\E\\n"
+            + "local omarchy_monitor_scale = ([0-9]+(?:\\.[0-9]+)?)\\n"
+            + "\\Qhl.monitor({ output = \"\", mode = \"preferred\", position = \"auto\", scale = omarchy_monitor_scale })\\E\\n");
+    enum RevertResult { NONE, REVERTED, CHANGED }
+    private record Pending(byte[] before, byte[] applied, long deadline) { }
+    private final Path monitor, state, boundary;
 
     DisplayPreviewController(Context context) {
-        Path files = context.getApplicationContext().getFilesDir().toPath();
-        root = files.resolve("linux/rootfs");
-        monitor = root.resolve("root/.local/share/omamobile/profiles/desktop/hypr/monitors.lua");
-        Path directory = files.resolve("display-preview");
-        state = directory.resolve("state.properties");
-        before = directory.resolve("before.lua");
-        applied = directory.resolve("applied.lua");
+        this(context.getFilesDir().toPath().resolve("linux/rootfs/root/.local/share/omamobile/profiles/desktop/hypr/monitors.lua"),
+                context.getFilesDir().toPath().resolve("display-preview"));
     }
-
     DisplayPreviewController(Path monitor, Path stateDirectory) {
-        root = monitor.getParent();
-        this.monitor = monitor;
-        state = stateDirectory.resolve("state.properties");
-        before = stateDirectory.resolve("before.lua");
-        applied = stateDirectory.resolve("applied.lua");
+        this.monitor = monitor.toAbsolutePath().normalize();
+        state = stateDirectory.toAbsolutePath().normalize().resolve("pending.properties");
+        boundary = state.getParent().getParent();
     }
+    boolean hasPending() { return Files.exists(state, LinkOption.NOFOLLOW_LINKS); }
+    long deadline() throws IOException { return pending().deadline(); }
 
-    static void recoverExpired(Context context) {
-        DisplayPreviewController controller = new DisplayPreviewController(context);
+    void preview(int scale, long now) throws IOException {
+        if (Arrays.stream(SCALES).noneMatch(value -> value == scale)) throw new IOException("Unsupported desktop scale");
+        if (hasPending()) throw new IOException("Keep or revert the current preview first");
+        byte[] original = readRegular(monitor);
+        String text = new String(original, StandardCharsets.UTF_8);
+        var match = GENERATED.matcher(text);
+        if (!match.matches()) throw new IOException("Custom desktop monitor config preserved");
+        String selected = String.format(Locale.ROOT, "%.2f", scale / 100.0);
+        if (Double.parseDouble(match.group(1)) == scale / 100.0) throw new IOException("Desktop already uses that scale");
+        byte[] applied = (text.substring(0, match.start(1)) + selected + text.substring(match.end(1)))
+                .getBytes(StandardCharsets.UTF_8);
+        Pending preview = new Pending(original, applied, Math.addExact(now, TIMEOUT_MS));
+        writePending(preview);
         try {
-            controller.recoverExpiredAt(System.currentTimeMillis());
-        } catch (IOException ignored) {
-            // Session startup must not replace a user file when recovery cannot
-            // prove that it still contains the preview bytes.
-        }
-    }
-
-    void recoverExpiredAt(long now) throws IOException {
-        if (hasPending() && deadline() <= now) {
-            if (java.util.Arrays.equals(Files.readAllBytes(monitor), Files.readAllBytes(before))) clear();
-            else revert();
-        }
-    }
-
-    boolean hasPending() { return Files.isRegularFile(state, LinkOption.NOFOLLOW_LINKS); }
-    long deadline() throws IOException { return readState().getProperty("deadline", "0").isEmpty() ? 0 : Long.parseLong(readState().getProperty("deadline")); }
-    int pendingScale() throws IOException { return Integer.parseInt(readState().getProperty("scale")); }
-
-    void preview(int scale) throws IOException {
-        if (scale < 100 || scale > 300) throw new IllegalArgumentException("Unsupported desktop scale");
-        if (hasPending()) revert();
-        if (!Files.isRegularFile(monitor, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(monitor) || hasSymlinkAncestor())
-            throw new IOException("Desktop monitor config is missing or custom");
-        String original = new String(Files.readAllBytes(monitor), StandardCharsets.UTF_8);
-        if (!original.startsWith(MARKER + "\n")) throw new IOException("Custom desktop monitor config preserved");
-        String text = original.replaceFirst("(?m)^local omarchy_monitor_scale = [0-9]+(?:\\.[0-9]+)?$",
-                "local omarchy_monitor_scale = " + String.format(Locale.ROOT, "%.2f", scale / 100.0));
-        if (text.equals(original)) throw new IOException("Desktop scale marker missing");
-        Files.createDirectories(state.getParent());
-        Files.write(before, original.getBytes(StandardCharsets.UTF_8));
-        try {
-            Files.write(applied, text.getBytes(StandardCharsets.UTF_8));
-            Properties properties = new Properties();
-            properties.setProperty("scale", Integer.toString(scale));
-            properties.setProperty("deadline", Long.toString(System.currentTimeMillis() + TIMEOUT_MS));
-            try (var output = Files.newOutputStream(state)) { properties.store(output, "display preview"); }
-            DisplayConfigTransaction.apply(DisplayConfigTransaction.Preview.single(monitor, text));
+            atomicWrite(monitor, applied);
         } catch (IOException failure) {
-            Files.deleteIfExists(before); Files.deleteIfExists(applied); Files.deleteIfExists(state);
+            // If the rename never happened, recovery clears the journal without changing the original.
+            try { revert(); } catch (IOException rollback) { failure.addSuppressed(rollback); }
             throw failure;
         }
     }
-
-    DisplayConfigTransaction.RevertResult revert() throws IOException {
-        if (!hasPending()) return DisplayConfigTransaction.RevertResult.CHANGED;
-        byte[] expected = Files.readAllBytes(applied);
-        byte[] original = Files.readAllBytes(before);
-        if (!java.util.Arrays.equals(Files.readAllBytes(monitor), expected))
-            return DisplayConfigTransaction.RevertResult.CHANGED;
-        DisplayConfigTransaction.restore(monitor, expected, original);
-        clear();
-        return DisplayConfigTransaction.RevertResult.REVERTED;
+    boolean keep(long now) throws IOException {
+        if (!hasPending()) return false;
+        Pending preview = pending();
+        if (now >= preview.deadline()) { revert(); return false; }
+        if (!Arrays.equals(readRegular(monitor), preview.applied()))
+            throw new IOException("Desktop config changed during preview; revert preserves the newer edit");
+        Files.delete(state);
+        return true;
     }
-
-    void keep() throws IOException { clear(); }
-
-    private Properties readState() throws IOException {
-        Properties properties = new Properties();
-        try (var input = Files.newInputStream(state)) { properties.load(input); }
-        return properties;
+    RevertResult revert() throws IOException {
+        if (!hasPending()) return RevertResult.NONE;
+        Pending preview = pending();
+        byte[] current;
+        try { current = readRegular(monitor); }
+        catch (IOException missingOrCustom) {
+            Files.delete(state);
+            return RevertResult.CHANGED;
+        }
+        RevertResult result = RevertResult.NONE;
+        if (Arrays.equals(current, preview.applied())) {
+            atomicWrite(monitor, preview.before());
+            result = RevertResult.REVERTED;
+        } else if (!Arrays.equals(current, preview.before())) result = RevertResult.CHANGED;
+        Files.delete(state);
+        return result;
     }
-    private boolean hasSymlinkAncestor() {
-        for (Path path = monitor.getParent(); path != null && path.startsWith(root); path = path.getParent())
-            if (Files.isSymbolicLink(path)) return true;
-        return false;
+    private Pending pending() throws IOException {
+        Properties values = new Properties();
+        try {
+            values.load(new ByteArrayInputStream(readRegular(state)));
+            if (!"1".equals(values.getProperty("version"))) throw new IOException("Unknown preview journal format");
+            byte[] before = Base64.getDecoder().decode(values.getProperty("before"));
+            byte[] applied = Base64.getDecoder().decode(values.getProperty("applied"));
+            long deadline = Long.parseLong(values.getProperty("deadline"));
+            if (deadline <= 0 || !GENERATED.matcher(new String(before, StandardCharsets.UTF_8)).matches()
+                    || !GENERATED.matcher(new String(applied, StandardCharsets.UTF_8)).matches())
+                throw new IOException("Invalid preview journal");
+            return new Pending(before, applied, deadline);
+        } catch (IllegalArgumentException | NullPointerException malformed) {
+            throw new IOException("Malformed preview journal", malformed);
+        }
     }
-    private void clear() throws IOException {
-        Files.deleteIfExists(state); Files.deleteIfExists(before); Files.deleteIfExists(applied);
+    private void writePending(Pending preview) throws IOException {
+        Properties values = new Properties();
+        values.setProperty("version", "1");
+        values.setProperty("before", Base64.getEncoder().encodeToString(preview.before()));
+        values.setProperty("applied", Base64.getEncoder().encodeToString(preview.applied()));
+        values.setProperty("deadline", Long.toString(preview.deadline()));
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        values.store(bytes, "Unconfirmed desktop scale preview");
+        atomicWrite(state, bytes.toByteArray());
+    }
+    private byte[] readRegular(Path path) throws IOException {
+        noSymlinks(path);
+        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || Files.size(path) > MAX_BYTES)
+            throw new IOException("Missing or custom display configuration: " + path.getFileName());
+        return Files.readAllBytes(path);
+    }
+    private void noSymlinks(Path path) throws IOException {
+        if (!path.startsWith(boundary)) throw new IOException("Display path is outside app storage");
+        // Android owns aliases above filesDir; only app-owned descendants are configurable.
+        for (Path part = path; part != null && part.startsWith(boundary); part = part.getParent())
+            if (Files.isSymbolicLink(part)) throw new IOException("Custom symlink path preserved: " + part.getFileName());
+    }
+    private void atomicWrite(Path path, byte[] bytes) throws IOException {
+        noSymlinks(path);
+        Files.createDirectories(path.getParent());
+        Path temporary = Files.createTempFile(path.getParent(), ".display-preview-", ".tmp");
+        try {
+            Files.write(temporary, bytes);
+            Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } finally { Files.deleteIfExists(temporary); }
     }
 }

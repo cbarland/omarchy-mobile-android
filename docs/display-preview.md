@@ -1,31 +1,49 @@
 # Desktop display scale preview
 
-The Android displays panel offers adapter-owned desktop scale previews at
-1.00×, 1.25×, 1.50×, 2.00× and 3.00×. A preview edits only the generated
-desktop profile file under `root/.local/share/omamobile/profiles/desktop/hypr/`
-and restarts the existing foreground screen owner. The phone profile remains
-separate and is restarted by the same owner so the phone remains available
-after the preview cycle.
+The Android displays panel offers desktop scale previews at 1.00x, 1.25x,
+1.50x, 2.00x and 3.00x. Start Omarchy screens before previewing. Only the
+adapter-generated desktop monitors.lua is eligible. Custom configuration and
+symlink paths are preserved. The existing Hyprland file watcher applies the
+atomic replacement live; neither display session needs to restart.
 
-The pending preview stores the exact original and applied bytes plus a
-30-second deadline under the app files directory. Keep removes that pending
-state. Revert checks that the file still contains the preview bytes before
-restoring the original. If a user edits the file, revert reports a changed
-configuration and leaves it untouched. A missing, symbolic-link, or custom
-monitor file is rejected. Session construction also expires a pending preview,
-so an Activity or host process restart cannot leave an expired preview active.
+DesktopService is the single mutation and timeout owner. Before publishing a
+preview, it atomically records the exact original/applied bytes and a deadline
+in one private journal. Keep confirms the change; Revert or a 30-second service
+timeout restores the original only if the file still contains preview bytes.
+Later user edits are left intact and logged. The service also rolls back an
+unconfirmed preview when stopped or recreated after process death. No Activity
+or open dialog is needed to own recovery. A malformed journal is reported in
+Android logs and is preserved rather than guessed at.
 
-## Emulator evidence procedure
+The dialog receives a package-scoped change notification after service actions,
+so Keep/Revert and scale buttons reflect completed actions. Android modes and
+rotation remain read-only. The upstream desktop Display panel remains available
+for normal Omarchy controls; this is a narrow phone-accessible recovery control.
 
-On a disposable prepared two-display emulator, start screens, open **Android
-displays**, choose a scale preview, and verify that both sessions return after
-the owner restart. Confirm the desktop profile's `monitors.lua` contains the
-preview scale, then select **Revert desktop scale preview** and confirm the
-exact original bytes return. Repeat with **Keep desktop scale preview** and
-reopen the app. For timeout/restart evidence, leave the preview pending for
-30 seconds or force-stop/reopen the app after the deadline; the original bytes
-must return before the desktop session starts. Edit the monitor file while a
-preview is pending and verify that revert leaves the edit intact.
+## Verification - 2026-10-15
 
-This procedure does not establish Android hardware mode, rotation, virtual
-resolution, or multi-external-display support.
+On disposable API35 emulator-5556, DisplayPreviewTest passed in 58.286 seconds.
+It clicked the real controls and observed native Hyprland scale: 1 to 1.25,
+explicit revert to 1, confirm 1.25, then preview 1.5 and close the dialog. The
+service timeout restored 1.25. Both compositor signatures stayed unchanged and
+the phone remained at scale 3. Original monitor bytes were restored afterward.
+
+A separate real preview/force-stop/reopen check restored the exact original
+monitor bytes and removed the pending journal before fresh sessions became
+ready. No prepared-emulator data, physical device or Shizuku grant was changed.
+
+Run the focused Android test explicitly, avoiding Gradle connected-test uninstall
+cleanup:
+
+```sh
+adb -s emulator-5556 shell am instrument -w -e graphics true -e displayPreview true \
+  -e class dev.omamobile.host.DisplayPreviewTest \
+  dev.omamobile.host.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+The test requires an existing two-display installation with pristine desktop
+scale 1 and phone scale 3. JVM checks cover confirmation, deadline, journal
+recreation, unpublished-write recovery, conflicting user edits and malformed
+state; symlink behavior is checked where supported by the test filesystem.
+Broader rotation, resolution/density, sleep/resume and hardware mode controls
+remain issue #2 work. This does not join the two compositor sessions.
