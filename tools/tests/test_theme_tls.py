@@ -16,6 +16,16 @@ fixture = SourceFileLoader("theme_fixture", str(SCRIPT)).load_module()
 
 
 class ThemeTlsTest(unittest.TestCase):
+    def test_certificate_failure_classifier_requires_trust_diagnostic(self):
+        log = self.root / "diagnostic.log"
+        for message in ("fatal: unable to get local issuer certificate", "SSL certificate verify failed",
+                        "server certificate verification failed: self-signed certificate"):
+            log.write_text(message, encoding="utf-8")
+            self.assertTrue(fixture.certificate_verification_failed(log))
+        for message in ("Could not resolve host", "Connection timed out", "URL rejected by policy"):
+            log.write_text(message, encoding="utf-8")
+            self.assertFalse(fixture.certificate_verification_failed(log))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="theme-tls-")
         self.root = Path(self.temp.name)

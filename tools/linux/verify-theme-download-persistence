@@ -69,6 +69,14 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
+def certificate_verification_failed(log):
+    """Recognize Git/OpenSSL trust failures, excluding transport failures."""
+    text = Path(log).read_text(encoding="utf-8", errors="replace").lower()
+    markers = ("self-signed certificate", "unable to get local issuer",
+               "certificate verify failed", "server certificate verification failed")
+    return any(marker in text for marker in markers)
+
+
 
 
 def run(argv, work, label, timeout=30, env=None):
@@ -304,6 +312,8 @@ def install(work, state, untrusted_cert=False):
             try:
                 run(["omarchy-theme-install", url], work, "untrusted-install", timeout=90, env=untrusted_env)
             except RuntimeError:
+                require(certificate_verification_failed(work / "untrusted-install.log"),
+                        "Untrusted probe failed without a certificate-verification diagnostic")
                 require(not target.exists(), "Untrusted certificate created a theme checkout")
                 require((HOME / ".local/state/omarchy/current/theme.name").read_text().strip() == state["originalTheme"],
                         "Untrusted certificate changed the selected theme")
@@ -433,6 +443,8 @@ def main():
     parser.add_argument("--transport", choices=("loopback-http-git", "loopback-https-git"),
                         default="loopback-http-git", help="Generated two-file fixture transport")
     args = parser.parse_args()
+    require(not args.untrusted_cert or args.action == "install",
+            "--untrusted-cert is valid only with install")
     def terminate(_signum, _frame):
         raise InterruptedError("Fixture terminated; preserve WORK recovery snapshots")
     signal.signal(signal.SIGTERM, terminate)
