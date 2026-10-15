@@ -4,6 +4,8 @@ An Android host for one shared, open Linux installation. Genuine Hyprland render
 
 The [current accounting](docs/VERIFICATION.md#current-accounting--2026-10-15) separates verified behavior from pending work. Physical device development is paused. On prepared emulator-5554, the full graphics lifecycle (26.236s) and slow-broker shutdown (11.151s) checks are green; disposable emulator-5556 passed graphical Ando (14.874s), ordinary/rapid saved-selection reconnect (13.560s), and visible-IME Escape/Android Back checks (16.219s).
 
+The subsequent [cleanup review](docs/VERIFICATION.md#cleanup-review--2026-10-15) fixes controller shutdown without an Activity, Android-window resource ownership, concurrent asset publication and pinned payload reads, and consolidates the session environment. Emulator regressions cover these boundaries plus widget/input reopening and rapid display reconnect.
+
 The single product acceptance criterion is installation on an existing, unmodified Android base. A normal APK install, app data and user-granted Android permissions are allowed. Root, an unlocked bootloader, flashing, a custom kernel and changed Android security policy must not be prerequisites.
 
 The intended Linux foundation is Arch Linux ARM plus upstream Omarchy ARM / Omarchy Mobile packages. The host must not replace pacman, curate a restricted app catalog or reimplement each Omarchy plugin in Android. Omarchy Mobile supplies the phone experience; normal Omarchy supplies the desktop experience. Android continues to own telephony, hardware permissions, keyguard and Android applications.

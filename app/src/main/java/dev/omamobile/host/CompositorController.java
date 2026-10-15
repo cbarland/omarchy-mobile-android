@@ -1,8 +1,12 @@
 package dev.omamobile.host;
 
 import android.app.ActivityManager;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.hardware.display.DisplayManager;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Display;
@@ -33,12 +37,16 @@ final class CompositorController {
         @Override public void onDisplayRemoved(int id) {
             synchronized (CompositorController.this) {
                 if (id != attachedDisplayId) return;
-                // Android can destroy the Activity and unregister its stop
-                // receiver before DesktopService's broadcast arrives. The
-                // controller owns this listener for the entire display session.
+                // Display and stop ownership outlive Activity/Surface changes.
                 android.util.Log.i("OmamobileHyprland", "Owned Android display removed: " + id);
                 stop();
             }
+        }
+    };
+    private final BroadcastReceiver stopRequest = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            String profile = intent.getStringExtra("profile");
+            if (profile == null || profile.equals(phone ? "phone" : "desktop")) stop();
         }
     };
     private final CopyOnWriteArrayList<Consumer<String>> observers = new CopyOnWriteArrayList<>();
@@ -49,6 +57,14 @@ final class CompositorController {
         this.phone = phone;
         displays = context.getSystemService(DisplayManager.class);
         displays.registerDisplayListener(displayLifetime, main);
+        IntentFilter filter = new IntentFilter(DesktopService.STOP_SCREENS);
+        if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(stopRequest, filter, Context.RECEIVER_NOT_EXPORTED);
+        else registerLegacyStopReceiver(filter);
+    }
+    @android.annotation.SuppressLint("UnspecifiedRegisterReceiverFlag")
+    private void registerLegacyStopReceiver(IntentFilter filter) {
+        // Android 10-12 have no NOT_EXPORTED flag; retain the signature gate.
+        context.registerReceiver(stopRequest, filter, "dev.omamobile.host.permission.CONTROL_SCREENS", main);
     }
     void observe(Consumer<String> listener) { observers.add(listener); listener.accept(status); }
     void unobserve(Consumer<String> listener) { observers.remove(listener); }
@@ -107,6 +123,7 @@ final class CompositorController {
         if (stopping) return;
         stopping = true;
         displays.unregisterDisplayListener(displayLifetime);
+        context.unregisterReceiver(stopRequest);
         // Removing an output can reparent its Activity task onto the phone.
         // Finish our own profile's task before exiting, otherwise Android may
         // restore that top Activity into a new owner process on display zero.
@@ -120,7 +137,7 @@ final class CompositorController {
                 task.finishAndRemoveTask();
                 android.util.Log.i("OmamobileHyprland", "Removed stopped output task " + info.taskId + " (" + activityName + ")");
             } catch (IllegalArgumentException alreadyRemoved) {
-                // The Activity's receiver may have finished this task first.
+                // Android may already have removed the Activity's task.
                 android.util.Log.d("OmamobileHyprland", "Stopped output task was already removed", alreadyRemoved);
             }
         }

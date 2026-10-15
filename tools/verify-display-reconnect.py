@@ -41,7 +41,11 @@ class Adb:
                 command, capture_output=True, text=True, timeout=timeout, check=False
             )
         except subprocess.TimeoutExpired as exc:
-            entry.update({"timeoutExpired": True, "stdout": exc.stdout or "", "stderr": exc.stderr or ""})
+            entry.update({
+                "timeoutExpired": True,
+                "stdout": _output_text(exc.stdout),
+                "stderr": _output_text(exc.stderr),
+            })
             self.log.append(entry)
             raise AuditError(f"adb timeout: {' '.join(command)}") from exc
         stdout = result.stdout or ""
@@ -100,6 +104,53 @@ def wait_until(predicate, deadline: float, interval: float = 0.5) -> Any:
         time.sleep(max(0.2, interval))
 
 
+def _output_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return value.decode(errors="replace") if isinstance(value, bytes) else str(value)
+
+
+def reap_local_instrumentation(process: Any, instrumentation: dict[str, Any]) -> None:
+    """Reap the local adb client without claiming the remote test was cancelled cleanly."""
+    def collect(timeout: float) -> bool:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            if exc.stdout is not None:
+                instrumentation["stdout"] = _output_text(exc.stdout)
+            if exc.stderr is not None:
+                instrumentation["stderr"] = _output_text(exc.stderr)
+            return False
+        instrumentation.update({"stdout": stdout or "", "stderr": stderr or "", "returncode": process.returncode})
+        return True
+
+    if process.poll() is None:
+        instrumentation["localTerminateRequested"] = True
+        instrumentation["remoteStatus"] = "unknown"
+        try:
+            process.terminate()
+        except OSError as exc:
+            instrumentation.setdefault("cleanupErrors", []).append(f"terminate: {exc}")
+        if collect(5):
+            return
+        instrumentation["forcedLocalKill"] = True
+        try:
+            process.kill()
+        except OSError as exc:
+            instrumentation["localKillReaped"] = False
+            instrumentation.setdefault("cleanupErrors", []).append(f"kill: {exc}")
+            return
+        if not collect(5):
+            instrumentation["localKillReaped"] = False
+            instrumentation.setdefault("cleanupErrors", []).append("kill communication timed out")
+        else:
+            instrumentation["localKillReaped"] = True
+        return
+    if "stdout" not in instrumentation:
+        if not collect(5):
+            instrumentation.setdefault("cleanupErrors", []).append("output collection timed out")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serial", required=True, help="disposable emulator serial")
@@ -129,7 +180,13 @@ def main() -> int:
         "temporarySlot": TEMP_SLOT,
         "temporaryAddArgs": TEMP_ADD_ARGS,
         "rapidRequested": args.rapid,
-        "instrumentation": {"package": TEST_PACKAGE, "runner": RUNNER},
+        "instrumentation": {
+            "package": TEST_PACKAGE,
+            "runner": RUNNER,
+            "localTerminateRequested": False,
+            "forcedLocalKill": False,
+            "localKillReaped": True,
+        },
         "phases": [],
         "adb": adb_log,
         "passed": False,
@@ -168,8 +225,9 @@ def main() -> int:
             )
         except AuditError:
             old_handshake_raw = None
-        result["previousHandshake"] = parse_handshake(old_handshake_raw)
-        previous_run = (parse_handshake(old_handshake_raw) or {}).get("run")
+        previous_handshake = parse_handshake(old_handshake_raw)
+        result["previousHandshake"] = previous_handshake
+        previous_run = (previous_handshake or {}).get("run")
 
         adb.run(["emu", "multidisplay", "add", *TEMP_ADD_ARGS], timeout=15)
         created = True
@@ -265,8 +323,16 @@ def main() -> int:
         # restore slot 2 first so the app can complete its bounded cleanup path.
         if process is not None and process.poll() is None:
             try:
-                process.communicate(timeout=max(1.0, min(20.0, remaining(deadline))))
-            except (subprocess.TimeoutExpired, AuditError):
+                stdout, stderr = process.communicate(timeout=max(1.0, min(20.0, remaining(deadline))))
+                result["instrumentation"].update(
+                    {"returncode": process.returncode, "stdout": stdout or "", "stderr": stderr or ""}
+                )
+            except subprocess.TimeoutExpired as exc:
+                if exc.stdout is not None:
+                    result["instrumentation"]["stdout"] = _output_text(exc.stdout)
+                if exc.stderr is not None:
+                    result["instrumentation"]["stderr"] = _output_text(exc.stderr)
+            except AuditError:
                 pass
         if created:
             if disconnected and not reconnected:
@@ -280,17 +346,7 @@ def main() -> int:
             except AuditError as exc:
                 result.setdefault("cleanupErrors", []).append(str(exc))
         if process is not None:
-            if process.poll() is None:
-                try:
-                    process.terminate()
-                    process.communicate(timeout=5)
-                except (OSError, subprocess.TimeoutExpired):
-                    pass
-            if "stdout" not in result["instrumentation"]:
-                stdout, stderr = process.communicate(timeout=5)
-                result["instrumentation"].update(
-                    {"returncode": process.returncode, "stdout": stdout, "stderr": stderr}
-                )
+            reap_local_instrumentation(process, result["instrumentation"])
         result["elapsedSeconds"] = round(time.monotonic() - started, 3)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")

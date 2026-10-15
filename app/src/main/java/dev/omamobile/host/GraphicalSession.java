@@ -54,7 +54,16 @@ final class GraphicalSession {
         wrapper = home.resolve("linux-exec.sh");
         magic = files.resolve("graphics/magic.mgc");
         if (!Files.exists(magic)) {
-            try (var in = context.getAssets().open("native/magic.mgc")) { Files.copy(in, magic); }
+            // Both output processes can start together. Publish a complete copy
+            // atomically so neither reads a partially written shared database.
+            Path temporary = Files.createTempFile(magic.getParent(), ".magic-", ".mgc");
+            try {
+                try (var in = context.getAssets().open("native/magic.mgc")) {
+                    Files.copy(in, temporary, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+                Files.move(temporary, magic, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            } finally { Files.deleteIfExists(temporary); }
         }
         if (!Files.exists(config, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
             String lua = previousSeedConfig(phone) + DISPLAY_SHORTCUT;
@@ -146,24 +155,20 @@ final class GraphicalSession {
         shell.append(quote(binary)).append(" -s -r ").append(quote(root.toString()));
         for (RuntimeSpec.Bind bind : binds()) shell.append(" -b ").append(quote(bind.argument()));
         shell.append(" -- /usr/bin/env -i ");
-        var environment = new java.util.LinkedHashMap<>(RuntimeSpec.environment(true));
-        environment.put("PATH", "/usr/lib/omamobile/session-bin:/root/.local/share/omarchy/bin:" + environment.get("PATH"));
-        environment.put("TZ", java.util.TimeZone.getDefault().getID());
-        environment.put("GSETTINGS_BACKEND", "keyfile");
-        for (var entry : environment.entrySet()) shell.append(quote(entry.getKey() + "=" + entry.getValue())).append(' ');
-        shell.append("XDG_RUNTIME_DIR=").append(quote(guestRuntime())).append(' ')
-                .append("WAYLAND_DISPLAY=wayland-0 XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Hyprland ")
-                .append("QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software QSG_RENDER_LOOP=basic LIBGL_ALWAYS_SOFTWARE=1 LP_NUM_THREADS=2 ")
-                .append("OMARCHY_PATH=/root/.local/share/omarchy OMAMOBILE_PROFILE=").append(quote(profile)).append(' ')
-                .append("OMAMOBILE_SESSION_HOST=android NO_AT_BRIDGE=1 ")
+        for (var entry : environment().entrySet()) shell.append(quote(entry.getKey() + "=" + entry.getValue())).append(' ');
+        // Native posix_spawn supplies these for this launch; do not bake in a
+        // display socket or drop Hyprland's workspace/window-rule tokens.
+        shell.append("WAYLAND_DISPLAY=\"$WAYLAND_DISPLAY\" ")
                 .append("HYPRLAND_INSTANCE_SIGNATURE=\"$HYPRLAND_INSTANCE_SIGNATURE\" ")
                 .append("HL_INITIAL_WORKSPACE_TOKEN=\"$HL_INITIAL_WORKSPACE_TOKEN\" HL_EXEC_RULE_TOKEN=\"$HL_EXEC_RULE_TOKEN\" ")
-                .append("DBUS_SESSION_BUS_ADDRESS=").append(quote("unix:path=" + guestRuntime() + "/bus"))
-                .append(" /bin/bash -c \"$1\"\n");
+                .append("/bin/bash -c \"$1\"\n");
         return shell.toString();
     }
 
     String guestRuntime() { return "/run/omamobile/" + (profile.equals("phone") ? "p" : "d"); }
+    private java.util.Map<String, String> environment() {
+        return RuntimeSpec.graphicalEnvironment(profile, guestRuntime(), java.util.TimeZone.getDefault().getID());
+    }
 
     synchronized void startClients(String display, String signature) throws IOException {
         if (closed) throw new IOException("The graphical session is stopping");
@@ -192,27 +197,15 @@ final class GraphicalSession {
             if (!busProcess.isAlive()) throw new IOException("Linux session bus failed; see " + home.resolve("dbus.log"));
             try { Thread.sleep(20); } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IOException(e); }
         }
+        if (!Files.exists(runtime.resolve("bus"))) throw new IOException("Linux session bus timed out; see " + home.resolve("dbus.log"));
         List<String> argv = RuntimeSpec.command(new File(context.getApplicationInfo().nativeLibraryDir, "libtawcroot.so").toPath(),
                 root, binds(), List.of("/bin/bash", "-lc", script));
         ProcessBuilder builder = new ProcessBuilder(argv).directory(GuestPaths.resolve(root, "/root").toFile())
                 .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.appendTo(home.resolve("linux-shell.log").toFile()));
         builder.environment().clear();
-        builder.environment().putAll(RuntimeSpec.environment(true));
-        builder.environment().put("XDG_RUNTIME_DIR", guestRuntime());
+        builder.environment().putAll(environment());
         builder.environment().put("WAYLAND_DISPLAY", display);
         builder.environment().put("HYPRLAND_INSTANCE_SIGNATURE", signature);
-        builder.environment().put("XDG_CURRENT_DESKTOP", "Hyprland");
-        builder.environment().put("XDG_SESSION_TYPE", "wayland");
-        builder.environment().put("DBUS_SESSION_BUS_ADDRESS", "unix:path=" + guestRuntime() + "/bus");
-        builder.environment().put("OMARCHY_PATH", "/root/.local/share/omarchy");
-        builder.environment().put("OMAMOBILE_PROFILE", profile);
-        builder.environment().put("TZ", java.util.TimeZone.getDefault().getID());
-        builder.environment().put("GSETTINGS_BACKEND", "keyfile");
-        builder.environment().put("QT_QPA_PLATFORM", "wayland");
-        builder.environment().put("QT_QUICK_BACKEND", "software");
-        builder.environment().put("QSG_RENDER_LOOP", "basic");
-        builder.environment().put("LIBGL_ALWAYS_SOFTWARE", "1");
-        builder.environment().put("LP_NUM_THREADS", "2");
         clients = builder.start();
         clients.getOutputStream().close();
         launched.add(clients);

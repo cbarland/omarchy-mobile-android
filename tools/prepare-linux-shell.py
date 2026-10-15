@@ -80,8 +80,8 @@ with tarfile.open(a.output, "w:gz") as archive:
     for name in ["WIDGETS.md", "OWL.md"]:
         put("usr/share/omamobile/shell/" + name, blob(package / "widgets" / name)[0])
     tree(package / "bin", "usr/bin")
-    put("usr/share/licenses/omamobile-shell/LICENSE", (package / "LICENSE").read_bytes())
-    put("usr/share/licenses/omamobile-shell/LICENSE-owl-guide", (package / "widgets/LICENSE-owl-guide").read_bytes())
+    put("usr/share/licenses/omamobile-shell/LICENSE", blob(package / "LICENSE")[0])
+    put("usr/share/licenses/omamobile-shell/LICENSE-owl-guide", blob(package / "widgets/LICENSE-owl-guide")[0])
 
     # Use Mobile's compatibility index, not a claim that every store widget works.
     # Canonical Git bytes are checked against its SHA-256 before shipping.
@@ -102,10 +102,10 @@ with tarfile.open(a.output, "w:gz") as archive:
     put("usr/share/licenses/omamobile-owl-widgets/LICENSE", store["LICENSE"][0])
 
     disabled = ["omarchy.idle", "omarchy.lock", "omarchy.polkit", "omarchy.nightlight", "omarchy.remote-session"]
-    desktop = json.loads((a.omarchy / "config/omarchy/shell.json").read_text())
+    desktop = json.loads(blob(a.omarchy / "config/omarchy/shell.json")[0])
     desktop["idle"] = {"screensaver": 0, "lock": 0}
     desktop["disabledPlugins"] = disabled
-    phone = json.loads((package / "profile/shell.json").read_text())
+    phone = json.loads(blob(package / "profile/shell.json")[0])
     phone["plugins"] = [{"id": x} for x in ["omamobile.home", "omamobile.launcher", "omamobile.switcher", "omamobile.quicksettings"]]
     phone["idle"] = desktop["idle"]
     phone["disabledPlugins"] = disabled

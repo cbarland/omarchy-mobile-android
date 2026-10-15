@@ -41,4 +41,26 @@ final class RuntimeSpec {
         if (ando) env.put("OMALAUNCHER_ANDO_SOCKET", "/run/omamobile-ando/ando.sock");
         return env;
     }
+
+    /** Shared by the initial shell and every client launched by the compositor. */
+    static Map<String, String> graphicalEnvironment(String profile, String runtime, String timeZone) {
+        var env = new java.util.LinkedHashMap<>(environment(true));
+        env.put("PATH", "/usr/lib/omamobile/session-bin:/root/.local/share/omarchy/bin:" + env.get("PATH"));
+        env.put("TZ", timeZone);
+        env.put("GSETTINGS_BACKEND", "keyfile");
+        env.put("XDG_RUNTIME_DIR", runtime);
+        env.put("XDG_SESSION_TYPE", "wayland");
+        env.put("XDG_CURRENT_DESKTOP", "Hyprland");
+        env.put("QT_QPA_PLATFORM", "wayland");
+        env.put("QT_QUICK_BACKEND", "software");
+        env.put("QSG_RENDER_LOOP", "basic");
+        env.put("LIBGL_ALWAYS_SOFTWARE", "1");
+        env.put("LP_NUM_THREADS", "2");
+        env.put("OMARCHY_PATH", "/root/.local/share/omarchy");
+        env.put("OMAMOBILE_PROFILE", profile);
+        env.put("OMAMOBILE_SESSION_HOST", "android");
+        env.put("NO_AT_BRIDGE", "1");
+        env.put("DBUS_SESSION_BUS_ADDRESS", "unix:path=" + runtime + "/bus");
+        return env;
+    }
 }

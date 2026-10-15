@@ -9,8 +9,6 @@ import android.media.ImageReader;
 import android.net.LocalServerSocket;
 import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
-import android.os.Handler;
-import android.os.Looper;
 import android.os.Process;
 import android.os.SystemClock;
 import android.system.Os;
@@ -26,8 +24,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** App-owned Android displays exposed as ordinary Linux Wayland client windows.
@@ -38,7 +35,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 final class AndroidAppPortal implements AutoCloseable {
     private final Context context;
-    private final Handler main = new Handler(Looper.getMainLooper());
+    interface ShellProvider { IAndroidShell require() throws IOException; }
+    private final ShellProvider shellProvider;
     private final ExecutorService workers = Executors.newFixedThreadPool(4);
     private final Set<LocalSocket> connections = ConcurrentHashMap.newKeySet();
     private final AtomicInteger windows = new AtomicInteger();
@@ -47,7 +45,11 @@ final class AndroidAppPortal implements AutoCloseable {
     private File path;
     private volatile boolean closed;
 
-    AndroidAppPortal(Context context) { this.context = context.getApplicationContext(); }
+    AndroidAppPortal(Context context) { this(context, AndroidShell.get(context)::require); }
+    AndroidAppPortal(Context context, ShellProvider shellProvider) {
+        this.context = context.getApplicationContext();
+        this.shellProvider = shellProvider;
+    }
 
     void start() throws IOException {
         File directory = new File(context.getFilesDir(), "r");
@@ -65,16 +67,14 @@ final class AndroidAppPortal implements AutoCloseable {
                     if (socket.getPeerCredentials().getUid() != Process.myUid() || connections.size() >= 4) { socket.close(); continue; }
                     socket.setSoTimeout(15000);
                     connections.add(socket);
-                    workers.execute(() -> serve(socket));
+                    try { workers.execute(() -> serve(socket)); }
+                    catch (RejectedExecutionException stopped) {
+                        connections.remove(socket);
+                        socket.close();
+                    }
                 } catch (IOException e) { if (!closed) android.util.Log.w("OmamobilePortal", "accept", e); }
             }
         }, "android-window-portal").start();
-    }
-
-    private <T> T onMain(java.util.concurrent.Callable<T> action) throws Exception {
-        FutureTask<T> task = new FutureTask<>(action);
-        main.post(task);
-        return task.get(8, TimeUnit.SECONDS);
     }
 
     private void serve(LocalSocket socket) {
@@ -100,7 +100,10 @@ final class AndroidAppPortal implements AutoCloseable {
                     } else if (op.equals("open")) {
                         if (hosted != null) throw new IOException("A connection already owns a display");
                         if (windows.incrementAndGet() > 3) { windows.decrementAndGet(); throw new IOException("At most three Android windows"); }
-                        try { hosted = onMain(() -> new Hosted(request.getString("package"), dimension(request, "width"), dimension(request, "height"))); }
+                        // One worker owns allocation through release. A slow
+                        // helper cannot block Android's main looper or return a
+                        // lease into an abandoned timed-out FutureTask.
+                        try { hosted = new Hosted(request.getString("package"), dimension(request, "width"), dimension(request, "height")); }
                         catch (Exception e) { windows.decrementAndGet(); throw e; }
                         reply.put("display", hosted.display);
                     } else {
@@ -114,7 +117,7 @@ final class AndroidAppPortal implements AutoCloseable {
                                 reply.put("sequence", frame.sequence).put("width", current.width).put("height", current.height);
                                 if (request.optLong("after", -1) != frame.sequence) image = frame.jpeg;
                             }
-                            case "resize" -> onMain(() -> { current.resize(dimension(request, "width"), dimension(request, "height")); return true; });
+                            case "resize" -> current.resize(dimension(request, "width"), dimension(request, "height"));
                             case "gesture" -> current.gesture(request);
                             case "key" -> current.shell.key(displayId, switch (request.optString("key")) {
                                 case "Return" -> android.view.KeyEvent.KEYCODE_ENTER;
@@ -140,7 +143,9 @@ final class AndroidAppPortal implements AutoCloseable {
         } catch (Exception e) { android.util.Log.w("OmamobilePortal", "client", e); }
         finally {
             connections.remove(socket);
-            if (hosted != null) { Hosted current = hosted; main.post(current::close); windows.decrementAndGet(); }
+            if (hosted != null) {
+                try { hosted.close(); } finally { windows.decrementAndGet(); }
+            }
         }
     }
 
@@ -159,6 +164,7 @@ final class AndroidAppPortal implements AutoCloseable {
         final android.os.Binder owner = new android.os.Binder();
         int width, height;
         ImageReader reader;
+        private boolean released;
         volatile Frame latest = new Frame(0, new byte[0]);
         Hosted(String packageName, int width, int height) throws Exception {
             this.packageName = packageName;
@@ -166,14 +172,19 @@ final class AndroidAppPortal implements AutoCloseable {
                 throw new IOException("Choose another installed Android application");
             Intent launch = context.getPackageManager().getLaunchIntentForPackage(packageName);
             if (launch == null) throw new IOException("No visible launcher activity for " + packageName);
-            shell = AndroidShell.get(context).require();
+            shell = shellProvider.require();
             this.width = width; this.height = height;
             reader = makeReader(width, height);
             try { display = shell.create(width, height, reader.getSurface(), owner); }
             catch (Exception e) { reader.close(); throw e; }
             try {
+                checkOpen();
                 shell.launch(display, launch.getComponent().flattenToString());
+                checkOpen();
             } catch (Exception e) { close(); throw e; }
+        }
+        private void checkOpen() throws IOException {
+            if (closed || Thread.currentThread().isInterrupted()) throw new IOException("Android window portal is stopping");
         }
         private ImageReader makeReader(int w, int h) { return ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3); }
         void capture() {
@@ -216,8 +227,10 @@ final class AndroidAppPortal implements AutoCloseable {
             } finally { shell.touch(id, android.view.MotionEvent.ACTION_UP, endX, endY, down); }
         }
         @Override public void close() {
+            if (released) return;
+            released = true;
             try { shell.detach(display); } catch (Exception ignored) { }
-            reader.close();
+            finally { reader.close(); }
         }
     }
 

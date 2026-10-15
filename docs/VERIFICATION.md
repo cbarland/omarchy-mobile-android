@@ -10,6 +10,37 @@ reconnected to or changed the Nubia. Preserve the prepared Linux data and
 Shizuku authorization. The emulator server was restarted after boot using the
 already authorized official starter; its app grant remains enabled.
 
+### Cleanup review — 2026-10-15
+
+An independent Sol PR reviewer evaluated baseline `09b3109` against INTENT.md.
+Five code defects are resolved: stop reception now belongs to the controller
+instead of a replaceable Activity; Android-window creation/launch/release stays
+on its connection worker rather than blocking the main looper or handing back
+an abandoned display lease; the shared magic database is published atomically;
+and profiles/licenses are read from pinned Git blobs rather than dirty checkouts.
+Both graphical launch paths now use one environment definition, retaining the
+native compositor's actual Wayland socket and per-launch Hyprland tokens.
+Host ADB operations are bounded, and timeout evidence remains JSON-serializable.
+
+Validation on the cleanup APK: both ABI builds, 23 JVM tests, and lint (zero
+errors, 13 existing warnings); five portal tests including real Shizuku display
+release and blocked-helper regressions (3.789s); simultaneous cold startup plus
+stop after both output Activities are gone, followed by graphical Ando (two
+tests, 29.055s); prepared OWL/input/reopen/helper regression (37.823s); and rapid
+display reconnect with restored preferences. Five host-tool tests pass. An
+explicit payload integration check compared all 1,291 tar members by content,
+mode and size before/after dirty profiles, licenses, widget files, staged modes
+and an untracked file; all matched and the original references were unchanged.
+Physical hardware was not used; the existing emulator Shizuku grant is retained.
+
+The review did not change the product goals. Two compositor sessions cannot
+move a live window between outputs. Software Linux client rendering and CPU/JPEG
+Android windows remain performance tradeoffs; inactive polling needs measurement
+and reduction. Dependency manifests should become reconstruction inputs, and
+installation/recovery and Android-owned service adapters remain unfinished.
+These limits are not resolved by consolidating Java session setup. The final
+read-only review found no additional actionable defects in the cleanup delta.
+
 ### Working with direct evidence
 
 - **Unmodified Android foundation:** a normal APK and app-private Linux run

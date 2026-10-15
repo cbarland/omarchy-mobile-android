@@ -1,12 +1,9 @@
 package dev.omamobile.host;
 
 import android.app.Activity;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.graphics.Color;
-import android.os.Build;
 import android.os.Bundle;
 import android.view.InputDevice;
 import android.view.KeyEvent;
@@ -30,12 +27,6 @@ public abstract class CompositorActivity extends Activity {
     private boolean captureReleaseKeyDown;
     private TextView status;
     private final Consumer<String> observe = value -> { status.setText(value); status.setVisibility(value.isEmpty() ? View.GONE : View.VISIBLE); };
-    private final BroadcastReceiver stop = new BroadcastReceiver() {
-        @Override public void onReceive(Context context, Intent intent) {
-            String profile = intent.getStringExtra("profile");
-            if (profile == null || profile.equals(phone() ? "phone" : "desktop")) { finishAndRemoveTask(); controller.stop(); }
-        }
-    };
     protected abstract boolean phone();
 
     @Override public void onCreate(Bundle state) {
@@ -53,15 +44,6 @@ public abstract class CompositorActivity extends Activity {
         layout.addView(status, new FrameLayout.LayoutParams(-1, -2));
         setContentView(layout);
         controller.observe(observe);
-        IntentFilter filter = new IntentFilter(DesktopService.STOP_SCREENS);
-        if (Build.VERSION.SDK_INT >= 33) registerReceiver(stop, filter, Context.RECEIVER_NOT_EXPORTED);
-        else registerLegacyStopReceiver(filter);
-    }
-    @android.annotation.SuppressLint("UnspecifiedRegisterReceiverFlag")
-    private void registerLegacyStopReceiver(IntentFilter filter) {
-        // Android 10-12 have no NOT_EXPORTED flag. A signature permission
-        // restricts this receiver to our own signed application on those APIs.
-        registerReceiver(stop, filter, "dev.omamobile.host.permission.CONTROL_SCREENS", null);
     }
     @Override protected void onResume() {
         super.onResume();
@@ -74,7 +56,6 @@ public abstract class CompositorActivity extends Activity {
     }
     @Override protected void onDestroy() {
         controller.unobserve(observe);
-        unregisterReceiver(stop);
         super.onDestroy();
     }
 
