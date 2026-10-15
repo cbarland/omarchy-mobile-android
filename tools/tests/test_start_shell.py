@@ -1,5 +1,4 @@
 """Exercise the Android session environment exported by start-shell."""
-import json
 import os
 import subprocess
 import tempfile
@@ -21,7 +20,7 @@ class StartShellTest(unittest.TestCase):
             quickshell = fake_bin / "quickshell"
             quickshell.write_text(
                 "#!/bin/sh\n"
-                f"env | python3 -c 'import json,os,sys; json.dump(dict(os.environ), open({str(capture)!r}, \"w\"))'\n",
+                f"env > {str(capture)!r}\n",
                 encoding="utf-8",
             )
             quickshell.chmod(0o755)
@@ -39,7 +38,7 @@ class StartShellTest(unittest.TestCase):
                 capture_output=True,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            return json.loads(capture.read_text(encoding="utf-8"))
+            return dict(line.split("=", 1) for line in capture.read_text(encoding="utf-8").splitlines())
 
     def test_android_defaults_supply_upstream_desktop_environment(self):
         environment = self.run_start()
