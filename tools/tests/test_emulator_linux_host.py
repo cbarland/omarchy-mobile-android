@@ -12,6 +12,36 @@ SCRIPT = Path(__file__).parents[1] / "emulator-linux.py"
 
 
 class EmulatorHelperTests(unittest.TestCase):
+    def test_stop_reveals_scrolled_control_before_pressing_enter(self):
+        views = iter([
+            b'<hierarchy><node text="console output" package="dev.omamobile.host" focused="true" /></hierarchy>',
+            b'<hierarchy><node text="STOP GRAPHICAL SESSIONS" package="dev.omamobile.host" focused="true" /></hierarchy>',
+        ])
+        commands = []
+        def run(command, **kwargs):
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 1 if "pidof" in command else 0, "", "")
+        with patch.object(sys, "argv", [str(SCRIPT), "--adb", "fake-adb", "--serial", "emulator-5556", "stop"]), \
+                patch("subprocess.run", side_effect=run), patch("subprocess.check_output", side_effect=lambda *a, **k: next(views)), \
+                contextlib.redirect_stdout(io.TextIOWrapper(io.BytesIO(), encoding="utf-8")):
+            with self.assertRaises(SystemExit) as stopped:
+                runpy.run_path(str(SCRIPT), run_name="__main__")
+        self.assertEqual(stopped.exception.code, 0)
+        self.assertEqual([c[-1] for c in commands if "keyevent" in c], ["KEYCODE_TAB", "KEYCODE_ENTER"])
+
+    def test_obscuring_system_window_is_not_navigated(self):
+        commands = []
+        def run(command, **kwargs):
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 0, "", "")
+        with patch.object(sys, "argv", [str(SCRIPT), "--adb", "fake-adb", "start"]), \
+                patch("subprocess.run", side_effect=run), \
+                patch("subprocess.check_output", return_value=b'<hierarchy><node package="com.android.systemui" /></hierarchy>'), \
+                contextlib.redirect_stdout(io.TextIOWrapper(io.BytesIO(), encoding="utf-8")):
+            with self.assertRaisesRegex(RuntimeError, "obscured"):
+                runpy.run_path(str(SCRIPT), run_name="__main__")
+        self.assertFalse(any("keyevent" in c for c in commands))
+
     def test_help_runs_without_adb(self):
         result = subprocess.run([sys.executable, str(SCRIPT), "--help"],
                                 capture_output=True, text=True, timeout=10)

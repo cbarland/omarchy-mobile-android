@@ -15,6 +15,15 @@ SCRIPT = ROOT / "tools/linux/verify-theme-download-persistence"
 fixture = SourceFileLoader("theme_fixture", str(SCRIPT)).load_module()
 
 
+class NegativeModeTest(unittest.TestCase):
+    def test_http_is_rejected_before_fixture_or_theme_mutation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            with self.assertRaisesRegex(RuntimeError, "requires HTTPS"):
+                fixture.install(work, {"transport": "loopback-http-git"}, untrusted_cert=True)
+            self.assertEqual(list(work.iterdir()), [])
+
+
 class ThemeTlsTest(unittest.TestCase):
     def test_certificate_failure_classifier_requires_trust_diagnostic(self):
         log = self.root / "diagnostic.log"

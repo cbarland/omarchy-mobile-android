@@ -253,6 +253,8 @@ def tls_material(work):
 
 
 def install(work, state, untrusted_cert=False):
+    require(not untrusted_cert or state["transport"] == "loopback-https-git",
+            "Untrusted certificate probe requires HTTPS transport")
     preconditions()
     require(state["phase"] == "prepared", "Install can run only once after prepare")
     target = HOME / ".config/omarchy/themes" / state["fixture"]

@@ -70,3 +70,31 @@ selection change, after which the trusted phase observes the generated commit,
 peer acknowledgments, persistence, and existing restore checks. Public
 third-party theme compatibility remains open and is deliberately not executed
 by this harness.
+
+## Emulator integration evidence - 2026-10-15
+
+On disposable API35 emulator-5556, the unchanged pinned Omarchy installer
+rejected the fixture's untrusted certificate with an actual certificate trust
+diagnostic, without creating a checkout or changing the selected theme. The
+same prepared snapshot then accepted a trusted retry with CA trust scoped to
+that child operation. The generated commit, palette and wallpaper hashes and
+peer shell acknowledgements passed on both profiles.
+
+Both owners were stopped normally and reopened. New compositor signatures,
+retained theme hashes and live shell state passed for both profiles. Direct
+SurfaceFlinger screenshots before and after reopening showed the cyan fixture
+wallpaper on both screens. The original theme/cache/GTK data was restored by
+exact snapshot comparison; the fixture checkout was removed. The harness's
+renderedPaletteVerified field remains false because visual inspection is a
+separate lead check, not an assertion made by the script itself.
+
+During this run, a scrolled host console exposed a developer-helper failure:
+off-screen controls are absent from Android's accessibility dump. The helper
+now performs bounded Tab navigation within the host window to reveal the
+control, and refuses to navigate an obscuring system window. Actual reopening
+from that scrolled state passed; focused host regressions cover both outcomes.
+
+This establishes generated-fixture TLS and restoration behavior. Public
+third-party theme compatibility, broader menus/plugins and full Linux service
+support remain open in issue #1. No physical device or prepared-emulator data
+was used or modified by these checks.
