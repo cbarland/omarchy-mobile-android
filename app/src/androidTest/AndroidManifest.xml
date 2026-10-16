@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <application>
         <provider android:name="dev.omamobile.host.BlockingArchiveProvider"
             android:authorities="dev.omamobile.host.test.blocking-archive"
@@ -6,6 +7,10 @@
     </application>
     <instrumentation
         android:name="androidx.test.runner.AndroidJUnitRunner"
+        android:targetPackage="dev.omamobile.host" />
+    <instrumentation
+        android:name="dev.omamobile.host.PhoneProcessTestRunner"
         android:targetPackage="dev.omamobile.host"
-        android:targetProcesses="dev.omamobile.host:phone" />
+        android:targetProcesses="dev.omamobile.host:phone"
+        tools:node="merge" />
 </manifest>

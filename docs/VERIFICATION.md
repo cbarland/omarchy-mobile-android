@@ -840,6 +840,33 @@ This is an emulator graphics build; its Linux image is prepared separately.
 
 ## Historical command-runtime milestone
 
+## Direct IME composition contract
+
+On emulator `emulator-5556` (API 35, signed `wev` installed and the approved
+external presentation display attached), the focused phone-process test was
+run with:
+
+```text
+adb -s emulator-5556 shell am instrument -w -r \
+  -e graphics true -e imeComposition true \
+  -e class dev.omamobile.host.ImeCompositionTest \
+  dev.omamobile.host.test/dev.omamobile.host.PhoneProcessTestRunner
+```
+
+The old host failed at composing `xy` followed by `commitText("z")`, leaving
+the local draft. The candidate passed the same test, including exact
+ASCII/Unicode key-state streams, pending-draft flush, repeated finish,
+unsupported `replaceText` rejection, delete behavior, aliased text, and close
+cleanup. The implementation keeps only a local pending draft; it does not
+claim full IME history, selection, preedit protocol, or universal Unicode
+toolkit compatibility. Non-ASCII transport uses the pinned US-keyboard
+Ctrl+Shift+U route and remains client/toolkit dependent.
+
+The default `androidx.test.runner.AndroidJUnitRunner` remains registered for
+main-process tests, alongside the phone-process runner. The default runner's
+EscapeIme fixture was invoked separately; its environment-specific visible
+IME precondition failed, so that result is not counted as an EscapeIme pass.
+
 The following records the earlier APK before the graphics integration.
 
 ## Automated checks
