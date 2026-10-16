@@ -156,6 +156,30 @@ For optional Android app windows, follow [ANDROID-APPS.md](ANDROID-APPS.md) and
 authorize Shizuku in ADB mode explicitly. No Android root, bootloader unlock,
 flashing, or permission-policy modification is part of the Linux installation.
 
+### Optional Linux browser
+
+Firefox is not part of the base installation. In a running Linux session, a
+user may install the official signed Arch package from the terminal:
+
+```sh
+pacman -S --needed firefox
+```
+
+The installer does not install Firefox or select a default browser. On the
+API35 x86_64 emulator, Firefox displayed a local test page as a native Wayland
+window using `MOZ_ENABLE_WAYLAND=1`. No sandbox-disabling flags or settings
+were changed, and no privilege changes were used. This is a launch/rendering
+check, not an audit of Firefox's sandbox feature availability.
+
+The unmodified upstream `omamobile-launch url` also opened a unique local
+HTTP test page in Firefox after package installation, confirmed by the server
+request and matching native Wayland window title. No explicit default-browser
+configuration was needed for that check.
+
+This result is established for the tested x86_64 emulator only. ARM Firefox
+execution, GPU behavior on other devices, and other browsers remain
+unverified.
+
 ## Validation status
 
 The automatic authenticated x86_64 bootstrap path passed the fresh emulator flow
