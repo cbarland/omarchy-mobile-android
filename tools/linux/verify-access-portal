@@ -38,7 +38,30 @@ if isinstance(current, dict) and isinstance(current.get("id"), str):
     print(current["id"])
 '
 }
+snapshot_matching_id() {
+  local snapshot
+  snapshot=$(timeout 2s omarchy-shell shell call omamobile.access snapshot '') || return 1
+  printf '%s' "$snapshot" | PROBE_TITLE="$title" PROBE_BODY="$body" python3 -c '
+import json, os, re, sys
+try:
+    value = json.load(sys.stdin)
+except ValueError:
+    raise SystemExit(1)
+current = value.get("current") if isinstance(value, dict) else None
+if (isinstance(value, dict) and isinstance(value.get("opened"), bool)
+        and isinstance(value.get("pending"), int) and not isinstance(value.get("pending"), bool)
+        and isinstance(current, dict) and current.get("title") == os.environ["PROBE_TITLE"]
+        and current.get("body") == os.environ["PROBE_BODY"]
+        and current.get("appId") == "org.example.OmamobileProbe"):
+    request_id = current.get("id")
+    if isinstance(request_id, str) and re.fullmatch(r"[0-9a-f]{8,64}", request_id):
+        print(request_id)
+'
+}
 dismiss_owned_request() {
+  if [[ -z "$request_id" ]]; then
+    request_id=$(snapshot_matching_id 2>/dev/null || true)
+  fi
   [[ -n "$request_id" ]] || return 0
   local current_id
   current_id=$(snapshot_current_id 2>/dev/null) || return 0
@@ -111,23 +134,7 @@ call_pid=$!
 
 deadline=$((SECONDS + 15))
 while (( SECONDS < deadline )); do
-  snapshot=$(timeout 2s omarchy-shell shell call omamobile.access snapshot '') || {
-    cat "$tmp/call.err" >&2; exit 1;
-  }
-request_id=$(printf '%s' "$snapshot" | PROBE_TITLE="$title" PROBE_BODY="$body" python3 -c '
-import json, os, re, sys
-value = json.load(sys.stdin)
-current = value.get("current") if isinstance(value, dict) else None
-if isinstance(value, dict) and isinstance(value.get("opened"), bool) \
-        and isinstance(value.get("pending"), int) and not isinstance(value.get("pending"), bool) \
-        and "current" in value and isinstance(current, dict) \
-        and current.get("title") == os.environ["PROBE_TITLE"] \
-        and current.get("body") == os.environ["PROBE_BODY"] \
-        and current.get("appId") == "org.example.OmamobileProbe":
-    request_id = current.get("id")
-    if isinstance(request_id, str) and re.fullmatch(r"[0-9a-f]{8,64}", request_id):
-        print(request_id)
-' 2>/dev/null) || { cat "$tmp/call.err" >&2; exit 1; }
+request_id=$(snapshot_matching_id 2>/dev/null || true)
   [[ -n "$request_id" ]] && break
   kill -0 "$call_pid" 2>/dev/null || { cat "$tmp/call.err" >&2; exit 1; }
   sleep .1

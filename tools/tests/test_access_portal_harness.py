@@ -36,27 +36,23 @@ class AccessPortalHarnessTest(unittest.TestCase):
             (bin_dir / "timeout").write_text("#!/bin/bash\nshift\nexec \"$@\"\n", encoding="utf-8")
             (bin_dir / "omarchy-shell").write_text(
                 "#!/bin/bash\n"
+                "printf '%s\\n' \"$*\" >> \"${FAKE_LOG}\"\n"
                 "if [[ \"$*\" == *' snapshot '* ]]; then cat \"${FAKE_STATE}\"; exit 0; fi\n"
                 "if [[ \"$*\" == *' dismiss '* ]]; then printf 'dismiss %s\\n' \"${FAKE_REQUEST_ID}\" >> \"${FAKE_LOG}\"; printf '%s' '{\"opened\":false,\"pending\":0,\"current\":null}' > \"${FAKE_STATE}\"; exit 0; fi\n"
                 "exit 69\n", encoding="utf-8")
             (bin_dir / "gdbus").write_text(
                 "#!/bin/bash\n"
-                "if [[ \"$*\" == *' AccessDialog '* ]]; then\n"
+                "if [[ \"$*\" == *AccessDialog* ]]; then\n"
                 "  printf 'dialog\\n' >> \"${FAKE_LOG}\"\n"
-                "  python3 - \"$@\" <<'PY'\n"
-                "import json, os, sys, time\n"
-                "args=sys.argv[1:]; i=args.index('org.example.OmamobileProbe'); title=args[i+2]; body=args[i+4]\n"
-                "mode=os.environ['FAKE_MODE']; current={'id':'a1b2c3d4','title':title,'body':body,'appId':'org.example.OmamobileProbe'}\n"
-                "if mode == 'existing': current={'id':'deadbeef','title':'other','body':'other','appId':'other'}\n"
-                "with open(os.environ['FAKE_STATE'],'w') as f: json.dump({'opened':True,'pending':1,'current':current}, f)\n"
-                "if mode == 'fail' or mode == 'existing': sys.exit(1)\n"
-                "time.sleep(.2)\n"
-                "with open(os.environ['FAKE_STATE'],'w') as f: json.dump({'opened':False,'pending':0,'current':None}, f)\n"
-                "print('(uint32 0, @a{sv} {})')\n"
-                "PY\n"
+                "  args=(\"$@\"); for ((i=0; i<${#args[@]}; i++)); do if [[ \"${args[i]}\" == org.example.OmamobileProbe ]]; then title=\"${args[i+2]}\"; body=\"${args[i+4]}\"; fi; done\n"
+                "  FAKE_TITLE=\"${title:-}\" FAKE_BODY=\"${body:-}\" python3 -c 'import json,os; mode=os.environ[\"FAKE_MODE\"]; c={\"id\":\"a1b2c3d4\",\"title\":os.environ[\"FAKE_TITLE\"],\"body\":os.environ[\"FAKE_BODY\"],\"appId\":\"org.example.OmamobileProbe\"}; c={\"id\":\"deadbeef\",\"title\":\"other\",\"body\":\"other\",\"appId\":\"other\"} if mode==\"existing\" else c; json.dump({\"opened\":True,\"pending\":1,\"current\":c},open(os.environ[\"FAKE_STATE\"],\"w\"))'\n"
+                "  if [[ \"${FAKE_MODE}\" == fail || \"${FAKE_MODE}\" == existing ]]; then exit 1; fi\n"
+                "  sleep .2\n"
+                "  printf '%s' '{\"opened\":false,\"pending\":0,\"current\":null}' > \"${FAKE_STATE}\"\n"
+                "  printf '(uint32 0, @a{sv} {})\\n'\n"
                 "  exit 0\n"
                 "fi\n"
-                "if [[ \"$*\" == *' Close '* ]]; then printf 'close\\n' >> \"${FAKE_LOG}\"; exit 0; fi\n"
+                "if [[ \"$*\" == *Close* ]]; then printf 'close\\n' >> \"${FAKE_LOG}\"; exit 0; fi\n"
                 "exit 69\n", encoding="utf-8")
             for script in bin_dir.iterdir():
                 os.chmod(script, 0o755)
