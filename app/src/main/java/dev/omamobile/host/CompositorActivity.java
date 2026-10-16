@@ -5,6 +5,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.Selection;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -189,13 +191,60 @@ public abstract class CompositorActivity extends Activity {
         @Override public InputConnection onCreateInputConnection(EditorInfo info) {
             info.inputType = android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
             info.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI;
-            return new BaseInputConnection(this, false) {
+            return new BaseInputConnection(this, true) {
+                private boolean closed;
+
+                private String clearDraft() {
+                    Editable editable = getEditable();
+                    String draft = editable == null ? "" : editable.toString();
+                    if (editable != null) {
+                        editable.clearSpans();
+                        editable.clear();
+                        Selection.setSelection(editable, 0);
+                    }
+                    return draft;
+                }
+
+                private void emit(CharSequence text) {
+                    if (text != null) text.toString().codePoints().forEach(NativeCompositor::unicode);
+                }
+
                 @Override public boolean commitText(CharSequence text, int cursor) {
-                    text.toString().codePoints().forEach(NativeCompositor::unicode); return true;
+                    if (closed) return false;
+                    String committed = text == null ? "" : text.toString();
+                    clearDraft();
+                    emit(committed);
+                    return true;
+                }
+                @Override public boolean setComposingText(CharSequence text, int cursor) {
+                    return !closed && super.setComposingText(text, cursor);
+                }
+                @Override public boolean finishComposingText() {
+                    if (closed) return false;
+                    emit(clearDraft());
+                    return true;
                 }
                 @Override public boolean deleteSurroundingText(int before, int after) {
+                    if (closed) return false;
+                    Editable editable = getEditable();
+                    if (editable != null && editable.length() > 0)
+                        return super.deleteSurroundingText(before, after);
                     for (int i = 0; i < before; i++) { NativeCompositor.key(14, true); NativeCompositor.key(14, false); }
                     return true;
+                }
+                @Override public boolean deleteSurroundingTextInCodePoints(int before, int after) {
+                    if (closed) return false;
+                    Editable editable = getEditable();
+                    if (editable != null && editable.length() > 0)
+                        return super.deleteSurroundingTextInCodePoints(before, after);
+                    for (int i = 0; i < before; i++) { NativeCompositor.key(14, true); NativeCompositor.key(14, false); }
+                    return true;
+                }
+                @Override public void closeConnection() {
+                    if (closed) return;
+                    closed = true;
+                    clearDraft();
+                    super.closeConnection();
                 }
             };
         }

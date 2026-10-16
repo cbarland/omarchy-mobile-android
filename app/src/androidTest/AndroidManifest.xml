@@ -4,4 +4,8 @@
             android:authorities="dev.omamobile.host.test.blocking-archive"
             android:exported="true" />
     </application>
+    <instrumentation
+        android:name="dev.omamobile.host.PhoneProcessTestRunner"
+        android:targetPackage="dev.omamobile.host"
+        android:targetProcesses="dev.omamobile.host:phone" />
 </manifest>
