@@ -165,6 +165,30 @@ def selected_official_files(evidence, manifest, lock):
     return selected
 
 
+def package_records(manifest, lock, inputs, official):
+    locked = {package["name"]: package for package in lock["packages"]}
+    input_paths = {package: "inputs/archives/" + package + "/" + source.name for package, source in inputs}
+    generic_artifacts = {path.name for path in official if path.name.startswith("artifact-")}
+    records = []
+    for entry in sorted(manifest["archives"], key=lambda item: item["package"]):
+        package = entry["package"]
+        lock_package = locked.get(package)
+        if lock_package is None:
+            fail("actual tree has no locked package record: " + package)
+        recipe_commit = lock_package["recipe"]["commit"]
+        names = {path.name for path in official
+                 if package in path.name or recipe_commit in path.name or entry["commit"] in path.name}
+        names.update(generic_artifacts)
+        records.append({"name": package, "actualArchive": "build-trees/" + package + "/" + entry["archive"],
+                        "actualCommit": entry["commit"], "actualTree": entry["tree"],
+                        "upstream": {"path": input_paths[package],
+                                     "sha256": lock_package["upstream"]["sha256"]},
+                        "recipe": {"commit": recipe_commit, "path": lock_package["recipe"]["path"],
+                                   "sha256": lock_package["recipe"]["sha256"]},
+                        "provenance": sorted(names)})
+    return records
+
+
 def bundle_files(root):
     result = []
     for path in sorted(root.rglob("*")):
@@ -248,6 +272,7 @@ def prepare(evidence, repo_root, output):
     lock, inputs = source_inputs(evidence, repo_root)
     validate_commit_records(evidence, manifest, lock)
     official = selected_official_files(evidence, manifest, lock)
+    package_metadata = package_records(manifest, lock, inputs, official)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=".termux-source-bundle-", dir=output.parent))
     temporary_tar = output.parent / ("." + archive_output.name + ".tmp")
@@ -282,8 +307,8 @@ def prepare(evidence, repo_root, output):
             "before any separate build.\n",
             encoding="utf-8")
         records = file_records(temporary)
-        bundle_manifest = {"format": 1, "kind": "termux-build-source-evidence",
-                           "packages": sorted(EXPECTED_PACKAGES),
+        bundle_manifest = {"format": 2, "kind": "termux-build-source-evidence",
+                           "packages": package_metadata,
                            "limitations": ["No build scripts were executed.",
                                           "Source evidence does not prove shipped binaries were built from these trees."],
                            "files": records}

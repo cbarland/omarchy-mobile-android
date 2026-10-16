@@ -28,17 +28,21 @@ class SourceBundleTest(unittest.TestCase):
         (self.evidence / "sol/official-checksums/run.json").write_text("{}\n")
         self.repo = self.root / "repo"
         (self.repo / "tools/native").mkdir(parents=True)
-        source = self.evidence / "archives/freetype.tar.xz"
-        source.write_bytes(b"upstream\n")
+        upstream = {}
+        for package in sorted(MODULE.EXPECTED_PACKAGES):
+            source = self.evidence / "archives" / (package + ".tar.xz")
+            source.write_bytes(("upstream-" + package + "\n").encode())
+            upstream[package] = source
         lock = {"format": 1, "snapshotKind": "source-input-snapshot",
                 "repository": "https://github.com/termux/termux-packages",
                 "termuxLicense": {"license": "per-package", "url": "https://example.invalid/LICENSE",
-                                  "sha256": "a" * 64}, "packages": [{
-            "name": "freetype", "version": "1", "license": "MIT", "homepage": "https://example.invalid",
-            "upstream": {"url": "https://example.invalid/freetype.tar.xz",
-                         "sha256": hashlib.sha256(source.read_bytes()).hexdigest()},
-            "recipe": {"commit": "0" * 40, "path": "packages/freetype/build.sh",
-                       "url": "https://example.invalid/build.sh", "sha256": "b" * 64}, "patches": []}]}
+                                  "sha256": "a" * 64}, "packages": []}
+        for package, source in upstream.items():
+            lock["packages"].append({"name": package, "version": "1", "license": "MIT",
+                "homepage": "https://example.invalid", "upstream": {"url": "https://example.invalid/" + source.name,
+                "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}, "recipe": {"commit": "0" * 40,
+                "path": "packages/" + package + "/build.sh", "url": "https://example.invalid/build.sh",
+                "sha256": "b" * 64}, "patches": []})
         (self.repo / "tools/native/source-inputs.lock.json").write_text(json.dumps(lock) + "\n")
         (self.repo / "tools/native/prepare_source_inputs.py").write_text("def validate(lock):\n    return None\n")
         for commit in ["0" * 40] + [f"{index + 1:040x}" for index in range(6)]:
@@ -66,7 +70,7 @@ class SourceBundleTest(unittest.TestCase):
         MODULE.prepare(self.evidence, self.repo, second)
         self.assertEqual((first.with_suffix(".tar.gz")).read_bytes(), (second.with_suffix(".tar.gz")).read_bytes())
         manifest = json.loads((first / "manifest.json").read_text())
-        self.assertEqual(set(manifest["packages"]), MODULE.EXPECTED_PACKAGES)
+        self.assertEqual({record["name"] for record in manifest["packages"]}, MODULE.EXPECTED_PACKAGES)
         with tarfile.open(first.with_suffix(".tar.gz"), "r:gz") as archive:
             names = {member.name for member in archive.getmembers()}
         self.assertIn("build-trees/freetype/actual-0000000000000000000000000000000000000001.tar.gz", names)
