@@ -2,8 +2,9 @@
 """Phased, opt-in disposable-fixture check; run inside a prepared Linux session.
 
 This tests Git HTTP download through unchanged omarchy-theme-install using a
-locally generated data-only repository. It does NOT test public HTTPS, TLS,
-DNS, third-party themes, or prove rendered colors from an IPC acknowledgment.
+locally generated data-only repository. An opt-in loopback HTTPS mode uses an
+ephemeral certificate and scoped CA trust; it does not test public HTTPS, DNS,
+third-party themes, or prove rendered colors from an IPC acknowledgment.
 Capture both Android displays after install and after owner reopening for the
 separate appearance check (flat cyan wallpaper, accent #12abef).
 
@@ -31,6 +32,7 @@ from pathlib import Path
 import re
 import shutil
 import signal
+import ssl
 import stat
 import struct
 import subprocess
@@ -65,6 +67,16 @@ def sha(path):
 
 def write_json(path, value):
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+
+def certificate_verification_failed(log):
+    """Recognize Git/OpenSSL trust failures, excluding transport failures."""
+    text = Path(log).read_text(encoding="utf-8", errors="replace").lower()
+    markers = ("self-signed certificate", "unable to get local issuer",
+               "certificate verify failed", "server certificate verification failed")
+    return any(marker in text for marker in markers)
+
+
 
 
 def run(argv, work, label, timeout=30, env=None):
@@ -193,7 +205,7 @@ def preconditions():
         assert_real_ancestors(HOME / relative)
 
 
-def prepare(work):
+def prepare(work, transport="loopback-http-git"):
     preconditions()
     require(not work.exists(), "Refusing to overwrite previous fixture or recovery data: " + str(work))
     original = (HOME / ".local/state/omarchy/current/theme.name").read_text().strip()
@@ -209,7 +221,8 @@ def prepare(work):
             shutil.copytree(path, work / "snapshots" / str(index), symlinks=True, copy_function=shutil.copy2)
     state = {"version": 1, "home": str(HOME), "originalTheme": original,
              "fixture": work.name, "snapshots": saved, "signatures": {},
-             "transport": "loopback-http-git", "publicHttpsVerified": False,
+             "transport": transport,
+             "publicHttpsVerified": False,
              "renderedPaletteVerified": False, "phase": "prepared"}
     write_json(work / "state.json", state)
     print("Prepared snapshot; fixture=" + str(work))
@@ -229,7 +242,19 @@ def png():
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 32, 32, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
 
 
-def install(work, state):
+def tls_material(work):
+    cert = work / "tls-cert.pem"
+    key = work / "tls-key.pem"
+    run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+         "-keyout", str(key), "-out", str(cert), "-subj", "/CN=127.0.0.1",
+         "-addext", "subjectAltName=IP:127.0.0.1"], work, "tls-certificate", timeout=30)
+    key.chmod(0o600)
+    return cert, key
+
+
+def install(work, state, untrusted_cert=False):
+    require(not untrusted_cert or state["transport"] == "loopback-https-git",
+            "Untrusted certificate probe requires HTTPS transport")
     preconditions()
     require(state["phase"] == "prepared", "Install can run only once after prepare")
     target = HOME / ".config/omarchy/themes" / state["fixture"]
@@ -266,14 +291,47 @@ def install(work, state):
             with (work / "http-access.log").open("a") as log:
                 log.write((fmt % args) + "\n")
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    cert, key = (None, None)
+    if state["transport"] == "loopback-https-git":
+        cert, key = tls_material(work)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(certfile=str(cert), keyfile=str(key))
+        server.socket = context.wrap_socket(server.socket, server_side=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    url = "http://127.0.0.1:%d/%s.git" % (server.server_port, state["fixture"])
+    scheme = "https" if state["transport"] == "loopback-https-git" else "http"
+    if scheme == "https":
+        git_env["GIT_SSL_CAINFO"] = str(cert)
+    url = "%s://127.0.0.1:%d/%s.git" % (scheme, server.server_port, state["fixture"])
     state.update(phase="installing", url=url, commit=commit,
                  colorsSha256=sha(source / "colors.toml"), backgroundSha256=sha(source / "backgrounds/fixture.png"))
     write_json(work / "state.json", state)  # Recovery information precedes mutation.
     offset = SYNC_LOG.stat().st_size if SYNC_LOG.exists() else 0
     try:
+        if untrusted_cert:
+            untrusted_env = dict(git_env)
+            untrusted_env.pop("GIT_SSL_CAINFO", None)
+            try:
+                run(["omarchy-theme-install", url], work, "untrusted-install", timeout=90, env=untrusted_env)
+            except RuntimeError:
+                require(certificate_verification_failed(work / "untrusted-install.log"),
+                        "Untrusted probe failed without a certificate-verification diagnostic")
+                require(not target.exists(), "Untrusted certificate created a theme checkout")
+                require((HOME / ".local/state/omarchy/current/theme.name").read_text().strip() == state["originalTheme"],
+                        "Untrusted certificate changed the selected theme")
+                # Leave the recovery record and original home intact, while
+                # removing only generated transport state so a trusted retry
+                # converges on a fresh two-file fixture.
+                for generated in (work / "source", work / "www", work / "tls-cert.pem", work / "tls-key.pem"):
+                    if generated.is_dir():
+                        shutil.rmtree(generated)
+                    elif generated.exists():
+                        generated.unlink()
+                state["phase"] = "prepared"
+                write_json(work / "state.json", state)
+                print("Untrusted certificate rejected before theme mutation")
+                return
+            raise RuntimeError("Untrusted certificate unexpectedly succeeded")
         run(["omarchy-theme-install", url], work, "upstream-install", timeout=90, env=git_env)
     finally:
         server.shutdown()
@@ -370,7 +428,7 @@ def restore(work, state):
         shutil.rmtree(target)
     state["phase"] = "restored"
     write_json(work / "state.json", state)
-    write_json(work / "result.json", {"transport": "loopback-http-git", "publicHttpsVerified": False,
+    write_json(work / "result.json", {"transport": state["transport"], "publicHttpsVerified": False,
                "bothOwnersReopened": set(state.get("reopened", {})) == {"phone", "desktop"},
                "renderedPaletteVerified": False, "originalThemeRestored": state["originalTheme"],
                "originalThemeDataRestored": True, "fixtureCheckoutRemoved": True})
@@ -383,17 +441,22 @@ def main():
     parser.add_argument("work", type=safe_work)
     parser.add_argument("--stage", default="installed", choices=("installed", "reopened"))
     parser.add_argument("--require-restart", action="store_true")
+    parser.add_argument("--untrusted-cert", action="store_true", help="Negative HTTPS install probe; no theme mutation expected")
+    parser.add_argument("--transport", choices=("loopback-http-git", "loopback-https-git"),
+                        default="loopback-http-git", help="Generated two-file fixture transport")
     args = parser.parse_args()
+    require(not args.untrusted_cert or args.action == "install",
+            "--untrusted-cert is valid only with install")
     def terminate(_signum, _frame):
         raise InterruptedError("Fixture terminated; preserve WORK recovery snapshots")
     signal.signal(signal.SIGTERM, terminate)
     if args.action == "prepare":
-        prepare(args.work)
+        prepare(args.work, args.transport)
         return
     state = load(args.work)
     if args.action == "install":
         try:
-            install(args.work, state)
+            install(args.work, state, args.untrusted_cert)
         except BaseException:
             if state["phase"] in ("installing", "installed"):
                 try:

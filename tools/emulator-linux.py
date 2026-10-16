@@ -84,9 +84,11 @@ if a.action in ("start", "stop"):
     # navigation reaches the same visible button without assuming coordinates.
     for attempt in range(16):
         button = next((n for n in tree.iter("node") if n.get("text") == control and n.get("package") == "dev.omamobile.host"), None)
-        if button is None:
+        # ScrollView omits off-screen controls from the accessibility dump.
+        # Bounded Tab navigation can reveal them, but never navigate a system dialog.
+        if button is None and not any(n.get("package") == "dev.omamobile.host" for n in tree.iter("node")):
             raise RuntimeError(control + " control is obscured; unlock the phone and dismiss Android system panels")
-        if button.get("focused") == "true":
+        if button is not None and button.get("focused") == "true":
             break
         adb_run(adb + ["shell", "input", "keyboard", "-d", "0", "keyevent", "KEYCODE_TAB"], check=True)
         adb_run(adb + ["shell", "uiautomator", "dump", "/data/local/tmp/omamobile-start.xml"], check=True, capture_output=True)
