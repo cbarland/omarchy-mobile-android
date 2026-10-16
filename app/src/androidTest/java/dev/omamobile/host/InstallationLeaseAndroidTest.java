@@ -29,6 +29,8 @@ public class InstallationLeaseAndroidTest {
         String name = "lease-" + UUID.randomUUID();
         Path scratch = root.resolve("tmp").resolve(name);
         Path capture = Files.createTempFile(context.getFilesDir().toPath(), ".lease-probe-", ".json");
+        Path report = context.getFilesDir().toPath().resolve("lease-probe-report.json");
+        Process process = null;
         try (InstallationLease ignored = InstallationLease.acquire(scratch, InstallationLease.Mode.SHARED_USE)) {
             assertThrows(java.io.IOException.class, () -> InstallationLease.acquire(scratch, InstallationLease.Mode.EXCLUSIVE_INSTALL));
             Path lock = scratch.resolve(".installation-lease");
@@ -38,19 +40,31 @@ public class InstallationLeaseAndroidTest {
                     + "v={'inode':os.stat(f.fileno()).st_ino}\n"
                     + "try:\n fcntl.lockf(f,fcntl.LOCK_EX|fcntl.LOCK_NB); v['status']='GRANTED'; print(json.dumps(v)); sys.exit(2)\n"
                     + "except BlockingIOError:\n v['status']='BUSY'; print(json.dumps(v)); sys.exit(0)\n";
-            Process process = new ProcessBuilder(RuntimeSpec.command(
+            process = new ProcessBuilder(RuntimeSpec.command(
                     new File(context.getApplicationInfo().nativeLibraryDir, "libtawcroot.so").toPath(), root,
                     List.of(new RuntimeSpec.Bind("/dev", "/dev", false), new RuntimeSpec.Bind("/proc", "/proc", false)),
                     List.of("/usr/bin/python3", "-c", script)))
                     .directory(root.toFile()).redirectErrorStream(true).redirectOutput(capture.toFile()).start();
             boolean completed = process.waitFor(20, TimeUnit.SECONDS);
             if (!completed) { process.destroyForcibly(); process.waitFor(2, TimeUnit.SECONDS); }
-            assertTrue("Guest lock probe timed out: " + read(capture), completed);
-            assertEquals("Guest lock probe failed: " + read(capture), 0, process.exitValue());
-            JSONObject result = new JSONObject(read(capture));
+            String raw = read(capture);
+            Files.write(report, raw.getBytes(StandardCharsets.UTF_8));
+            assertTrue("Guest lock probe timed out: " + raw, completed);
+            JSONObject result = new JSONObject(raw);
+            JSONObject evidence = new JSONObject().put("hostInode", hostInode)
+                    .put("guestInode", result.getLong("inode"))
+                    .put("inodeMatches", hostInode == result.getLong("inode"))
+                    .put("status", result.getString("status"))
+                    .put("exitCode", process.exitValue());
+            Files.write(report, (evidence.toString() + "\n").getBytes(StandardCharsets.UTF_8));
             assertEquals(hostInode, result.getLong("inode"));
             assertEquals("BUSY", result.getString("status"));
+            assertEquals("Guest lock probe failed: " + evidence, 0, process.exitValue());
         } finally {
+            if (process != null && process.isAlive()) {
+                process.destroyForcibly();
+                process.waitFor(2, TimeUnit.SECONDS);
+            }
             Files.deleteIfExists(capture);
             GuestPaths.deleteTree(scratch);
         }

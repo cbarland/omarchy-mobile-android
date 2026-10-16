@@ -7,6 +7,8 @@ import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Cross-process ownership of the app's Linux installation directory. */
 final class InstallationLease implements AutoCloseable {
@@ -14,15 +16,24 @@ final class InstallationLease implements AutoCloseable {
 
     private final FileChannel channel;
     private final FileLock lock;
+    private final Path ownerKey;
+    private final Object owner;
+    private final AtomicBoolean closed = new AtomicBoolean();
+    private static final ConcurrentHashMap<Path, Object> OWNERS = new ConcurrentHashMap<>();
 
-    private InstallationLease(FileChannel channel, FileLock lock) {
+    private InstallationLease(FileChannel channel, FileLock lock, Path ownerKey, Object owner) {
         this.channel = channel;
         this.lock = lock;
+        this.ownerKey = ownerKey;
+        this.owner = owner;
     }
 
     static InstallationLease acquire(Path linux, Mode mode) throws IOException {
         Files.createDirectories(linux);
-        FileChannel channel = FileChannel.open(linux.resolve(".installation-lease"),
+        Path ownerKey = linux.toRealPath();
+        Object owner = new Object();
+        if (OWNERS.putIfAbsent(ownerKey, owner) != null) throw new IOException("Linux installation is busy");
+        FileChannel channel = FileChannel.open(ownerKey.resolve(".installation-lease"),
                 StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
         try {
             FileLock lock;
@@ -32,14 +43,17 @@ final class InstallationLease implements AutoCloseable {
                 throw new IOException("Linux installation is busy", busy);
             }
             if (lock == null) throw new IOException("Linux installation is busy");
-            return new InstallationLease(channel, lock);
+            return new InstallationLease(channel, lock, ownerKey, owner);
         } catch (IOException | RuntimeException error) {
             try { channel.close(); } catch (IOException ignored) { }
+            OWNERS.remove(ownerKey, owner);
             throw error;
         }
     }
 
     @Override public void close() throws IOException {
+        if (!closed.compareAndSet(false, true)) return;
+        OWNERS.remove(ownerKey, owner);
         try { lock.close(); }
         finally { channel.close(); }
     }
