@@ -21,10 +21,12 @@ import static org.junit.Assert.*;
 
 public class AndroidAppPortalTest {
     private byte[] lastImage = new byte[0];
-    private LocalSocket connect() throws Exception {
+    private LocalSocket connect() throws Exception { return connect(true); }
+    private LocalSocket connect(boolean startMainActivity) throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         org.junit.Assume.assumeTrue("Prepared Linux installation required", HostRuntime.get(context).installed());
-        context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        if (startMainActivity)
+            context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         context.startForegroundService(new Intent(context, DesktopService.class));
         String path = new File(context.getFilesDir(), SessionRuntime.HOST_ALIAS + "/android.sock").toString();
         for (int attempt = 0; attempt < 100; attempt++) {
@@ -78,22 +80,53 @@ public class AndroidAppPortalTest {
         assertEquals(host.getBoolean("deviceLocked"), cli.getBoolean("deviceLocked"));
         assertEquals(host.getBoolean("interactive"), cli.getBoolean("interactive"));
     }
-    @Test public void linuxDisplaySettingsRequestShowsExistingPhonePanel() throws Exception {
+    @Test public void linuxDisplaySettingsRequestShowsColdAndReusedPhonePanel() throws Exception {
         org.junit.Assume.assumeTrue("Explicit -e graphics true and prepared Linux required",
                 "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
         var instrumentation = InstrumentationRegistry.getInstrumentation();
         Context context = instrumentation.getTargetContext();
-        try (LocalSocket socket = connect()) {
+        try (LocalSocket socket = connect(false)) {
             JSONObject reply = request(socket, new JSONObject().put("op", "display-settings"));
             assertTrue(reply.toString(), reply.getBoolean("ok"));
             assertTrue(reply.toString(), reply.getBoolean("requested"));
+            MainActivity activity = awaitMainActivity(instrumentation);
+            assertTrue(displayDialog(activity).isShowing());
+            MainActivity first = activity;
+            instrumentation.runOnMainSync(() -> displayDialogUnchecked(first).dismiss());
+
+            String cli = runLinuxClient(context, context.getFilesDir().toPath().resolve("linux/rootfs"),
+                    "display-settings", "portal-display-settings-");
+            assertEquals("Android display settings requested", cli);
+            activity = awaitMainActivity(instrumentation);
+            assertTrue(displayDialog(activity).isShowing());
+            MainActivity second = activity;
+            instrumentation.runOnMainSync(() -> displayDialogUnchecked(second).dismiss());
         }
-        var device = androidx.test.uiautomator.UiDevice.getInstance(instrumentation);
+    }
+    private static MainActivity awaitMainActivity(android.app.Instrumentation instrumentation) {
         long deadline = SystemClock.uptimeMillis() + 5000;
-        while (device.findObject(androidx.test.uiautomator.By.text("Android displays")) == null
-                && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(50);
-        assertNotNull("Linux portal request must show the existing phone display panel",
-                device.findObject(androidx.test.uiautomator.By.text("Android displays")));
+        while (SystemClock.uptimeMillis() < deadline) {
+            for (var activity : androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED))
+                if (activity instanceof MainActivity) return (MainActivity) activity;
+            SystemClock.sleep(50);
+        }
+        fail("Display request must resume MainActivity on the default display");
+        return null;
+    }
+    private static android.app.Dialog displayDialog(MainActivity activity) throws Exception {
+        return displayDialogUnchecked(activity);
+    }
+    private static android.app.Dialog displayDialogUnchecked(MainActivity activity) {
+        try {
+            var owner = MainActivity.class.getDeclaredField("displaySettings");
+            owner.setAccessible(true);
+            var dialog = DisplaySettings.class.getDeclaredField("dialog");
+            dialog.setAccessible(true);
+            return (android.app.Dialog) dialog.get(owner.get(activity));
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError(error);
+        }
     }
     @Test public void linuxClientReachesTheSamePortal() throws Exception {
         org.junit.Assume.assumeTrue("Explicit -e graphics true and prepared Linux required",
