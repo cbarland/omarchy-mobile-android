@@ -10,6 +10,7 @@ import sys
 import time
 
 AVD = "Omamobile_Adapter_Test_API35"
+INSTALL_AVD = "Omamobile_Install_Trust_API35"
 APP = "dev.omamobile.host"
 PHASES = ((1920, 1080, 160), (1280, 720, 160), (720, 1280, 240), (1920, 1080, 160))
 
@@ -66,10 +67,10 @@ def await_mode(adb, root, expected, owners):
         time.sleep(.2)
 
 
-def verify(adb, root):
+def verify(adb, root, phase_probe=None):
     avd = run(adb + ["emu", "avd", "name"]).splitlines()[0].strip()
-    if avd != AVD:
-        raise RuntimeError(f"Refusing AVD {avd!r}; expected {AVD}")
+    if avd not in (AVD, INSTALL_AVD):
+        raise RuntimeError(f"Refusing AVD {avd!r}; expected one of {(AVD, INSTALL_AVD)!r}")
     owners = {name: profile(adb, name) for name in ("phone", "desktop")}
     original = android_mode(run(adb + ["shell", "dumpsys", "display"]), owners["desktop"]["displayId"])
     baseline = await_mode(adb, root, original, owners)
@@ -77,7 +78,10 @@ def verify(adb, root):
     try:
         for mode in PHASES:
             run(adb + ["emu", "multidisplay", "add", "1", *map(str, mode), "0"])
-            result["phases"].append(await_mode(adb, root, mode, owners))
+            phase = await_mode(adb, root, mode, owners)
+            if phase_probe is not None:
+                phase["pointer"] = phase_probe(phase)
+            result["phases"].append(phase)
     except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, KeyError) as error:
         result["error"] = str(error)
     finally:

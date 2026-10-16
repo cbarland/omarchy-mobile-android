@@ -50,6 +50,23 @@ class GeometryTests(unittest.TestCase):
         self.assertFalse(result["passed"])
         self.assertIn("restored", result)
 
+    def test_probe_failure_still_restores_geometry(self):
+        commands = []
+        original = (1440, 900, 240)
+        owner = {"pid": "123", "signature": "live", "displayId": 2}
+        def command(argv):
+            commands.append(argv)
+            return M.AVD if argv[-2:] == ["avd", "name"] else "dump"
+        def probe(_phase):
+            raise RuntimeError("pointer evidence unavailable")
+        with patch.object(M, "run", side_effect=command), patch.object(M, "profile", return_value=owner), \
+                patch.object(M, "android_mode", return_value=original), patch.object(M, "await_mode", return_value={"mode": original}):
+            result = M.verify(["adb", "-s", "emulator-5556"], Path("."), phase_probe=probe)
+        mutations = [c for c in commands if "multidisplay" in c]
+        self.assertFalse(result["passed"])
+        self.assertIn("restored", result)
+        self.assertEqual(mutations[-1][-4:], ["1440", "900", "240", "0"])
+
     def test_failed_restoration_never_reports_success(self):
         result = self.exercise(fail_restore=True)
         self.assertFalse(result["passed"])

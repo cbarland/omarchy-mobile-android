@@ -6,7 +6,7 @@ import sys
 
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, Gdk
+from gi.repository import Gtk, Gdk, GLib
 
 log_path = sys.argv[1]
 rows = 2
@@ -34,7 +34,7 @@ def press(widget, event):
     return True
 
 Gtk.init([])
-window = Gtk.Window(title="Omamobile pointer geometry fixture")
+window = Gtk.Window(title="Omamobile pointer geometry fixture pid=" + str(os.getpid()))
 window.fullscreen()
 window.set_app_paintable(True)
 drawing = Gtk.DrawingArea()
@@ -43,4 +43,5 @@ drawing.connect("size-allocate", allocate)
 drawing.connect("button-press-event", press)
 window.add(drawing)
 window.show_all()
+GLib.timeout_add_seconds(60, Gtk.main_quit)
 Gtk.main()
