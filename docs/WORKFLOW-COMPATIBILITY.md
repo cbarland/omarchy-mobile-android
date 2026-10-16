@@ -51,6 +51,26 @@ index was live and returned bounded passages. No upstream source was copied;
 the audit confirmed the current environment already satisfies the relevant
 desktop filtering contract.
 
+## Quickshell discovery and reload boundary
+
+The pinned Omarchy Mobile documentation shows `quickshell list --all` as a
+diagnostic for selecting the nested shell's Wayland display, while the
+upstream Omarchy CLI sends normal operations through the shell's own IPC
+socket. On hosted Android sessions, the former can omit a live instance even
+when `omarchy-shell shell ping` succeeds. `omamobile-shell status` keeps these
+signals separate: discovery is diagnostic, and IPC ping is the readiness
+proof. `omamobile-shell reload` forwards `reloadConfig` and preserves its exit
+status. `omamobile-shell list` remains the raw Quickshell discovery command.
+The helper is Android-session-only and does not create a daemon or systemd
+scope.
+
+The source reference is Omarchy Mobile commit
+`953bcb3058347459cdf7faaa1e149f16e0f7cfa6`,
+[`packages/omamobile-shell/plugins/README.md`](https://github.com/derekross/omarchy-mobile/blob/953bcb3058347459cdf7faaa1e149f16e0f7cfa6/packages/omamobile-shell/plugins/README.md#testing-in-the-desktop-harness),
+under its MIT license. The adapter does not copy upstream code; it preserves
+the documented CLI boundary and adds only the Android-session lifecycle
+wrapper.
+
 ## HTTPS theme transport check
 
 The harness keeps its reviewed generated two-file data fixture and can exercise
