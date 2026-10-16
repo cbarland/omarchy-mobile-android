@@ -163,5 +163,12 @@ A separate actual Export control -> Android Downloads picker -> Save flow
 completed through the document provider. Inspection of the resulting 98,904,258
 byte tar.gz found 1,256 regular files and 13 symlinks, all under root/ or home/;
 the foreground LinuxService had exited after completion. No archive or private
-Linux data is committed to the repository. Restore/replacement and authenticated
+Linux data is committed to the repository. In-place restore/replacement and authenticated
 image download remain open in issue #3.
+
+Separate-copy recovery then passed with the existing export and service tests:
+seven Android checks in 29.945s, plus 39 JVM tests and lint. A separate actual
+Recover control → Downloads document picker flow recovered a generated 41-byte
+file with mode `0640`, retained the guest root's `0555` permissions and stopped
+LinuxService afterward. The Android round trip includes a normal external
+plugin symlink; it remains intelligible and dangling inside the isolated copy.
