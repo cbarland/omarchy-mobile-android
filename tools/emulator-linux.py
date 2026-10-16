@@ -62,7 +62,6 @@ def session_adb_command(profile, session_text, *, metadata_timeout=30, deadline=
     architecture = metadata(["shell", "getprop", "ro.product.cpu.abi"]).strip()
     native = apk.rsplit("/", 1)[0] + "/lib/" + ("arm64" if architecture == "arm64-v8a" else architecture)
     root = ready["ROOTFS"]
-    files = root.removesuffix("/linux/rootfs")
     runtime = "/run/omamobile/" + ("p" if profile == "phone" else "d")
     argv = ["run-as", "dev.omamobile.host", "/system/bin/env", "-i", "HOME=/root", "USER=root", "LANG=C.UTF-8",
             "PATH=/usr/lib/omamobile/session-bin:/root/.local/share/omarchy/bin:/usr/local/bin:/usr/bin:/bin", "OMARCHY_PATH=/root/.local/share/omarchy",
@@ -72,7 +71,7 @@ def session_adb_command(profile, session_text, *, metadata_timeout=30, deadline=
             "QT_QPA_PLATFORM=wayland", "QT_QUICK_BACKEND=software", "QSG_RENDER_LOOP=basic",
             "/system/bin/sh", "-c", 'cd "$1" && shift && exec "$@"', "omamobile-session", root + "/root",
             native + "/libtawcroot.so", "-s", "-r", root, "-b", "/dev:/dev", "-b", "/proc:/proc",
-            "-b", files + "/r:/run/omamobile", "--", "/bin/bash", "-c", session_text]
+            "--", "/bin/bash", "-c", session_text]
     return adb + ["shell", shlex.join(argv)]
 
 if a.action in ("start", "stop"):

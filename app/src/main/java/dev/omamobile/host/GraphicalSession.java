@@ -35,8 +35,7 @@ final class GraphicalSession {
             throw new IOException("Prepare the upstream Omarchy Linux shell profiles first (see docs/GRAPHICS.md)");
         home = Files.createDirectories(files.resolve("graphics/" + profile));
         // Keep Unix-domain IPC addresses beneath sockaddr_un's 108-byte limit.
-        runtime = Files.createDirectories(files.resolve("r/" + (phone ? "p" : "d")));
-        HostRuntime.chmod(runtime, 0700);
+        runtime = SessionRuntime.prepare(files, root, profile);
         // Each display owns a separate lifetime pipe/socket. A phone teardown
         // cannot revoke the desktop's Android commands (or the batch console's).
         androidBroker = new AndroidBroker(new File(context.getApplicationInfo().nativeLibraryDir, "libando.so"),
@@ -104,7 +103,6 @@ final class GraphicalSession {
         binds.add(new RuntimeSpec.Bind("/dev", "/dev", false));
         binds.add(new RuntimeSpec.Bind("/proc", "/proc", false));
         binds.add(new RuntimeSpec.Bind("/sys", "/sys", true));
-        binds.add(new RuntimeSpec.Bind(files.resolve("r").toString(), "/run/omamobile", false));
         binds.add(new RuntimeSpec.Bind(androidBroker.directory.toString(), "/run/omamobile-ando", false));
         // Only the app-owned staging directory is mounted; the shared Linux
         // installation and user executables are never overwritten.

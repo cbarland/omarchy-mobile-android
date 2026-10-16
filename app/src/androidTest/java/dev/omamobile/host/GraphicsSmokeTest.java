@@ -68,6 +68,13 @@ public class GraphicsSmokeTest {
                 assertTrue(profile + " config errors: " + errors, errorLines.getString(i).trim().isEmpty());
             var scale = new org.json.JSONObject(ipc(context, profile, properties, "getoption", "debug:disable_scale_checks"));
             assertTrue(profile + " scale option was not applied: " + scale, scale.getBoolean("bool") && scale.getBoolean("set"));
+            assertEquals(profile + " runtime symlink probe failed", "ok", runGuest(context, profile, properties,
+                    List.of("/usr/bin/python3", "-c", RUNTIME_SYMLINK_PROBE)).trim());
+            String instances = runGuest(context, profile, properties,
+                    List.of("/usr/bin/quickshell", "list", "-a", "-j")).trim();
+            var discovered = new org.json.JSONArray(instances);
+            assertTrue(profile + " quickshell discovery returned no live instances: " + instances,
+                    discovered.length() >= 1);
         }
         awaitWidgetGuard(files);
     }
@@ -92,12 +99,17 @@ public class GraphicsSmokeTest {
 
     static String ipc(Context context, String profile, Properties properties, String command, String... arguments) throws Exception {
         Path files = context.getFilesDir().toPath();
-        String runtime = "/run/omamobile/" + (profile.equals("phone") ? "p" : "d");
         var guest = new java.util.ArrayList<>(List.of("/usr/bin/hyprctl", "-j", command));
         guest.addAll(java.util.Arrays.asList(arguments));
+        return runGuest(context, profile, properties, guest);
+    }
+
+    private static String runGuest(Context context, String profile, Properties properties, List<String> guest) throws Exception {
+        Path files = context.getFilesDir().toPath();
+        String runtime = "/run/omamobile/" + (profile.equals("phone") ? "p" : "d");
         var argv = RuntimeSpec.command(new File(context.getApplicationInfo().nativeLibraryDir, "libtawcroot.so").toPath(),
                 files.resolve("linux/rootfs"), List.of(new RuntimeSpec.Bind("/dev", "/dev", false),
-                        new RuntimeSpec.Bind("/proc", "/proc", false), new RuntimeSpec.Bind(files.resolve("r").toString(), "/run/omamobile", false)),
+                        new RuntimeSpec.Bind("/proc", "/proc", false)),
                 guest);
         ProcessBuilder builder = new ProcessBuilder(argv).directory(files.toFile()).redirectErrorStream(true);
         builder.environment().clear(); builder.environment().putAll(RuntimeSpec.environment(false));
@@ -107,6 +119,34 @@ public class GraphicsSmokeTest {
         if (!process.waitFor(5, TimeUnit.SECONDS)) { process.destroyForcibly(); return "Hyprland IPC timed out"; }
         return new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
     }
+
+    private static final String RUNTIME_SYMLINK_PROBE = """
+            import os, pathlib, shutil
+            root = pathlib.Path(os.environ['XDG_RUNTIME_DIR']) / 'omamobile-runtime-probe'
+            shutil.rmtree(root, ignore_errors=True)
+            by_id = root / 'by-id' / 'fixture'
+            by_pid = root / 'by-pid'
+            by_id.mkdir(parents=True)
+            by_pid.mkdir()
+            lock = by_id / 'instance.lock'
+            lock.write_bytes(b'fixture')
+            absolute = by_pid / 'absolute'
+            relative = by_pid / 'relative'
+            os.symlink(str(by_id), absolute)
+            os.symlink('../by-id/fixture', relative)
+            try:
+                assert (absolute / 'instance.lock').read_bytes() == b'fixture'
+                assert (relative / 'instance.lock').read_bytes() == b'fixture'
+                assert os.readlink(absolute) == str(by_id)
+                fd = os.open(absolute / 'instance.lock', os.O_RDONLY)
+                try: assert os.fstat(fd).st_size == 7
+                finally: os.close(fd)
+                os.unlink(relative)
+                assert not relative.exists()
+                print('ok', end='')
+            finally:
+                shutil.rmtree(root, ignore_errors=True)
+            """;
 
     private static String logs(Path home) throws Exception {
         StringBuilder logs = new StringBuilder();
