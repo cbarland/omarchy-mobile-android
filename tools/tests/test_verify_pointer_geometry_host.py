@@ -72,6 +72,41 @@ class PointerGeometryTests(unittest.TestCase):
             M.compare_phase(phase, surface, [{"cell": 0, "x": 480, "y": 270}],
                             [(480, 270), (1440, 810)])
 
+    def test_probe_counts_new_events_after_the_viewport_converges(self):
+        phase = {"mode": (1920, 1080, 160), "monitor": {"scale": 1, "transform": 0},
+                 "owners": {"desktop": {"displayId": 2}}}
+        surface = {"frame": (0, 0, 1920, 1080), "crop": (0.0, 0.0, 1920.0, 1080.0)}
+        allocation = {"width": 1920, "height": 1080}
+        class RecordingFixture:
+            def __init__(self):
+                self.events = [{"cell": 0, "x": 480, "y": 270},
+                               {"cell": 3, "x": 1440, "y": 810}]
+                self.taps = []
+            def read(self):
+                return {"allocation": allocation, "events": list(self.events)}
+            def tap(self, display, x, y):
+                self.taps.append((display, x, y))
+                self.events.append({"cell": 0 if x < 960 else 3, "x": x, "y": y})
+        fixture = RecordingFixture()
+        with patch.object(M, "wait_phase_viewport", return_value=(surface, allocation)):
+            result = M.probe_phase([], "emulator-5558", M.ROOT, phase, fixture)
+        self.assertEqual(fixture.taps, [(2, 480, 270), (2, 1440, 810)])
+        self.assertEqual(len(fixture.events), 4)
+        self.assertEqual(len(result["events"]), 2)
+        self.assertEqual(phase["fixtureAllocation"], allocation)
+
+    def test_probe_rejects_old_matching_events_when_new_taps_are_lost(self):
+        phase = {"mode": (1920, 1080, 160), "monitor": {"scale": 1, "transform": 0},
+                 "owners": {"desktop": {"displayId": 2}}}
+        surface = {"frame": (0, 0, 1920, 1080), "crop": (0.0, 0.0, 1920.0, 1080.0)}
+        fixture = unittest.mock.Mock()
+        fixture.read.return_value = {"events": [{"cell": 0, "x": 480, "y": 270},
+                                                 {"cell": 3, "x": 1440, "y": 810}]}
+        with patch.object(M, "wait_phase_viewport", return_value=(surface, {"width": 1920, "height": 1080})), \
+                patch.object(M.time, "monotonic", side_effect=[0, 0, 6]), patch.object(M.time, "sleep"):
+            with self.assertRaisesRegex(RuntimeError, "exactly two new events"):
+                M.probe_phase([], "emulator-5558", M.ROOT, phase, fixture)
+
     def test_surface_and_gtk_poll_until_both_converge(self):
         phase = {"mode": (1920, 1080, 160), "monitor": {"scale": 1, "transform": 0}}
         old = {"frame": (0, 0, 1280, 720), "crop": (0.0, 0.0, 1280.0, 720.0)}
