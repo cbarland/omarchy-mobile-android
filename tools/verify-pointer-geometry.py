@@ -12,6 +12,7 @@ import math
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -123,7 +124,7 @@ class Fixture:
 
     def _app(self, text):
         return self._call([self.adb, "-s", self.serial, "shell", "run-as", "dev.omamobile.host",
-                           "sh", "-c", text])
+                           *shlex.split(text)])
 
     def read(self):
         try:
@@ -147,8 +148,8 @@ class Fixture:
             self._app(f"rm -f files/linux/rootfs/root/.{self.token}/fixture.py "
                       f"files/linux/rootfs/root/.{self.token}/events.json "
                       f"files/linux/rootfs/root/.{self.token}/events.json.tmp "
-                      f"files/linux/rootfs/root/.{self.token}/events.json.log && "
-                      f"rmdir files/linux/rootfs/root/.{self.token}")
+                      f"files/linux/rootfs/root/.{self.token}/events.json.log")
+            self._app(f"rmdir files/linux/rootfs/root/.{self.token}")
             self.guest_dir_owned = False
         if self.remote_pushed:
             self._call([self.adb, "-s", self.serial, "shell", "rm", self.remote_script])
