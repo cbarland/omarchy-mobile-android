@@ -4,6 +4,21 @@ Development began 2026-10-14. This file records the tested milestone, not overal
 
 ## Current accounting — 2026-10-16
 
+### Android portal runtime regression — 2026-10-16
+
+Moving the graphical runtime exposed a missed dependent consumer: the Android
+app portal still bound `files/r/android.sock`, while Linux clients looked in
+the guest-owned runtime. The live Linux command failed with `ENOENT`; the new
+host/guest integration test also fails on that APK. Shared alias initialization
+now puts the portal at the same physical location as its unchanged Linux path.
+
+The candidate passes three direct emulator tests in 13.630s: protocol rejection,
+the real Linux app-list command compared with the host socket response, and
+controller shutdown after proving both profile brokers initially accept
+connections. The full graphical APK/test APK build, 69 JVM checks and lint
+pass, with the POSIX-only JVM fixture skipped on Windows. This socket test
+does not by itself reverify Android-window frames or Shizuku input.
+
 ### Fourth merged batch — 2026-10-16
 
 PRs #19 (guest-owned runtime paths) and #20 (bounded sleep/wake audit) were
