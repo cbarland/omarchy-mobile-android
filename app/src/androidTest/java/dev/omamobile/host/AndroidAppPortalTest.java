@@ -33,7 +33,8 @@ public class AndroidAppPortalTest {
         org.junit.Assume.assumeTrue("Prepared Linux installation required", HostRuntime.get(context).installed());
         if (startMainActivity)
             context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        context.startForegroundService(new Intent(context, DesktopService.class));
+        if (startMainActivity)
+            context.startForegroundService(new Intent(context, DesktopService.class));
         String path = new File(context.getFilesDir(), SessionRuntime.HOST_ALIAS + "/android.sock").toString();
         for (int attempt = 0; attempt < 100; attempt++) {
             try {
@@ -162,7 +163,22 @@ public class AndroidAppPortalTest {
             if (found.get() != null) return found.get();
             SystemClock.sleep(50);
         }
-        fail("Display request must resume MainActivity on the default display");
+        AtomicReference<String> state = new AtomicReference<>("unknown");
+        instrumentation.runOnMainSync(() -> {
+            StringBuilder value = new StringBuilder();
+            for (var stage : androidx.test.runner.lifecycle.Stage.values()) {
+                int count = 0;
+                for (var activity : androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                        .getActivitiesInStage(stage)) {
+                    count++;
+                    if (activity instanceof MainActivity)
+                        value.append(" MainActivity@").append(activity.getDisplay().getDisplayId());
+                }
+                if (count != 0) value.append(" ").append(stage).append("=").append(count);
+            }
+            state.set(value.toString());
+        });
+        fail("Display request must resume MainActivity on the default display; lifecycle:" + state.get());
         return null;
     }
     private static boolean dialogShowing(android.app.Instrumentation instrumentation, MainActivity activity) {
