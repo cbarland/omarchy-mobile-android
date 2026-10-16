@@ -102,13 +102,13 @@ class Sampler:
         self.avd = run(self.adb + ["emu", "avd", "name"], args.command_timeout).splitlines()[0].strip()
         if self.avd != args.expected_avd:
             raise RuntimeError(f"refusing AVD {self.avd!r}; expected {args.expected_avd!r}")
+        self.app_uid = int(run(self.adb + ["exec-out", "run-as", APP, "id", "-u"], args.command_timeout).strip())
         self.page_size = int(run(self.adb + ["shell", "getconf", "PAGESIZE"], args.command_timeout).strip())
 
     def android_stat(self, pid):
         stat = parse_proc_stat(run(self.adb + ["exec-out", "run-as", APP, "cat", f"/proc/{pid}/stat"], self.args.command_timeout))
         uid = parse_proc_uid(run(self.adb + ["exec-out", "run-as", APP, "cat", f"/proc/{pid}/status"], self.args.command_timeout))
-        expected = int(run(self.adb + ["exec-out", "run-as", APP, "id", "-u"], self.args.command_timeout).strip())
-        if uid != expected:
+        if uid != self.app_uid:
             raise RuntimeError(f"Android PID {pid} is not owned by {APP}")
         return stat
 
@@ -118,8 +118,8 @@ class Sampler:
         stat = parse_proc_stat(run(command, self.args.command_timeout))
         uid_command = [sys.executable, str(self.root / "tools/emulator-linux.py"), "--adb", self.args.adb,
                         "--serial", self.args.serial, "session", profile, f"cat /proc/{pid}/status"]
-        if parse_proc_uid(run(uid_command, self.args.command_timeout)) != 0:
-            raise RuntimeError(f"guest PID {pid} is not owned by the root guest session")
+        if parse_proc_uid(run(uid_command, self.args.command_timeout)) != self.app_uid:
+            raise RuntimeError(f"guest PID {pid} is not owned by the app UID")
         return stat
 
     def android_count(self):

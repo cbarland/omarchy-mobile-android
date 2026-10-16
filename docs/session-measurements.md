@@ -37,8 +37,9 @@ foreground/background conditions. This tool is not a battery benchmark and
 does not use root, Shizuku, a private-device scan, or synthetic `/proc` data.
 
 Android process samples are read through `adb exec-out run-as dev.omamobile.host`
-and require the `/proc` status UID to match the app UID. Guest samples require
-the guest session's root UID. The supplied process count commands are operator
+and require the `/proc` status UID to match the app UID. Guest processes are
+also app-owned processes in the current guest architecture, so guest samples
+require that same app UID; they do not assume a virtual root UID. The supplied process count commands are operator
 evidence only; their command text is recorded and their provenance is not
 independently verified. The interval is a pause between collection attempts,
 not the complete sampling cadence: each sample records observer collection time.
