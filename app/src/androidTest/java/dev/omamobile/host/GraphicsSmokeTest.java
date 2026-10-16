@@ -283,7 +283,7 @@ public class GraphicsSmokeTest {
         }
     }
 
-    private static String runGuest(Context context, String profile, Properties properties, List<String> guest) throws Exception {
+    static String runGuest(Context context, String profile, Properties properties, List<String> guest) throws Exception {
         Path files = context.getFilesDir().toPath();
         String runtime = "/run/omamobile/" + (profile.equals("phone") ? "p" : "d");
         var argv = RuntimeSpec.command(new File(context.getApplicationInfo().nativeLibraryDir, "libtawcroot.so").toPath(),
