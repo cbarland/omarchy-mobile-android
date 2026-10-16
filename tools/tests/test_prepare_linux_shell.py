@@ -88,7 +88,6 @@ def main():
         "usr/share/xdg-desktop-portal/portals/omamobile.portal",
         "etc/xdg/xdg-desktop-portal/hyprland-portals.conf",
         "usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.omamobile.service",
-        "usr/lib/systemd/user/omamobile-portal-access.service",
         "root/.local/share/omamobile/verify-access-portal",
     }
     assert required_portal <= before, f"Access portal payload members missing: {required_portal - before}"

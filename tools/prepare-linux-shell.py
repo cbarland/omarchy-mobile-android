@@ -134,10 +134,13 @@ with tarfile.open(a.output, "w:gz") as archive:
     # interface on the distro defaults; this payload makes no GNOME/FUSE claim.
     put("etc/xdg/xdg-desktop-portal/hyprland-portals.conf",
         b"[preferred]\norg.freedesktop.impl.portal.Access=omamobile;gtk\n")
+    # Private user D-Bus activates this backend directly.  Keep only the
+    # canonical Name/Exec contract; this rootless Android payload has no
+    # systemd --user manager to consume SystemdService metadata.
     put("usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.omamobile.service",
-        blob(package / "portal/org.freedesktop.impl.portal.desktop.omamobile.service")[0])
-    put("usr/lib/systemd/user/omamobile-portal-access.service",
-        blob(package / "systemd/user/omamobile-portal-access.service")[0])
+        b"[D-BUS Service]\n"
+        b"Name=org.freedesktop.impl.portal.desktop.omamobile\n"
+        b"Exec=/usr/bin/omamobile-portal-access\n")
     put("usr/lib/omamobile/session-bin/uwsm-app", (tools / "linux/session-exec").read_bytes(), 0o755)
     put("usr/share/omamobile/android/sources.json", json.dumps({"omarchy": OMARCHY, "omarchy-mobile": MOBILE, "omarchy-widgets": WIDGETS,
         "adapter": "OMARCHY_SHELL_CONFIG override; Android-session-only uwsm-app argv adapter without systemd scopes; additive theme-set.d hook applies theme IPC to the active peer profile; rootless Android lock-state adapter and canonical omamobile.access D-Bus Access backend; upstream application launch code unchanged; Linux-only setup and launch scripts"}, indent=2) + "\n")

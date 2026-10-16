@@ -21,6 +21,45 @@ tmp=$(mktemp -d)
 call_pid=
 request_id=
 request_sent=0
+snapshot_current_id() {
+  local snapshot
+  snapshot=$(timeout 2s omarchy-shell shell call omamobile.access snapshot '') || return 1
+  printf '%s' "$snapshot" | python3 -c '
+import json, sys
+try:
+    value = json.load(sys.stdin)
+except ValueError:
+    raise SystemExit(1)
+current = value.get("current") if isinstance(value, dict) else None
+if isinstance(current, dict) and isinstance(current.get("id"), str):
+    print(current["id"])
+'
+}
+dismiss_owned_request() {
+  [[ -n "$request_id" ]] || return 0
+  local current_id
+  current_id=$(snapshot_current_id 2>/dev/null) || return 0
+  # Never touch a request that appeared after ours or has an unknown shape.
+  [[ "$current_id" == "$request_id" ]] || return 0
+  timeout 2s omarchy-shell shell call omamobile.access dismiss \
+    "{\"id\":\"$request_id\"}" >/dev/null 2>&1 || true
+}
+require_empty_snapshot() {
+  local snapshot
+  snapshot=$(timeout 2s omarchy-shell shell call omamobile.access snapshot '') || {
+    echo "cannot read final omamobile.access snapshot" >&2
+    return 1
+  }
+  printf '%s' "$snapshot" | python3 -c '
+import json, sys
+try:
+    value = json.load(sys.stdin)
+except ValueError:
+    raise SystemExit("invalid final access snapshot")
+if not isinstance(value, dict) or value.get("current") is not None:
+    raise SystemExit("Access request remains pending after the UI reply")
+'
+}
 cleanup() {
   local status=$?
   if [[ $request_sent == 1 ]]; then
@@ -30,6 +69,9 @@ cleanup() {
   if [[ -n "$call_pid" ]]; then
     kill "$call_pid" 2>/dev/null || true
     wait "$call_pid" 2>/dev/null || true
+  fi
+  if (( status != 0 )); then
+    dismiss_owned_request
   fi
   rm -rf "$tmp"
   exit "$status"
@@ -86,4 +128,5 @@ printf 'request-id=%s expected=%s; tap the real phone sheet now\n' "$request_id"
 wait "$call_pid" || { cat "$tmp/call.err" >&2; exit 1; }
 expected=$([[ "$decision" == allow ]] && echo 0 || echo 1)
 grep -q "uint32 $expected" "$tmp/result" || { cat "$tmp/result" >&2; exit 1; }
+require_empty_snapshot
 cat "$tmp/result"
