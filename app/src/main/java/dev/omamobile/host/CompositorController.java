@@ -113,14 +113,13 @@ final class CompositorController {
                 // Planned stop keeps this owner process alive until the existing
                 // kill deadline, so its shared lease cannot race an installer.
                 if (!stopping) {
-                    try {
-                        if (session != null) session.stop();
-                    } finally {
-                        InstallationLease lease = installationLease;
-                        installationLease = null;
-                        if (lease != null) try { lease.close(); }
-                        catch (java.io.IOException error) { android.util.Log.w("OmamobileHyprland", "Cannot release installation lease", error); }
-                    }
+                    // Keep the lease owned by this Android process after an
+                    // unexpected native exit. session.stop() only begins
+                    // child cleanup; releasing here could let an installer
+                    // race still-live Linux children. The existing planned
+                    // stop path releases it after owner shutdown, while an
+                    // unexpected owner remains protected until process death.
+                    if (session != null) session.stop();
                 }
             }
         }, "native-hyprland");

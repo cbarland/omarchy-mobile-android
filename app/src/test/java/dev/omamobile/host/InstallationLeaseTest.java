@@ -32,7 +32,9 @@ public class InstallationLeaseTest {
         try (InstallationLease ignored = InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL)) {
             Process denied = launch(linux, "SHARED_USE");
             assertTrue(denied.waitFor(5, TimeUnit.SECONDS));
-            assertTrue(!denied.isAlive());
+            assertTrue("denied child unexpectedly succeeded", denied.exitValue() != 0);
+            String output = new String(denied.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            assertTrue("missing busy diagnostic: " + output, output.contains("Linux installation is busy"));
         }
         Process shared = holder(linux, "SHARED_USE");
         cleanup(shared);
@@ -52,10 +54,12 @@ public class InstallationLeaseTest {
         assertThrows(java.io.IOException.class, () -> InstallationLease.acquire(linux, InstallationLease.Mode.SHARED_USE));
         Files.delete(linux.resolve(".installation-lease"));
         InstallationLease lease = InstallationLease.acquire(linux, InstallationLease.Mode.SHARED_USE);
-        lease.close();
+        assertThrows(java.io.IOException.class, () -> InstallationLease.acquire(linux.resolve("."), InstallationLease.Mode.EXCLUSIVE_INSTALL));
         lease.close();
         try (InstallationLease replacement = InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL)) {
             assertNotNull(replacement);
+            lease.close();
+            assertThrows(java.io.IOException.class, () -> InstallationLease.acquire(linux.resolve("."), InstallationLease.Mode.SHARED_USE));
         }
     }
 

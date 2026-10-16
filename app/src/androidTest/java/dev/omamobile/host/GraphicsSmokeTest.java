@@ -124,6 +124,134 @@ public class GraphicsSmokeTest {
         awaitWidgetGuard(files);
     }
 
+    /**
+     * Destructive lifecycle check for the installation lease.  It is opt-in
+     * because it starts and stops both real compositor owners on the prepared
+     * emulator; the ordinary graphics smoke tests remain read-only at the
+     * test-runner level.
+     */
+    @Test public void installationLeaseTracksBothGraphicalOwners() throws Exception {
+        Assume.assumeTrue("Explicit -e leaseGraphics true required",
+                "true".equals(InstrumentationRegistry.getArguments().getString("leaseGraphics")));
+        Assume.assumeTrue("Explicit -e graphics true required",
+                "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        Path linux = context.getFilesDir().toPath().resolve("linux");
+        try {
+            // Establish a clean lifecycle baseline without touching app data.
+            context.startService(new Intent(context, DesktopService.class).setAction(DesktopService.STOP_SCREENS));
+            awaitOwnerState(false, false);
+            clearReadyFiles(context);
+            // Use the reviewed normal startup/readiness path so the lease
+            // assertions begin only after both owners have acquired SHARED_USE.
+            upstreamShellsMapOnBothNativeHyprlandSessions();
+            awaitOwnerState(true, true);
+            String initialPhoneSignature = readySignature(context, "phone");
+            String initialDesktopSignature = readySignature(context, "desktop");
+            try (InstallationLease ignored = InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL)) {
+                fail("Exclusive installation lease acquired while both graphical owners were live");
+            } catch (IOException expected) {
+                assertTrue(expected.getMessage(), expected.getMessage().contains("busy"));
+            }
+
+            // The profile-specific broadcast is the same control path used by
+            // the display-removal handler; it must leave the phone owner live.
+            context.sendBroadcast(new Intent(DesktopService.STOP_SCREENS)
+                    .setPackage(context.getPackageName()).putExtra("profile", "desktop"));
+            awaitOwnerState(true, false);
+            try (InstallationLease ignored = InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL)) {
+                fail("Exclusive installation lease acquired while phone owner was live");
+            } catch (IOException expected) {
+                assertTrue(expected.getMessage(), expected.getMessage().contains("busy"));
+            }
+
+            context.startService(new Intent(context, DesktopService.class).setAction(DesktopService.STOP_SCREENS));
+            awaitOwnerState(false, false);
+            String phoneSignatureBeforeBusyStart = readySignature(context, "phone");
+            String desktopSignatureBeforeBusyStart = readySignature(context, "desktop");
+            try (InstallationLease lease = InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL)) {
+                // A normal start while an installer owns the tree must fail
+                // closed and must not create a fresh ready owner.
+                startNormalOwners(context);
+                SystemClock.sleep(2500);
+                assertEquals("Phone compositor created a new ready signature while installation was exclusive",
+                        phoneSignatureBeforeBusyStart, readySignature(context, "phone"));
+                assertEquals("Desktop compositor created a new ready signature while installation was exclusive",
+                        desktopSignatureBeforeBusyStart, readySignature(context, "desktop"));
+            }
+            // The rejected start may still have a bound Android service
+            // process. Stop that failed attempt before testing a real restart;
+            // otherwise a second start can merely reuse the old service.
+            context.startService(new Intent(context, DesktopService.class).setAction(DesktopService.STOP_SCREENS));
+            awaitOwnerState(false, false);
+            clearReadyFiles(context);
+            upstreamShellsMapOnBothNativeHyprlandSessions();
+            awaitOwnerState(true, true);
+            String restartedPhoneSignature = readySignature(context, "phone");
+            String restartedDesktopSignature = readySignature(context, "desktop");
+            assertNotEquals("Phone compositor did not restart with a new signature; expected old="
+                    + initialPhoneSignature + " actual=" + restartedPhoneSignature,
+                    initialPhoneSignature, restartedPhoneSignature);
+            assertNotEquals("Desktop compositor did not restart with a new signature; expected old="
+                    + initialDesktopSignature + " actual=" + restartedDesktopSignature,
+                    initialDesktopSignature, restartedDesktopSignature);
+            assertResponsive(context, "phone");
+            assertResponsive(context, "desktop");
+        } finally {
+            if (processRunning("dev.omamobile.host:phone") || processRunning("dev.omamobile.host:desktop"))
+                context.startService(new Intent(context, DesktopService.class).setAction(DesktopService.STOP_SCREENS));
+        }
+    }
+
+    private static void startNormalOwners(Context context) {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> context.startActivity(
+                new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> context.startForegroundService(
+                new Intent(context, DesktopService.class)));
+    }
+
+    private static void awaitOwnerState(boolean phone, boolean desktop) throws Exception {
+        long deadline = SystemClock.uptimeMillis() + 20000;
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (processRunning("dev.omamobile.host:phone") == phone
+                    && processRunning("dev.omamobile.host:desktop") == desktop) return;
+            SystemClock.sleep(200);
+        }
+        assertEquals("phone owner state", phone, processRunning("dev.omamobile.host:phone"));
+        assertEquals("desktop owner state", desktop, processRunning("dev.omamobile.host:desktop"));
+    }
+
+    private static boolean processRunning(String process) throws Exception {
+        try (var parcel = InstrumentationRegistry.getInstrumentation().getUiAutomation()
+                .executeShellCommand("pidof " + process);
+             var in = new android.os.ParcelFileDescriptor.AutoCloseInputStream(parcel)) {
+            return !new String(in.readAllBytes(), StandardCharsets.UTF_8).trim().isEmpty();
+        }
+    }
+
+    private static String readySignature(Context context, String profile) throws Exception {
+        Path ready = context.getFilesDir().toPath().resolve("graphics/" + profile + "/ready.properties");
+        if (!Files.isRegularFile(ready)) return "";
+        Properties properties = new Properties();
+        try (var in = Files.newInputStream(ready)) { properties.load(in); }
+        return properties.getProperty("HYPRLAND_INSTANCE_SIGNATURE", "");
+    }
+
+    private static void clearReadyFiles(Context context) throws Exception {
+        Path graphics = context.getFilesDir().toPath().resolve("graphics");
+        Files.deleteIfExists(graphics.resolve("phone/ready.properties"));
+        Files.deleteIfExists(graphics.resolve("desktop/ready.properties"));
+    }
+
+    private static void assertResponsive(Context context, String profile) throws Exception {
+        Path ready = context.getFilesDir().toPath().resolve("graphics/" + profile + "/ready.properties");
+        Properties properties = new Properties();
+        try (var in = Files.newInputStream(ready)) { properties.load(in); }
+        assertTrue(profile + " compositor did not answer after lease release",
+                ipc(context, profile, properties, "monitors").contains("width"));
+    }
+
     @Test public void coveredPhoneStaysResponsiveWhileMainServiceOwnsBindings() throws Exception {
         Assume.assumeTrue("Explicit -e freezer true required",
                 "true".equals(InstrumentationRegistry.getArguments().getString("freezer")));
