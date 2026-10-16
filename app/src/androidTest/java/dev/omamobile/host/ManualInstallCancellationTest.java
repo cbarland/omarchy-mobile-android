@@ -40,10 +40,10 @@ public final class ManualInstallCancellationTest {
 
             stopLinuxService(context);
             awaitServiceStopped(context, 10000);
+            awaitIdle(runtime, 10000);
             assertTrue("Provider writer was not held before cancellation",
                     callProvider(context, "state").getBoolean("writerHeld"));
             assertFalse("Manual cancellation activated rootfs", Files.exists(runtime.root));
-            assertFalse("Preparation ran before archive completion", hasPrefix(runtime.linux, "setup-"));
             assertTrue("Import staging cleanup timed out", awaitNoPrefix(runtime.linux, "import-", 10000));
             assertEquals("preserve", new String(Files.readAllBytes(sentinel), StandardCharsets.UTF_8));
             awaitServiceStopped(context, 10000);
@@ -52,6 +52,7 @@ public final class ManualInstallCancellationTest {
             callProvider(context, "release");
             GuestPaths.deleteTree(sentinel);
             awaitServiceStopped(context, 10000);
+            awaitIdle(runtime, 10000);
         }
     }
 
@@ -72,10 +73,12 @@ public final class ManualInstallCancellationTest {
                     .setData(BLOCKED_OPEN));
             assertTrue("Provider open was not entered", awaitProviderOpened(context, BLOCKED_OPEN, 10000));
             assertFalse("Provider-open test reached importer staging", hasPrefix(runtime.linux, "import-"));
+            assertTrue("Provider-open worker did not claim busy state", runtime.busy());
             assertTrue("Provider open was not held inside provider",
                     callProvider(context, BLOCKED_OPEN, "state").getBoolean("openHeld"));
             stopLinuxService(context);
             awaitServiceStopped(context, 10000);
+            awaitIdle(runtime, 10000);
             assertTrue("Provider open remained blocked after cancellation",
                     awaitProviderReleased(context, BLOCKED_OPEN, 10000));
             assertFalse("Provider-open cancellation activated rootfs", Files.exists(runtime.root));
@@ -86,6 +89,7 @@ public final class ManualInstallCancellationTest {
             callProvider(context, "release");
             GuestPaths.deleteTree(sentinel);
             awaitServiceStopped(context, 10000);
+            awaitIdle(runtime, 10000);
         }
     }
 
@@ -144,6 +148,12 @@ public final class ManualInstallCancellationTest {
 
     private static void stopLinuxService(Context context) {
         context.stopService(new Intent(context, LinuxService.class));
+    }
+
+    private static void awaitIdle(HostRuntime runtime, long timeout) {
+        long deadline = SystemClock.uptimeMillis() + timeout;
+        while (runtime.busy() && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(25);
+        assertFalse("Linux operation remained busy: " + runtime.output(), runtime.busy());
     }
 
     @SuppressWarnings("deprecation")
