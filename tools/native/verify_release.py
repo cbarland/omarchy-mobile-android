@@ -13,7 +13,7 @@ import re
 import zipfile
 from pathlib import Path
 from build_graphite import validate_materials, sha256
-from build_freetype import validate_materials as validate_freetype_materials, validate_output as validate_freetype_output
+from build_freetype import validate_materials as validate_freetype_materials
 
 ABIS = ("arm64-v8a", "x86_64")
 INSTALL_PINS = {
