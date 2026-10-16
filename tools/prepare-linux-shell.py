@@ -45,7 +45,11 @@ def blob(path):
 
 a.output.parent.mkdir(parents=True, exist_ok=True)
 with tarfile.open(a.output, "w:gz") as archive:
+    written = set()
     def put(name, data, mode=0o644):
+        if name in written:
+            raise SystemExit(f"Duplicate payload member: {name}")
+        written.add(name)
         data = data.encode() if isinstance(data, str) else data
         info = tarfile.TarInfo(name)
         info.size, info.mode, info.mtime = len(data), mode, 0
@@ -128,7 +132,6 @@ with tarfile.open(a.output, "w:gz") as archive:
     for name in ["setup-linux-shell", "start-shell", "omamobile-android", "omamobile-access-shell", "verify-access-portal", "sync-session-theme"]:
         put("root/.local/share/omamobile/" + name, (tools / "linux" / name).read_bytes(), 0o755)
     put("usr/bin/omamobile-android", (tools / "linux/omamobile-android").read_bytes(), 0o755)
-    put("usr/bin/omamobile-portal-access", blob(package / "bin/omamobile-portal-access")[0], 0o755)
     put("usr/share/xdg-desktop-portal/portals/omamobile.portal", blob(package / "portal/omamobile.portal")[0])
     # Select only the Access backend. Keep file chooser and every other portal
     # interface on the distro defaults; this payload makes no GNOME/FUSE claim.
