@@ -73,7 +73,7 @@ The source reference is Omarchy Mobile commit
 under its MIT license. The audit harness does not copy upstream code or claim
 that either profile supports every operation; it records the actual result.
 
-### Observed live result (2026-10-15)
+### Earlier live result (2026-10-15)
 
 On the prepared Linux host, both `phone` and `desktop` sessions returned
 `quickshell list -a -j` with status 0 and stdout `No running instances.`.
@@ -84,6 +84,21 @@ returned `ok`; hiding it returned status 0 with empty output. This is evidence
 that the current hosted shell commands work while Quickshell instance discovery
 is unavailable; it does not establish a discovery repair or visual menu
 rendering.
+
+### Guest runtime correction (2026-10-15)
+
+The runtime bind bypassed the guest symlink resolver. Quickshell's absolute
+`by-pid/<pid>` links existed, but looking up their `instance.lock` child failed;
+canonical `by-id` lookup and its kernel lock were valid. A generic fixture also
+failed absolute intermediate lookup, `openat`, and parent create/remove while
+relative and canonical controls passed.
+
+The runtime now lives physically inside the Linux rootfs at `/run/omamobile`,
+with a short host-only `files/s` alias for native socket paths. Its synthetic
+bind is removed. The same generic fixture passes on both profiles, and unchanged
+`quickshell list -a -j` returns each real running shell. Both native command/event
+sockets and per-display Android command lifetime tests pass. No Quickshell patch
+or general change to Android-owned bind behavior was needed.
 
 ## HTTPS theme transport check
 

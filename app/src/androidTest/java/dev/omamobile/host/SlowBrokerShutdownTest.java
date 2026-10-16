@@ -52,7 +52,7 @@ public class SlowBrokerShutdownTest {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)));
             deadline = SystemClock.uptimeMillis() + 75000;
             String expectedBroker = context.getApplicationInfo().nativeLibraryDir + "/libando.so\0--omalauncher-broker\0"
-                    + files.resolve("r/p/ando/ando.sock") + "\0";
+                    + files.resolve(SessionRuntime.HOST_ALIAS + "/p/ando/ando.sock") + "\0";
             boolean activeGuard = false;
             while (SystemClock.uptimeMillis() < deadline) {
                 if (owner == null) owner = phoneOwner(context);

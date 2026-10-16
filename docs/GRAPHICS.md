@@ -226,5 +226,11 @@ with `adb install -r` and invoke individual tests directly instead.
 and invokes the test-APK-only Linux command harness. Run setup commands before
 starting graphics, because Android instrumentation restarts the application.
 Native and Linux shell logs are in `files/graphics/{phone,desktop}/`.
-Display IPC is under the short `files/r/{p,d}` paths to respect Unix-domain
-socket address length limits.
+The graphical runtime is physically created at the guest paths
+`/run/omamobile/{p,d}` inside the installed rootfs. The host keeps one
+exclusive short alias, `files/s`, pointing at that directory. Native broker
+paths use the alias while guest processes use `/run/omamobile`; this keeps
+Unix-domain socket paths short while making absolute links such as
+Quickshell's `by-pid` records resolve inside the same runtime tree. Existing
+`files/r` data is left untouched as private legacy state and is never retargeted
+or migrated. Android-owned bind semantics are unchanged.

@@ -34,13 +34,13 @@ public class GraphicalAndoTest {
 
             int phoneWorker = startWorker(context, test, guest, "phone");
             int desktopWorker = startWorker(context, test, guest, "desktop");
-            assertTrue("Phone broker is not accepting clients", acceptsConnections(files.resolve("r/p/ando/ando.sock")));
-            assertTrue("Desktop broker is not accepting clients", acceptsConnections(files.resolve("r/d/ando/ando.sock")));
+            assertTrue("Phone broker is not accepting clients", acceptsConnections(files.resolve(SessionRuntime.HOST_ALIAS + "/p/ando/ando.sock")));
+            assertTrue("Desktop broker is not accepting clients", acceptsConnections(files.resolve(SessionRuntime.HOST_ALIAS + "/d/ando/ando.sock")));
             GraphicsSmokeTest.awaitWidgetGuard(files);
             context.sendBroadcast(new Intent(DesktopService.STOP_SCREENS).setPackage(context.getPackageName())
                     .putExtra("profile", "phone"));
-            awaitStopped(files.resolve("r/p/ando/ando.sock"), phoneWorker);
-            assertTrue("Phone stop revoked desktop broker", acceptsConnections(files.resolve("r/d/ando/ando.sock")));
+            awaitStopped(files.resolve(SessionRuntime.HOST_ALIAS + "/p/ando/ando.sock"), phoneWorker);
+            assertTrue("Phone stop revoked desktop broker", acceptsConnections(files.resolve(SessionRuntime.HOST_ALIAS + "/d/ando/ando.sock")));
             assertTrue("Phone stop killed desktop command", Files.exists(Path.of("/proc/" + desktopWorker)));
             verifyTerminal(context, test, guest, "desktop", uid);
 
@@ -50,7 +50,7 @@ public class GraphicalAndoTest {
                     .filter(p -> p.uid == uid && p.processName.equals(context.getPackageName() + ":desktop"))
                     .findFirst().orElseThrow();
             android.os.Process.killProcess(desktop.pid);
-            awaitStopped(files.resolve("r/d/ando/ando.sock"), desktopWorker);
+            awaitStopped(files.resolve(SessionRuntime.HOST_ALIAS + "/d/ando/ando.sock"), desktopWorker);
         } finally {
             instrumentation.runOnMainSync(() -> context.startService(new Intent(context, DesktopService.class)
                     .setAction(DesktopService.STOP_SCREENS)));

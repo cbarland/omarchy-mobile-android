@@ -4,6 +4,25 @@ Development began 2026-10-14. This file records the tested milestone, not overal
 
 ## Current accounting — 2026-10-15
 
+### Guest-owned graphical runtime — 2026-10-15
+
+Before the change, a data-only fixture in the actual session runtime passed
+relative and canonical lookup but failed absolute intermediate lookup, `openat`,
+and create/remove with `ENOENT`. With physical rootfs runtime storage and the
+short host alias, that same fixture passes on both emulator-5558 profiles.
+Unmodified Quickshell discovery now returns one real running instance per
+profile. Direct instrumentation passed graphics and Android command lifetime
+tests in 15.890s, including both native command/event sockets, terminal stdin,
+arguments, environment, return codes and independent broker shutdown.
+
+The full graphical build, lint and 68 JVM checks passed on Windows; the one
+POSIX absolute-link fixture is skipped there and is covered by Linux CI.
+The reviewed generated HTTPS theme fixture also passed certificate rejection,
+trusted installation, peer synchronization and reopening with new signatures.
+Unmodified captures showed its cyan background on both screens before and after
+reopening; exact original theme state was then restored. This remains a local
+generated fixture, not a public third-party theme compatibility claim.
+
 ### Third merged batch — 2026-10-15
 
 PRs #17 (verified source-input snapshots) and #18 (authenticated automatic
