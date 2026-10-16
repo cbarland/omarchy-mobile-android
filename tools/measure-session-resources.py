@@ -6,6 +6,7 @@ reset a session. The operator supplies the phase and process/count commands.
 """
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -33,6 +34,15 @@ def parse_proc_stat(text):
                 "rssPages": int(fields[21])}
     except (IndexError, ValueError) as error:
         raise ValueError("malformed /proc stat fields") from error
+
+
+def parse_proc_uid(text):
+    for line in text.splitlines():
+        if line.startswith("Uid:"):
+            fields = line.split()
+            if len(fields) >= 2:
+                return int(fields[1])
+    raise ValueError("/proc status has no Uid field")
 
 
 def identity_matches(before, after):
@@ -95,12 +105,22 @@ class Sampler:
         self.page_size = int(run(self.adb + ["shell", "getconf", "PAGESIZE"], args.command_timeout).strip())
 
     def android_stat(self, pid):
-        return parse_proc_stat(run(self.adb + ["shell", "cat", f"/proc/{pid}/stat"], self.args.command_timeout))
+        stat = parse_proc_stat(run(self.adb + ["exec-out", "run-as", APP, "cat", f"/proc/{pid}/stat"], self.args.command_timeout))
+        uid = parse_proc_uid(run(self.adb + ["exec-out", "run-as", APP, "cat", f"/proc/{pid}/status"], self.args.command_timeout))
+        expected = int(run(self.adb + ["exec-out", "run-as", APP, "id", "-u"], self.args.command_timeout).strip())
+        if uid != expected:
+            raise RuntimeError(f"Android PID {pid} is not owned by {APP}")
+        return stat
 
     def guest_stat(self, profile, pid):
         command = [sys.executable, str(self.root / "tools/emulator-linux.py"), "--adb", self.args.adb,
                    "--serial", self.args.serial, "session", profile, f"cat /proc/{pid}/stat"]
-        return parse_proc_stat(run(command, self.args.command_timeout))
+        stat = parse_proc_stat(run(command, self.args.command_timeout))
+        uid_command = [sys.executable, str(self.root / "tools/emulator-linux.py"), "--adb", self.args.adb,
+                        "--serial", self.args.serial, "session", profile, f"cat /proc/{pid}/status"]
+        if parse_proc_uid(run(uid_command, self.args.command_timeout)) != 0:
+            raise RuntimeError(f"guest PID {pid} is not owned by the root guest session")
+        return stat
 
     def android_count(self):
         return parse_count(run(self.adb + ["shell", self.args.android_count_command], self.args.command_timeout))
@@ -134,7 +154,7 @@ def parse_args(argv):
     parser.add_argument("--expected-avd", required=True)
     parser.add_argument("--adb", default=shutil.which("adb") or
                         str(Path(os.environ.get("LOCALAPPDATA", "")) / "Android/Sdk/platform-tools/adb.exe"))
-    parser.add_argument("--phase", choices=("visible-idle", "hidden", "stopped"), required=True)
+    parser.add_argument("--phase", choices=("visible-idle", "hidden"), required=True)
     parser.add_argument("--samples", type=int, default=5)
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument("--command-timeout", type=float, default=20.0)
@@ -145,14 +165,16 @@ def parse_args(argv):
                         help="Command returning the Android app process count")
     parser.add_argument("--guest-count", action="append", default=[], metavar="PROFILE=COMMAND",
                         help="Guest command returning a profile process count; repeat per profile")
-    parser.add_argument("--health-profile", action="append", choices=PROFILES, default=list(PROFILES))
+    parser.add_argument("--health-profile", action="append", choices=PROFILES)
     args = parser.parse_args(argv)
     if not args.serial.startswith("emulator-"):
         parser.error("only named emulator serials are supported")
     if args.samples < 2 or args.samples > 60:
         parser.error("--samples must be between 2 and 60")
-    if args.interval <= 0 or args.interval > 60:
+    if not math.isfinite(args.interval) or args.interval <= 0 or args.interval > 60:
         parser.error("--interval must be in (0, 60]")
+    if not math.isfinite(args.command_timeout) or args.command_timeout <= 0 or args.command_timeout > 120:
+        parser.error("--command-timeout must be in (0, 120]")
     if not args.android_process or not args.guest_process:
         parser.error("supply at least one --android-process and one --guest-process")
     return args
@@ -161,15 +183,25 @@ def parse_args(argv):
 def main(argv=None):
     args = parse_args(argv)
     android = [parse_assignment(item) for item in args.android_process]
+    if any(int(pid) <= 0 for _, pid in android) or len({name for name, _ in android}) != len(android):
+        raise SystemExit("Android process labels must be unique and PIDs must be positive")
     guest = []
     for item in args.guest_process:
         profile, spec = parse_assignment(item, ":")
         if profile not in PROFILES:
             raise SystemExit(f"unsupported guest profile: {profile}")
         name, pid = parse_assignment(spec)
+        if int(pid) <= 0:
+            raise SystemExit("guest PIDs must be positive")
         guest.append((profile, name, int(pid)))
+    labels = [("android", name) for name, _ in android] + [(f"guest:{profile}", name) for profile, name, _ in guest]
+    if len(set(labels)) != len(labels):
+        raise SystemExit("process labels must be unique within each source")
+    health_profiles = args.health_profile or list(PROFILES)
+    if len(set(health_profiles)) != len(health_profiles):
+        raise SystemExit("health profiles must be unique")
     guest_counts = dict(parse_assignment(item) for item in args.guest_count)
-    if set(guest_counts) != set(args.health_profile):
+    if len(guest_counts) != len(args.guest_count) or set(guest_counts) != set(health_profiles):
         raise SystemExit("supply exactly one --guest-count for every --health-profile")
     sampler = Sampler(args)
     samples = []
@@ -177,7 +209,8 @@ def main(argv=None):
     started = time.monotonic()
     previous = {}
     for index in range(args.samples):
-        observed = {"index": index, "monotonicSeconds": time.monotonic() - started,
+        collection_started = time.monotonic()
+        observed = {"index": index, "monotonicSeconds": collection_started - started,
                     "processes": {}, "counts": {}, "health": {}}
         for name, pid_text in android:
             sample = sampler.android_stat(int(pid_text))
@@ -196,8 +229,9 @@ def main(argv=None):
         observed["counts"]["android"] = sampler.android_count()
         for profile, command in guest_counts.items():
             observed["counts"][f"guest:{profile}"] = sampler.guest_count(profile, command)
-        for profile in args.health_profile:
+        for profile in health_profiles:
             observed["health"][profile] = sampler.health(profile)
+        observed["collectionElapsedSeconds"] = time.monotonic() - collection_started
         samples.append(observed)
         if index + 1 < args.samples:
             time.sleep(args.interval)
@@ -215,6 +249,11 @@ def main(argv=None):
               "samples": samples, "variation": variation, "identity": identities, "conditions": {
                   "healthRequiredEverySample": True, "batteryMeasured": False,
                   "operatorSelectedPhase": True, "sampleCount": args.samples,
+                  "healthProfiles": health_profiles,
+                  "intervalIsPauseSeconds": True,
+                  "samplingCadenceIncludesObserverCost": True,
+                  "observerCostRecorded": True,
+                  "identityRule": "pid plus proc starttime",
                   "androidCountCommand": args.android_count_command,
                   "guestCountCommands": guest_counts}}
     args.output.parent.mkdir(parents=True, exist_ok=True)

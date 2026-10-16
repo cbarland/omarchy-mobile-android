@@ -1,6 +1,9 @@
 import importlib.util
+import json
 from pathlib import Path
+import tempfile
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -10,6 +13,25 @@ SPEC.loader.exec_module(MODULE)
 
 
 class MeasureSessionResourcesTest(unittest.TestCase):
+    class FakeSampler:
+        def __init__(self, args):
+            self.avd = args.expected_avd
+            self.page_size = 4096
+            self.android_calls = 0
+
+        def android_stat(self, pid):
+            self.android_calls += 1
+            return {"pid": pid, "state": "S", "utime": 10 + self.android_calls,
+                    "stime": 2, "starttime": 100, "rssPages": 3}
+
+        def guest_stat(self, profile, pid):
+            return {"pid": pid, "state": "S", "utime": 4, "stime": 1,
+                    "starttime": 200, "rssPages": 2}
+
+        def android_count(self): return 1
+        def guest_count(self, profile, command): return 1
+        def health(self, profile): return [{"width": 1080, "height": 2424}]
+
     def test_proc_stat_handles_parentheses_and_derives_deltas(self):
         fields = ["S"] + ["0"] * 21
         fields[11] = "17"
@@ -52,6 +74,41 @@ class MeasureSessionResourcesTest(unittest.TestCase):
             with self.subTest(value=value):
                 with self.assertRaises(ValueError):
                     MODULE.parse_count(value)
+
+    def test_main_records_valid_bounded_workflow(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "measurements.json"
+            argv = ["--serial", "emulator-5556", "--expected-avd", "Fixture",
+                    "--phase", "visible-idle", "--samples", "2", "--interval", "0.01",
+                    "--android-process", "app=10", "--guest-process", "phone:guest=20",
+                    "--android-count-command", "count", "--guest-count", "phone=count",
+                    "--health-profile", "phone", "--output", str(output)]
+            with patch.object(MODULE, "Sampler", self.FakeSampler), patch.object(MODULE.time, "sleep"):
+                MODULE.main(argv)
+            result = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(result["avd"], "Fixture")
+            self.assertEqual(len(result["samples"]), 2)
+            self.assertGreaterEqual(result["samples"][1]["collectionElapsedSeconds"], 0)
+            self.assertEqual(result["variation"]["android:app"]["cpuDeltaTicks"], [1])
+            self.assertEqual(result["conditions"]["healthProfiles"], ["phone"])
+
+    def test_main_rejects_identity_change(self):
+        class ReusedPidSampler(self.FakeSampler):
+            def android_stat(self, pid):
+                sample = super().android_stat(pid)
+                if self.android_calls > 1:
+                    sample["starttime"] = 999
+                return sample
+
+        with tempfile.TemporaryDirectory() as directory:
+            argv = ["--serial", "emulator-5556", "--expected-avd", "Fixture",
+                    "--phase", "visible-idle", "--samples", "2", "--interval", "0.01",
+                    "--android-process", "app=10", "--guest-process", "phone:guest=20",
+                    "--android-count-command", "count", "--guest-count", "phone=count",
+                    "--health-profile", "phone", "--output", str(Path(directory) / "out.json")]
+            with patch.object(MODULE, "Sampler", ReusedPidSampler), patch.object(MODULE.time, "sleep"):
+                with self.assertRaises(RuntimeError):
+                    MODULE.main(argv)
 
 
 if __name__ == "__main__":
