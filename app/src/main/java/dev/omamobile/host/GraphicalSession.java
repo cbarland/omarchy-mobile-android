@@ -165,7 +165,9 @@ final class GraphicalSession {
 
     String guestRuntime() { return "/run/omamobile/" + (profile.equals("phone") ? "p" : "d"); }
     private java.util.Map<String, String> environment() {
-        return RuntimeSpec.graphicalEnvironment(profile, guestRuntime(), java.util.TimeZone.getDefault().getID());
+        var env = RuntimeSpec.graphicalEnvironment(profile, guestRuntime(), java.util.TimeZone.getDefault().getID());
+        env.put("OMAMOBILE_ACCESS_SHELL", "/root/.local/share/omamobile/omamobile-access-shell");
+        return env;
     }
 
     synchronized void startClients(String display, String signature) throws IOException {
