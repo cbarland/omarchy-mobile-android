@@ -26,9 +26,12 @@ p.add_argument("--serial", default="emulator-5554")
 sub = p.add_subparsers(dest="action", required=True)
 sub.add_parser("start", help="Launch both displays using the visible Android app control")
 sub.add_parser("stop", help="Stop both displays using the visible Android app control")
-command = sub.add_parser("command")
+command = sub.add_parser("command", help="Run a setup command through Android instrumentation (restarts the app)",
+                         description="Run a setup command through Android instrumentation. This may restart the app; acknowledge it with --allow-app-restart.")
 command.add_argument("text", nargs="?")
 command.add_argument("--file", type=Path)
+command.add_argument("--allow-app-restart", action="store_true",
+                     help="Acknowledge that Android instrumentation restarts the app")
 session = sub.add_parser("session", help="Run in an active display's Linux environment without restarting Android")
 session.add_argument("profile", choices=["phone", "desktop"])
 session.add_argument("text", nargs="?")
@@ -37,6 +40,8 @@ push = sub.add_parser("push")
 push.add_argument("file", type=Path)
 push.add_argument("destination", help="Path relative to the app data directory")
 a = p.parse_args()
+if a.action == "command" and not a.allow_app_restart:
+    p.error("command runs Android instrumentation and may restart the app; pass --allow-app-restart for setup tests, use session for a running profile, or use direct adb for post-stop observations")
 adb = [a.adb, "-s", a.serial]
 
 def adb_run(command, *, timeout=30, **kwargs):
