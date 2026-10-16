@@ -27,3 +27,13 @@ The result is a **source-input snapshot**, not a complete corresponding-source
 distribution. Binary-to-recipe build attestation, the exact Termux build-system
 revision, build logs, and a complete public corresponding-source bundle remain
 release-gate evidence gaps.
+
+The owned Graphite builder consumes the locked 1.3.15 archive and patch as real
+build inputs. It retains those bytes, its first-party recipe and helper, the
+Termux reference recipe (not executed), notices, compiler/tool hashes, commands,
+logs and the resulting library hash. Staging validates these files before
+selecting the owned library. Moving Graphite out of the Termux prefix does not
+remove its source-material hold: `verify_release.py` reports
+`ownedSourceBundleDelivery` and `ownedRelinkingMaterials` until an actual delivery
+unit is implemented and verified. Filling the older Termux manifest fields with
+URLs and hashes cannot clear those holds.

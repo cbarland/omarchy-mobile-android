@@ -24,6 +24,7 @@ parser.add_argument("--from-dependency", help="Resume a failed build at this dep
 parser.add_argument("--core-only", action="store_true", help="Rebuild compositor after all dependencies are installed")
 parser.add_argument("--termux-lock", type=Path, help="Override the committed per-ABI native dependency lock")
 parser.add_argument("--refresh-termux", action="store_true", help="Resolve new Termux versions in a fresh cache for manifest review")
+parser.add_argument("--source-cache", type=Path, help="Read-only source-input cache for the owned Graphite build")
 args = parser.parse_args()
 architecture = "aarch64" if args.abi == "arm64-v8a" else "x86_64"
 if sys.platform != "linux" or platform.machine().lower() not in ("x86_64", "amd64"):
@@ -98,6 +99,14 @@ for filename in ["build-deps.py", "build-core.py"]:
 env = os.environ.copy()
 env.update(ARLINUX_DIR=str(base), ANDROID_NDK_HOME=str(args.ndk), JOBS=env.get("JOBS", "4"), ARLINUX_ANDROID_API="29")
 env["PATH"] = str(args.cache / "venv/bin") + os.pathsep + env["PATH"]
+
+# Graphite has an explicit source-build origin; never replace bytes behind the
+# official Termux package lock. Stage selection below requires this artifact.
+graphite = [sys.executable, Path(__file__).with_name("build_graphite.py"), "--abi", args.abi,
+            "--directory", base, "--ndk", args.ndk]
+if args.source_cache:
+    graphite += ["--source-cache", args.source_cache]
+run(graphite, env=env)
 
 # The protocol generator runs on the build host, never from an Android .deb.
 # Wayland 1.26 added enum-header, which Ubuntu's older scanner cannot emit.

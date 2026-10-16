@@ -103,6 +103,17 @@ They are Android native dependencies, not the Linux package installation.
 `termux-packages.json` records the resolved package versions, URLs and hashes.
 The recipes retain the port's `android/deps.lock.json` source pins.
 
+Graphite 1.3.15 is built by our first-party `tools/native/build_graphite.py`,
+using the archive and reviewed install-layout patch in `source-inputs.lock.json`.
+This is an owned source build, not a reproduction of the official Termux package.
+The per-ABI result lives at `<cache>/<abi>/owned/graphite2`; the official package
+locks and extracted Termux libraries remain unchanged. An existing owned result
+is reused only after checking the actual source/archive, recipe, patch, compiler,
+CMake/Ninja, build evidence and library hashes. A stale result fails with a request
+for a fresh native cache; failed builds do not replace an existing result.
+`--source-cache <verified-cache>` uses read-only cached Graphite inputs with no
+network fallback. Normal and `--core-only` builds both require the owned result.
+
 Build adaptations select the target ABI, use build-host generators instead
 of attempting to execute Android tools in WSL, supply the NDK's GLES/EGL
 pkg-config metadata and disable Xwayland for this Wayland milestone. Hardware
@@ -119,6 +130,20 @@ still use Hyprland's existing failure handling.
 required shared-library closure, magic database, license files and source
 manifests. Generated binaries are ignored by Git. AGP supplies its matching
 NDK C++ runtime. Then use the normal Gradle assemble tasks.
+Staging requires the validated owned Graphite output and selects it explicitly;
+there is no fallback to the downloaded Termux Graphite binary. Its notices and
+hashed build evidence are copied alongside an explicit `project-built` origin.
+Previously staged Termux Graphite files fail this check until both ABI owned
+builds are produced and staged; existing generated assets are not migrated by
+changing the Python tools alone.
+The full retained source archive/object tree remains in the build cache, rather
+than being duplicated in each ABI's APK notices. Corresponding-source and
+relinking-material delivery remain publication holds.
+Use `stage_port.py` rather than manually copying graphics inputs: it touches
+`CMakeLists.txt` so AGP reconsiders the previously absent compositor target.
+After assembling, `python tools/native/verify_release.py --apk <actual.apk>`
+also checks that both ABI JNI bridges, compositor ports, TAWC and Ando are really
+present as native ELF files. Checking staging alone does not prove APK contents.
 Versioned Android native library SONAMEs are rewritten to private `lib*.so`
 names for APK extraction, with their NEEDED entries updated and Termux RPATHs
 removed. This modifies Android dependency packaging, not Linux executables.
