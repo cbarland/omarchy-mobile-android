@@ -19,6 +19,21 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.Assert.*;
 
 public class HomeActivityTest {
+    @Test public void focusObservationRejectsBackgroundAndOtherDisplayActivities() {
+        String component = "dev.omamobile.host/.PhoneActivity";
+        String mainFirst = "Display #0 (activities from top to bottom):\n"
+                + "  topResumedActivity=ActivityRecord{x u0 dev.omamobile.host/.MainActivity t1}\n"
+                + "  * ActivityRecord{y u0 " + component + " t2}\n"
+                + "Display #2 (activities from top to bottom):\n"
+                + "  topResumedActivity=ActivityRecord{z u0 " + component + " t3}\n";
+        assertFalse("A background phone or another display must not prove phone focus",
+                topResumedOnDefaultDisplay(mainFirst, component));
+        assertTrue(topResumedOnDefaultDisplay(mainFirst, "dev.omamobile.host/.MainActivity"));
+        assertTrue(topResumedOnDefaultDisplay("Display #0 (activities from top to bottom):\n"
+                + "  topResumedActivity=ActivityRecord{x u0 " + component + " t2}\n", component));
+        assertFalse(topResumedOnDefaultDisplay("Display #2 (activities from top to bottom):\n"
+                + "  topResumedActivity=ActivityRecord{x u0 " + component + " t2}\n", component));
+    }
     @Test public void missingSetupHomeReturnsToMainActivityOnDefaultDisplay() throws Exception {
         Assume.assumeTrue("Explicit -e homeFallback true required",
                 "true".equals(InstrumentationRegistry.getArguments().getString("homeFallback")));
@@ -125,15 +140,23 @@ public class HomeActivityTest {
         long deadline = SystemClock.uptimeMillis() + 5000;
         while (SystemClock.uptimeMillis() < deadline) {
             String dump = shell("dumpsys activity activities");
-            int display = dump.indexOf("Display #0");
-            int nextDisplay = display < 0 ? -1 : dump.indexOf("Display #", display + 9);
-            String defaultDisplay = display < 0 ? "" : dump.substring(display,
-                    nextDisplay < 0 ? dump.length() : nextDisplay);
-            int top = defaultDisplay.indexOf("topResumedActivity=");
-            if (top >= 0 && defaultDisplay.substring(top).contains(component)) return;
+            if (topResumedOnDefaultDisplay(dump, component)) return;
             SystemClock.sleep(200);
         }
         fail("Display 0 did not focus " + component);
+    }
+
+    private static boolean topResumedOnDefaultDisplay(String dump, String component) {
+        boolean defaultDisplay = false;
+        for (String raw : dump.split("\\R")) {
+            String line = raw.strip();
+            if (line.startsWith("Display #")) {
+                defaultDisplay = line.startsWith("Display #0 ");
+            } else if (defaultDisplay && line.startsWith("topResumedActivity=")) {
+                return line.contains(" " + component + " ");
+            }
+        }
+        return false;
     }
 
     private static String shell(String command) throws Exception {
