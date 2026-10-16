@@ -132,7 +132,7 @@ public class GraphicsSmokeTest {
         Path files = context.getFilesDir().toPath();
         try {
             // Reuse the full startup/readiness path, including stale-ready
-            // replacement handling, before beginning the freezer interval.
+            // replacement handling, before beginning the background interval.
             upstreamShellsMapOnBothNativeHyprlandSessions();
             Properties[] properties = new Properties[2];
             for (int i = 0; i < 2; i++) {
@@ -149,9 +149,9 @@ public class GraphicsSmokeTest {
             instrumentation.runOnMainSync(() -> context.startActivity(new Intent(context, MainActivity.class)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
             instrumentation.waitForIdleSync();
-            // Leave the app as a user would. Settings becomes the foreground
-            // task, moving the covered phone process out of Android's recent
-            // process band so the freezer decision is exercised.
+            // Leave the app as a user would and check background responsiveness.
+            // Android may retain the phone as PREVIOUS; this switch alone does
+            // not guarantee cached-process promotion on every test run.
             instrumentation.runOnMainSync(() -> context.startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
             instrumentation.waitForIdleSync();
