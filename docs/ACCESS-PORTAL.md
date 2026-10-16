@@ -29,6 +29,9 @@ UI reply and an empty post-reply snapshot.
 The reviewed fresh-install run exercised the direct canonical backend in both
 profiles. Phone Allow and Deny returned portal `uint32 0` and `uint32 1`;
 desktop Allow and Deny returned the same values, and each queue was empty
-after the reply. This proves the Access backend round trip only. It does not
+after the reply. With Android reporting `interactive=false`, both profiles
+rejected a synthetic request as locked and retained an empty queue; the
+emulator was then awakened. No credential-secured lock transition was tested.
+This proves the Access backend round trip only. It does not
 establish Camera frontend selection, Flatpak, FUSE, other portal interfaces,
 or Android hardware permission behavior.
