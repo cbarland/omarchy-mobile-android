@@ -25,6 +25,7 @@ final class CompositorController {
     private final boolean phone;
     private final DisplayManager displays;
     private volatile GraphicalSession session;
+    private volatile InstallationLease installationLease;
     private Thread thread;
     private boolean started;
     private int attachedDisplayId = Display.INVALID_DISPLAY;
@@ -79,6 +80,8 @@ final class CompositorController {
         thread = new Thread(() -> {
             try {
                 if (!NativeCompositor.AVAILABLE) throw new IllegalStateException("This APK has no Hyprland backend for this device ABI");
+                installationLease = InstallationLease.acquire(context.getFilesDir().toPath().resolve("linux"),
+                        InstallationLease.Mode.SHARED_USE);
                 session = new GraphicalSession(context, phone, androidDisplayId);
                 if (stopping) return;
                 NativeCompositor.listener = (display, signature) -> {
@@ -107,7 +110,17 @@ final class CompositorController {
                 // Planned shutdown has a single cleanup owner below. Racing it
                 // here could discard the live shell before stopForUser records
                 // that its widget startup marker belongs to an intentional stop.
-                if (!stopping && session != null) session.stop();
+                // Planned stop keeps this owner process alive until the existing
+                // kill deadline, so its shared lease cannot race an installer.
+                if (!stopping) {
+                    // Keep the lease owned by this Android process after an
+                    // unexpected native exit. session.stop() only begins
+                    // child cleanup; releasing here could let an installer
+                    // race still-live Linux children. The existing planned
+                    // stop path releases it after owner shutdown, while an
+                    // unexpected owner remains protected until process death.
+                    if (session != null) session.stop();
+                }
             }
         }, "native-hyprland");
         thread.start();
