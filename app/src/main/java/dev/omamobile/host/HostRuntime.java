@@ -386,10 +386,10 @@ final class HostRuntime {
             checkSetupRunning();
             Process process = builder.start();
             guest = process;
-            process.getOutputStream().close();
-            if (stopping) process.destroy();
             int exit;
             try {
+                process.getOutputStream().close();
+                if (stopping) process.destroy();
                 try (var in = new java.io.InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8)) {
                     char[] buffer = new char[4096];
                     int count;
@@ -397,11 +397,8 @@ final class HostRuntime {
                 }
                 exit = process.waitFor();
             } finally {
-                if (process.isAlive()) {
-                    process.destroy();
-                    try { if (!process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) process.destroyForcibly(); }
-                    catch (InterruptedException interrupted) { process.destroyForcibly(); Thread.currentThread().interrupt(); }
-                }
+                ProcessCleanup.stopAndWait(process, () -> appendLine(
+                        "Linux setup is still stopping; retaining installation ownership until it exits. App force-stop remains available."));
                 guest = null;
             }
             checkSetupRunning();
@@ -440,6 +437,12 @@ final class HostRuntime {
     }
 
     private void run(String command, boolean ando, boolean androidDns) throws Exception {
+        try (InstallationLease ignored = InstallationLease.acquire(linux, InstallationLease.Mode.SHARED_USE)) {
+            runOwned(command, ando, androidDns);
+        }
+    }
+
+    private void runOwned(String command, boolean ando, boolean androidDns) throws Exception {
         if (!installed()) throw new IOException("Import a standard ARM64 rootfs first (x86_64 on this emulator)");
         if (GuestPaths.elfMachine(GuestPaths.resolve(root, "/bin/sh")) != machine()) throw new IOException("Rootfs architecture mismatch");
         Files.createDirectories(shared);
@@ -474,14 +477,20 @@ final class HostRuntime {
         appendLine("$ " + command);
         Process process = builder.start();
         guest = process;
-        process.getOutputStream().close(); // Batch console: stdin EOF, no invisible prompt.
-        if (stopping) process.destroy();
-        try (var input = new java.io.InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8)) {
-            char[] buffer = new char[4096];
-            int read;
-            while ((read = input.read(buffer)) != -1) append(new String(buffer, 0, read));
+        try {
+            process.getOutputStream().close(); // Batch console: stdin EOF, no invisible prompt.
+            if (stopping) process.destroy();
+            try (var input = new java.io.InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8)) {
+                char[] buffer = new char[4096];
+                int read;
+                while ((read = input.read(buffer)) != -1) append(new String(buffer, 0, read));
+            }
+            appendLine("\nExit " + process.waitFor());
+        } finally {
+            ProcessCleanup.stopAndWait(process, () -> appendLine(
+                    "Linux command is still stopping; retaining installation ownership until it exits. App force-stop remains available."));
+            guest = null;
         }
-        appendLine("\nExit " + process.waitFor());
     }
 
     private void configureDns(Path guestRoot) throws IOException {
