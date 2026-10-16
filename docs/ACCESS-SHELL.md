@@ -18,6 +18,7 @@ keeps that call boundary while replacing only the Android-owned lock query.
 
 The adapter is staged into a newly prepared shell payload. Updating an APK
 does not rewrite an already installed rootfs payload, so an existing
-installation must rerun its authorized shell setup before this helper is
-available. If the helper is absent, the environment hook cannot provide a
+installation needs the refreshed Linux shell payload applied before running
+its normal shell setup. Rerunning `setup-linux-shell` alone cannot add a
+missing helper. If the helper is absent, the environment hook cannot provide a
 synthetic unlocked result and the upstream call fails closed.
