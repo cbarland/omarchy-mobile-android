@@ -15,6 +15,10 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
 import java.util.HashSet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -91,8 +95,8 @@ public class AndroidAppPortalTest {
         // testing the Linux request, so this path is exercised with both
         // graphical peers alive.
         new GraphicsSmokeTest().upstreamShellsMapOnBothNativeHyprlandSessions();
-        finishMainActivities(instrumentation);
-        awaitNoMainActivity(instrumentation);
+        List<MainActivity> stale = finishMainActivities(instrumentation);
+        awaitDestroyed(instrumentation, stale);
         MainActivity first = null;
         try (LocalSocket socket = connect(false)) {
             JSONObject reply = request(socket, new JSONObject().put("op", "display-settings"));
@@ -117,34 +121,34 @@ public class AndroidAppPortalTest {
                     .setAction(DesktopService.STOP_SCREENS)));
         }
     }
-    private static void finishMainActivities(android.app.Instrumentation instrumentation) {
+    private static List<MainActivity> finishMainActivities(android.app.Instrumentation instrumentation) {
+        List<MainActivity> found = new ArrayList<>();
         instrumentation.runOnMainSync(() -> {
-            for (var stage : new androidx.test.runner.lifecycle.Stage[]{
-                    androidx.test.runner.lifecycle.Stage.RESUMED,
-                    androidx.test.runner.lifecycle.Stage.STARTED,
-                    androidx.test.runner.lifecycle.Stage.CREATED})
+            Set<android.app.Activity> unique = Collections.newSetFromMap(new IdentityHashMap<>());
+            for (var stage : androidx.test.runner.lifecycle.Stage.values())
+                if (stage == androidx.test.runner.lifecycle.Stage.PRE_ON_CREATE
+                        || stage == androidx.test.runner.lifecycle.Stage.DESTROYED) continue;
+                else
                 for (var activity : androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
                         .getActivitiesInStage(stage))
-                    if (activity instanceof MainActivity) activity.finish();
+                    if (activity instanceof MainActivity && unique.add(activity)) {
+                        found.add((MainActivity) activity);
+                        activity.finish();
+                    }
         });
+        return found;
     }
-    private static void awaitNoMainActivity(android.app.Instrumentation instrumentation) {
+    private static void awaitDestroyed(android.app.Instrumentation instrumentation, List<MainActivity> activities) {
         long deadline = SystemClock.uptimeMillis() + 5000;
         while (SystemClock.uptimeMillis() < deadline) {
-            AtomicBoolean present = new AtomicBoolean();
+            AtomicBoolean alive = new AtomicBoolean();
             instrumentation.runOnMainSync(() -> {
-                for (var stage : new androidx.test.runner.lifecycle.Stage[]{
-                        androidx.test.runner.lifecycle.Stage.RESUMED,
-                        androidx.test.runner.lifecycle.Stage.STARTED,
-                        androidx.test.runner.lifecycle.Stage.CREATED})
-                    for (var activity : androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
-                            .getActivitiesInStage(stage))
-                        if (activity instanceof MainActivity) present.set(true);
+                for (MainActivity activity : activities) if (!activity.isDestroyed()) alive.set(true);
             });
-            if (!present.get()) return;
+            if (!alive.get()) return;
             SystemClock.sleep(50);
         }
-        fail("Cold display-settings request requires MainActivity to be destroyed first");
+        fail("Cold display-settings request requires every prior MainActivity to be destroyed first");
     }
     private static MainActivity awaitMainActivity(android.app.Instrumentation instrumentation) {
         AtomicReference<MainActivity> found = new AtomicReference<>();
