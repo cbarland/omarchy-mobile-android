@@ -2,6 +2,7 @@ package dev.omamobile.host;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.media.Image;
@@ -13,6 +14,7 @@ import android.app.KeyguardManager;
 import android.app.ActivityOptions;
 import android.os.Process;
 import android.os.PowerManager;
+import android.os.BatteryManager;
 import android.os.SystemClock;
 import android.system.Os;
 import android.view.Display;
@@ -109,6 +111,14 @@ final class AndroidAppPortal implements AutoCloseable {
                         reply.put("keyguardLocked", keyguard.isKeyguardLocked())
                                 .put("deviceLocked", keyguard.isDeviceLocked())
                                 .put("interactive", power.isInteractive());
+                    } else if (op.equals("battery-state")) {
+                        Intent sticky = context.registerReceiver(null,
+                                new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+                        BatterySnapshot snapshot = BatterySnapshot.fromIntent(sticky);
+                        reply.put("present", snapshot.present() == null ? JSONObject.NULL : snapshot.present())
+                                .put("percentage", snapshot.percentage() == null ? JSONObject.NULL : snapshot.percentage())
+                                .put("plugged", snapshot.plugged() == null ? JSONObject.NULL : snapshot.plugged())
+                                .put("state", snapshot.state());
                     } else if (op.equals("display-settings")) {
                         // The Linux entry point can reveal only this fixed
                         // host panel, never an arbitrary Android component.

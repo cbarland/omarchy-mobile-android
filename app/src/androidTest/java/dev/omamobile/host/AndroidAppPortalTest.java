@@ -6,6 +6,7 @@ import android.hardware.display.DisplayManager;
 import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
 import android.os.SystemClock;
+import android.content.IntentFilter;
 import androidx.test.platform.app.InstrumentationRegistry;
 import org.json.JSONObject;
 import org.junit.Test;
@@ -86,6 +87,51 @@ public class AndroidAppPortalTest {
         assertEquals(host.getBoolean("keyguardLocked"), cli.getBoolean("keyguardLocked"));
         assertEquals(host.getBoolean("deviceLocked"), cli.getBoolean("deviceLocked"));
         assertEquals(host.getBoolean("interactive"), cli.getBoolean("interactive"));
+    }
+    @Test public void batteryStateMatchesAndroidStickyApiAndLinuxCli() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        JSONObject host;
+        try (LocalSocket socket = connect()) {
+            host = request(socket, new JSONObject().put("op", "battery-state"));
+        }
+        assertTrue(host.toString(), host.getBoolean("ok"));
+        BatterySnapshot expected = BatterySnapshot.fromIntent(context.registerReceiver(null,
+                new IntentFilter(Intent.ACTION_BATTERY_CHANGED)));
+        assertNullableEquals(expected.present(), host, "present");
+        assertNullableEquals(expected.percentage(), host, "percentage");
+        assertNullableEquals(expected.plugged(), host, "plugged");
+        assertEquals(expected.state(), host.getString("state"));
+        var root = context.getFilesDir().toPath().resolve("linux/rootfs");
+        JSONObject cli = new JSONObject(runLinuxClient(context, root, "battery-state", "battery-state-"));
+        assertNullableEquals(host, cli, "present");
+        assertNullableEquals(host, cli, "percentage");
+        assertNullableEquals(host, cli, "plugged");
+        assertEquals(host.getString("state"), cli.getString("state"));
+    }
+    private static void assertNullableEquals(Object expected, JSONObject actual, String key) throws Exception {
+        if (expected == null) assertTrue(key + " should be JSON null", actual.isNull(key));
+        else assertEquals(expected, actual.get(key));
+    }
+    private static void assertNullableEquals(JSONObject expected, JSONObject actual, String key) throws Exception {
+        if (expected.isNull(key)) assertTrue(key + " should be JSON null", actual.isNull(key));
+        else assertEquals(expected.get(key), actual.get(key));
+    }
+    @Test public void batterySnapshotHandlesSyntheticMissingAndMalformedIntents() {
+        BatterySnapshot missing = BatterySnapshot.fromIntent(new Intent());
+        assertNull(missing.present());
+        assertNull(missing.percentage());
+        assertNull(missing.plugged());
+        assertEquals(BatterySnapshot.UNKNOWN, missing.state());
+        Intent malformed = new Intent()
+                .putExtra(android.os.BatteryManager.EXTRA_PRESENT, "yes")
+                .putExtra(android.os.BatteryManager.EXTRA_LEVEL, "half")
+                .putExtra(android.os.BatteryManager.EXTRA_SCALE, 100)
+                .putExtra(android.os.BatteryManager.EXTRA_PLUGGED, -1);
+        BatterySnapshot value = BatterySnapshot.fromIntent(malformed);
+        assertNull(value.present());
+        assertNull(value.percentage());
+        assertNull(value.plugged());
+        assertEquals(BatterySnapshot.UNKNOWN, value.state());
     }
     @Test public void linuxDisplaySettingsRequestShowsColdAndReusedPhonePanel() throws Exception {
         org.junit.Assume.assumeTrue("Explicit -e graphics true and prepared Linux required",

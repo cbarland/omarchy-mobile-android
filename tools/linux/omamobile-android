@@ -16,12 +16,15 @@ import stat
 import struct
 import sys
 import hashlib
+import math
 import tempfile
 import threading
 import time
 
 SOCKET = "/run/omamobile/android.sock"
 DEVICE_STATE_KEYS = ("deviceLocked", "interactive", "keyguardLocked")
+BATTERY_STATE_KEYS = ("present", "percentage", "plugged", "state")
+BATTERY_STATES = {"charging", "discharging", "full", "not-charging", "unknown"}
 PACKAGE_RE = re.compile(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+\Z")
 LAUNCHER_PREFIX = "omamobile-android-"
 
@@ -158,6 +161,28 @@ def device_state(reply):
     return state
 
 
+def battery_state(reply):
+    if set(reply) != set(BATTERY_STATE_KEYS):
+        raise RuntimeError("Android battery state fields are not exact")
+    state = {}
+    for key in ("present", "plugged"):
+        value = reply[key]
+        if value is not None and type(value) is not bool:
+            raise RuntimeError("Android battery state field is not boolean or null: " + key)
+        state[key] = value
+    percentage = reply["percentage"]
+    if percentage is not None:
+        if type(percentage) not in (int, float) or isinstance(percentage, bool):
+            raise RuntimeError("Android battery percentage is not a number or null")
+        if not math.isfinite(float(percentage)) or not 0 <= percentage <= 100:
+            raise RuntimeError("Android battery percentage is outside 0..100")
+    state["percentage"] = percentage
+    if type(reply["state"]) is not str or reply["state"] not in BATTERY_STATES:
+        raise RuntimeError("Android battery state is invalid")
+    state["state"] = reply["state"]
+    return state
+
+
 class Portal:
     def __init__(self):
         self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -192,7 +217,7 @@ class Portal:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["list", "device-state", "display-settings", "sync", "open"])
+    parser.add_argument("action", choices=["list", "device-state", "battery-state", "display-settings", "sync", "open"])
     parser.add_argument("package", nargs="?")
     args = parser.parse_args()
     portal = Portal()
@@ -200,6 +225,12 @@ def main():
         try:
             state = device_state(portal.request("device-state")[0])
             print(json.dumps(state, sort_keys=True))
+        finally:
+            portal.close()
+        return
+    if args.action == "battery-state":
+        try:
+            print(json.dumps(battery_state(portal.request("battery-state")[0]), sort_keys=True))
         finally:
             portal.close()
         return
