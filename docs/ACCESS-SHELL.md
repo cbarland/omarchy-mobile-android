@@ -15,3 +15,9 @@ The upstream mechanism is the MIT-licensed `omamobile-portal-access` pattern
 at Omarchy Mobile commit `953bcb3058347459cdf7faaa1e149f16e0f7cfa6`; its
 lock check invokes the shell as `omarchy-shell lock isLocked`. This adapter
 keeps that call boundary while replacing only the Android-owned lock query.
+
+The adapter is staged into a newly prepared shell payload. Updating an APK
+does not rewrite an already installed rootfs payload, so an existing
+installation must rerun its authorized shell setup before this helper is
+available. If the helper is absent, the environment hook cannot provide a
+synthetic unlocked result and the upstream call fails closed.

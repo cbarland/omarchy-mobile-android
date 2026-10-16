@@ -54,7 +54,7 @@ class AccessShellTest(unittest.TestCase):
         self.assertEqual(executed[0][0], executed[0][1][0])
         self.assertEqual(["shell", "ping", "extra"], executed[0][1][1:])
 
-    def test_adapter_refuses_recursive_or_missing_target(self):
+    def test_adapter_refuses_missing_target(self):
         executed = []
         self.assertEqual(1, fixture.main(["shell"], {"OMARCHY_PATH": str(SCRIPT.parent)},
                                          execute=lambda path, argv: executed.append((path, argv))))

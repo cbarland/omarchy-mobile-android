@@ -124,7 +124,7 @@ public class GraphicsSmokeTest {
                 assert result.unpack()[0] == 1
                 with open(sys.argv[2] + '.tmp', 'x') as out:
                     json.dump({key: os.environ.get(key) for key in (
-                        'OMARCHY_PATH', 'OMAMOBILE_SESSION_HOST', 'OMAMOBILE_PROFILE', 'PATH',
+                        'OMARCHY_PATH', 'OMAMOBILE_SESSION_HOST', 'OMAMOBILE_ACCESS_SHELL', 'OMAMOBILE_PROFILE', 'PATH',
                         'WAYLAND_DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE',
                         'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR')}, out)
                 os.replace(sys.argv[2] + '.tmp', sys.argv[2])
@@ -158,6 +158,8 @@ public class GraphicsSmokeTest {
             assertEquals(properties.getProperty("HYPRLAND_INSTANCE_SIGNATURE"), env.optString("HYPRLAND_INSTANCE_SIGNATURE", null));
             assertEquals(profile, env.optString("OMAMOBILE_PROFILE", null));
             assertEquals("android", env.optString("OMAMOBILE_SESSION_HOST", null));
+            assertEquals("/root/.local/share/omamobile/omamobile-access-shell",
+                    env.optString("OMAMOBILE_ACCESS_SHELL", null));
             assertEquals("/root/.local/share/omarchy", env.optString("OMARCHY_PATH", null));
             String busAddress = env.optString("DBUS_SESSION_BUS_ADDRESS", "");
             assertTrue(profile + " activated service used another bus: " + busAddress,
