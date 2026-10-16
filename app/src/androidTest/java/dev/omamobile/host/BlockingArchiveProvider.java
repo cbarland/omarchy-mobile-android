@@ -93,6 +93,12 @@ public final class BlockingArchiveProvider extends ContentProvider {
         return new AssetFileDescriptor(descriptor, 0, AssetFileDescriptor.UNKNOWN_LENGTH);
     }
 
+    /** ContentResolver uses the typed path for read-only asset descriptors. */
+    @Override public AssetFileDescriptor openTypedAssetFile(Uri uri, String mimeTypeFilter,
+            Bundle opts, CancellationSignal cancellation) throws FileNotFoundException {
+        return openAssetFile(uri, "r", cancellation);
+    }
+
     @Override public Bundle call(String method, String arg, Bundle extras) {
         enforceTestCaller();
         if ("reset".equals(method)) reset();

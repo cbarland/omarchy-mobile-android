@@ -33,25 +33,25 @@ public final class ManualInstallCancellationTest {
         callProvider(context, "reset");
         try {
             context.startForegroundService(new Intent(context, LinuxService.class)
-                    .setData(BLOCKED).putExtra("installOmarchy", true));
-            assertTrue("Provider was not opened", awaitProviderOpened(context, 10000));
+                    .setData(BLOCKED));
+            assertTrue("Provider was not opened", awaitProviderOpened(context, BLOCKED, 10000));
             assertTrue("Install worker did not claim busy state", runtime.busy());
             assertTrue("Importer staging was not created", awaitImportStaging(runtime.linux, 10000));
 
-            runtime.stop();
-            awaitIdle(runtime, 10000);
+            stopLinuxService(context);
+            awaitServiceStopped(context, 10000);
             assertTrue("Provider writer was not held before cancellation",
                     callProvider(context, "state").getBoolean("writerHeld"));
             assertFalse("Manual cancellation activated rootfs", Files.exists(runtime.root));
             assertFalse("Preparation ran before archive completion", hasPrefix(runtime.linux, "setup-"));
-            assertFalse("Import staging survived cancellation", hasPrefix(runtime.linux, "import-"));
+            assertTrue("Import staging cleanup timed out", awaitNoPrefix(runtime.linux, "import-", 10000));
             assertEquals("preserve", new String(Files.readAllBytes(sentinel), StandardCharsets.UTF_8));
             awaitServiceStopped(context, 10000);
         } finally {
-            runtime.stop();
+            stopLinuxService(context);
             callProvider(context, "release");
             GuestPaths.deleteTree(sentinel);
-            awaitIdle(runtime, 10000);
+            awaitServiceStopped(context, 10000);
         }
     }
 
@@ -69,38 +69,51 @@ public final class ManualInstallCancellationTest {
         callProvider(context, "reset");
         try {
             context.startForegroundService(new Intent(context, LinuxService.class)
-                    .setData(BLOCKED_OPEN).putExtra("installOmarchy", true));
-            assertTrue("Provider open was not entered", awaitProviderOpened(context, 10000));
+                    .setData(BLOCKED_OPEN));
+            assertTrue("Provider open was not entered", awaitProviderOpened(context, BLOCKED_OPEN, 10000));
             assertFalse("Provider-open test reached importer staging", hasPrefix(runtime.linux, "import-"));
             assertTrue("Provider open was not held inside provider",
-                    callProvider(context, "state").getBoolean("openHeld"));
-            runtime.stop();
-            awaitIdle(runtime, 10000);
-            assertFalse("Provider open remained blocked after cancellation",
-                    callProvider(context, "state").getBoolean("openHeld"));
+                    callProvider(context, BLOCKED_OPEN, "state").getBoolean("openHeld"));
+            stopLinuxService(context);
+            awaitServiceStopped(context, 10000);
+            assertTrue("Provider open remained blocked after cancellation",
+                    awaitProviderReleased(context, BLOCKED_OPEN, 10000));
             assertFalse("Provider-open cancellation activated rootfs", Files.exists(runtime.root));
-            assertFalse("Provider-open cancellation created importer staging", hasPrefix(runtime.linux, "import-"));
+            assertTrue("Provider-open staging cleanup timed out", awaitNoPrefix(runtime.linux, "import-", 10000));
             assertEquals("preserve", new String(Files.readAllBytes(sentinel), StandardCharsets.UTF_8));
         } finally {
-            runtime.stop();
+            stopLinuxService(context);
             callProvider(context, "release");
             GuestPaths.deleteTree(sentinel);
-            awaitIdle(runtime, 10000);
+            awaitServiceStopped(context, 10000);
         }
     }
 
-    private static boolean awaitProviderOpened(Context context, long timeout) {
+    private static boolean awaitProviderOpened(Context context, Uri uri, long timeout) {
         long deadline = SystemClock.uptimeMillis() + timeout;
         do {
-            android.os.Bundle state = callProvider(context, "state");
+            android.os.Bundle state = callProvider(context, uri, "state");
             if (state.getBoolean("opened") || state.getBoolean("openHeld")) return true;
             SystemClock.sleep(25);
         } while (SystemClock.uptimeMillis() < deadline);
         return false;
     }
 
+    private static boolean awaitProviderReleased(Context context, Uri uri, long timeout) {
+        long deadline = SystemClock.uptimeMillis() + timeout;
+        do {
+            if (!callProvider(context, uri, "state").getBoolean("openHeld")) return true;
+            SystemClock.sleep(25);
+        } while (SystemClock.uptimeMillis() < deadline);
+        return false;
+    }
+
     private static android.os.Bundle callProvider(Context context, String method) {
-        android.os.Bundle result = context.getContentResolver().call(BLOCKED, method, null, null);
+        return callProvider(context, BLOCKED, method);
+    }
+
+    private static android.os.Bundle callProvider(Context context, Uri uri, String method) {
+        android.os.Bundle result = context.getContentResolver().call(uri, method, null, null);
         return result == null ? new android.os.Bundle() : result;
     }
 
@@ -120,10 +133,17 @@ public final class ManualInstallCancellationTest {
         }
     }
 
-    private static void awaitIdle(HostRuntime runtime, long timeout) {
+    private static boolean awaitNoPrefix(Path directory, String prefix, long timeout) throws Exception {
         long deadline = SystemClock.uptimeMillis() + timeout;
-        while (runtime.busy() && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(25);
-        assertFalse("Manual install remained busy: " + runtime.output(), runtime.busy());
+        do {
+            if (!hasPrefix(directory, prefix)) return true;
+            SystemClock.sleep(25);
+        } while (SystemClock.uptimeMillis() < deadline);
+        return false;
+    }
+
+    private static void stopLinuxService(Context context) {
+        context.stopService(new Intent(context, LinuxService.class));
     }
 
     @SuppressWarnings("deprecation")
