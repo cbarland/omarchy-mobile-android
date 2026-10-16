@@ -11,6 +11,9 @@ import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.util.Date;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 import org.bouncycastle.bcpg.HashAlgorithmTags;
 import org.bouncycastle.bcpg.PublicKeyAlgorithmTags;
@@ -110,6 +113,48 @@ public final class BootstrapSignatureTest {
                     new ByteArrayInputStream(fixture.publicKey), fixture.fingerprint));
         } finally {
             Thread.interrupted();
+            Files.deleteIfExists(artifact);
+        }
+    }
+
+    @Test
+    public void unboundAppendedSubkeyCannotBorrowPinnedPrimaryTrust() throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        PGPKeyPair primary = new JcaPGPKeyPair(PublicKeyAlgorithmTags.RSA_SIGN,
+                generator.generateKeyPair(), new Date(0));
+        PGPKeyPair attacker = new JcaPGPKeyPair(PublicKeyAlgorithmTags.RSA_SIGN,
+                generator.generateKeyPair(), new Date(0));
+        BcPGPContentSignerBuilder signer = new BcPGPContentSignerBuilder(
+                PublicKeyAlgorithmTags.RSA_SIGN, HashAlgorithmTags.SHA256);
+        PGPKeyRingGenerator generatorRing = new PGPKeyRingGenerator(
+                PGPSignature.POSITIVE_CERTIFICATION, primary, "test@example.invalid",
+                new JcaPGPDigestCalculatorProviderBuilder().build().get(HashAlgorithmTags.SHA256),
+                null, null, signer, null);
+        generatorRing.addSubKey(attacker);
+        PGPPublicKeyRing bound = generatorRing.generatePublicKeyRing();
+        org.bouncycastle.openpgp.PGPPublicKey appended = bound.getPublicKey(attacker.getKeyID());
+        Iterator<PGPSignature> binding = appended.getSignatures();
+        while (binding.hasNext()) appended = org.bouncycastle.openpgp.PGPPublicKey.removeCertification(appended, binding.next());
+        List<org.bouncycastle.openpgp.PGPPublicKey> keys = new ArrayList<>();
+        keys.add(bound.getPublicKey());
+        keys.add(appended);
+        ByteArrayOutputStream publicOut = new ByteArrayOutputStream();
+        new PGPPublicKeyRing(keys).encode(publicOut);
+        PGPSignatureGenerator signatureGenerator = new PGPSignatureGenerator(signer);
+        signatureGenerator.init(PGPSignature.BINARY_DOCUMENT, attacker.getPrivateKey());
+        byte[] payload = "attacker subkey".getBytes();
+        signatureGenerator.update(payload);
+        ByteArrayOutputStream signatureOut = new ByteArrayOutputStream();
+        signatureGenerator.generate().encode(signatureOut);
+        Path artifact = Files.createTempFile("bootstrap", ".tar.gz");
+        Files.write(artifact, payload);
+        try {
+            assertThrows(IOException.class, () -> BootstrapSignature.verify(
+                    artifact, new ByteArrayInputStream(signatureOut.toByteArray()),
+                    new ByteArrayInputStream(publicOut.toByteArray()),
+                    fingerprint(bound.getPublicKey().getFingerprint())));
+        } finally {
             Files.deleteIfExists(artifact);
         }
     }

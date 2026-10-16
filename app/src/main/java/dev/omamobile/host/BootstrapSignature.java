@@ -64,15 +64,18 @@ public final class BootstrapSignature {
         PGPPublicKey signingKey = null;
         String signerFingerprint = null;
         for (PGPPublicKeyRing ring : rings) {
-            PGPPublicKey candidate = ring.getPublicKey(signature.getKeyID());
-            if (candidate == null) continue;
             PGPPublicKey primary = ring.getPublicKey();
             String fingerprint = fingerprint(primary);
             if (!fingerprint.equals(expected)) continue;
+            // Bootstrap signatures are intentionally pinned to the primary
+            // publisher key. Do not accept an arbitrary subkey merely because
+            // its issuer ID appears in the ring; an unbound/appended subkey
+            // must never inherit the primary key's pin.
+            if (primary.getKeyID() != signature.getKeyID()) continue;
             if (signingKey != null) {
                 throw new IOException("ambiguous signing key for pinned fingerprint " + expected);
             }
-            signingKey = candidate;
+            signingKey = primary;
             signerFingerprint = fingerprint;
         }
         if (signingKey == null) {
