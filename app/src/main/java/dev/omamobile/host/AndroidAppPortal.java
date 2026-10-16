@@ -111,8 +111,9 @@ final class AndroidAppPortal implements AutoCloseable {
                         // The Linux entry point can reveal only this fixed
                         // host panel, never an arbitrary Android component.
                         context.startActivity(new Intent(context, MainActivity.class)
+                                .setAction(MainActivity.SHOW_DISPLAY_SETTINGS)
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP));
-                        reply.put("launched", true);
+                        reply.put("requested", true);
                     } else if (op.equals("open")) {
                         if (hosted != null) throw new IOException("A connection already owns a display");
                         if (windows.incrementAndGet() > 3) { windows.decrementAndGet(); throw new IOException("At most three Android windows"); }

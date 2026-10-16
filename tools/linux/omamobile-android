@@ -206,9 +206,9 @@ def main():
     if args.action == "display-settings":
         try:
             reply = portal.request("display-settings")[0]
-            if reply.get("launched") is not True:
-                raise RuntimeError("Android display settings did not open")
-            print("Android display settings opened")
+            if reply.get("requested") is not True:
+                raise RuntimeError("Android display settings request was not accepted")
+            print("Android display settings requested")
         finally:
             portal.close()
         return

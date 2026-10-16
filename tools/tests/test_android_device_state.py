@@ -47,7 +47,7 @@ class DeviceStateCliTest(unittest.TestCase):
                          json.loads(output))
 
     def test_display_settings_opens_fixed_host_panel_and_closes(self):
-        fake = FakePortal({"ok": True, "launched": True})
+        fake = FakePortal({"ok": True, "requested": True})
         old_argv = sys.argv
         output = io.StringIO()
         try:
@@ -59,7 +59,7 @@ class DeviceStateCliTest(unittest.TestCase):
             sys.argv = old_argv
         self.assertTrue(fake.closed)
         self.assertEqual("display-settings", fake.operation)
-        self.assertEqual("Android display settings opened\n", output.getvalue())
+        self.assertEqual("Android display settings requested\n", output.getvalue())
 
     def test_display_settings_rejects_missing_launch_ack(self):
         fake = FakePortal({"ok": True})

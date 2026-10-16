@@ -17,6 +17,7 @@ import android.widget.TextView;
 
 /** Installation and display controls. The desktop belongs to upstream Linux/Omarchy. */
 public final class MainActivity extends Activity {
+    static final String SHOW_DISPLAY_SETTINGS = "dev.omamobile.host.SHOW_DISPLAY_SETTINGS";
     private HostRuntime runtime;
     private TextView status, console;
     private EditText command;
@@ -133,8 +134,20 @@ public final class MainActivity extends Activity {
         page.setFillViewport(true);
         page.addView(layout);
         setContentView(page);
+        showRequestedDisplaySettings();
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 11);
+        }
+    }
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        showRequestedDisplaySettings();
+    }
+    private void showRequestedDisplaySettings() {
+        if (SHOW_DISPLAY_SETTINGS.equals(getIntent().getAction()) && displaySettings != null) {
+            getWindow().getDecorView().post(displaySettings::show);
+            getIntent().setAction(null);
         }
     }
     private TextView text(String value, int size) {

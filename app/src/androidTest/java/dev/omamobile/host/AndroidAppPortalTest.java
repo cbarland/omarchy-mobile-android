@@ -78,6 +78,23 @@ public class AndroidAppPortalTest {
         assertEquals(host.getBoolean("deviceLocked"), cli.getBoolean("deviceLocked"));
         assertEquals(host.getBoolean("interactive"), cli.getBoolean("interactive"));
     }
+    @Test public void linuxDisplaySettingsRequestShowsExistingPhonePanel() throws Exception {
+        org.junit.Assume.assumeTrue("Explicit -e graphics true and prepared Linux required",
+                "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
+        var instrumentation = InstrumentationRegistry.getInstrumentation();
+        Context context = instrumentation.getTargetContext();
+        try (LocalSocket socket = connect()) {
+            JSONObject reply = request(socket, new JSONObject().put("op", "display-settings"));
+            assertTrue(reply.toString(), reply.getBoolean("ok"));
+            assertTrue(reply.toString(), reply.getBoolean("requested"));
+        }
+        var device = androidx.test.uiautomator.UiDevice.getInstance(instrumentation);
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        while (device.findObject(androidx.test.uiautomator.By.text("Android displays")) == null
+                && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(50);
+        assertNotNull("Linux portal request must show the existing phone display panel",
+                device.findObject(androidx.test.uiautomator.By.text("Android displays")));
+    }
     @Test public void linuxClientReachesTheSamePortal() throws Exception {
         org.junit.Assume.assumeTrue("Explicit -e graphics true and prepared Linux required",
                 "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
