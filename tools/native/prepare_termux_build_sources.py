@@ -80,10 +80,8 @@ def selected_provenance(evidence, repo_root):
         "actual-tree-archive-manifest.json": evidence / "termux-full/actual-tree-archive-manifest.json",
         "actual-input-blob-verification.json": evidence / "termux-full/actual-input-blob-verification.json",
         "input-blob-verification.json": evidence / "termux-full/input-blob-verification.json",
-        "recipes": evidence / "termux-recipes",
         "source-inputs.lock.json": repo_root / "tools/native/source-inputs.lock.json",
         "prepare_source_inputs.py": repo_root / "tools/native/prepare_source_inputs.py",
-        "official-checksums": evidence / "sol/official-checksums",
     }
     for name, source in sources.items():
         if not source.exists() or source.is_symlink():
@@ -111,6 +109,38 @@ def source_inputs(evidence, repo_root):
         preferred = [path for path in matches if "sfdownload" in path.name]
         selected.append((package["name"], sorted(preferred or matches)[0]))
     return lock, selected
+
+
+def selected_recipe_files(evidence, lock):
+    root = evidence / "termux-recipes"
+    hashes_path = root / "blob-hashes.txt"
+    if not hashes_path.is_file() or hashes_path.is_symlink():
+        fail("missing reviewed recipe blob hashes")
+    reviewed = {}
+    for line in hashes_path.read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if len(fields) != 3 or not re.fullmatch(r"[0-9a-f]{64}", fields[2]):
+            fail("invalid reviewed recipe blob hash record")
+        relative = safe_relative(fields[0]).as_posix()
+        if relative in reviewed or not fields[1].isdigit():
+            fail("duplicate or invalid reviewed recipe blob hash")
+        reviewed[relative] = (int(fields[1]), fields[2])
+    selected = []
+    for package in lock["packages"]:
+        entries = [package["recipe"]] + package.get("patches", [])
+        for entry in entries:
+            path = entry["path"]
+            if not path.startswith("packages/"):
+                fail("recipe path is outside packages: " + path)
+            relative = safe_relative(path[len("packages/"):]).as_posix()
+            source = root / relative
+            expected = reviewed.get(relative)
+            if expected is None or not source.is_file() or source.is_symlink():
+                fail("locked recipe blob is missing: " + relative)
+            if source.stat().st_size != expected[0] or digest(source) != expected[1] or digest(source) != entry["sha256"]:
+                fail("locked recipe blob does not match its reviewed hash: " + relative)
+            selected.append((relative, source))
+    return selected
 
 
 def validate_commit_records(evidence, manifest, lock):
@@ -289,8 +319,9 @@ def prepare(evidence, repo_root, output):
         for package, source in inputs:
             copy_file(source, input_root / "archives" / package / source.name)
         copy_file(repo_root / "tools/native/source-inputs.lock.json", input_root / "source-inputs.lock.json")
-        validate_regular_tree(evidence / "termux-recipes")
-        shutil.copytree(evidence / "termux-recipes", input_root / "recipes", symlinks=True)
+        recipes = selected_recipe_files(evidence, lock)
+        for relative, source in recipes:
+            copy_file(source, input_root / "recipes" / relative)
         copy_provenance(sources, temporary / "provenance")
         for path in official:
             copy_file(path, temporary / "provenance/official-checksums" / path.name)

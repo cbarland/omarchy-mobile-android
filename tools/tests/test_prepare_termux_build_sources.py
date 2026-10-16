@@ -43,8 +43,18 @@ class SourceBundleTest(unittest.TestCase):
                 "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}, "recipe": {"commit": "0" * 40,
                 "path": "packages/" + package + "/build.sh", "url": "https://example.invalid/build.sh",
                 "sha256": "b" * 64}, "patches": []})
-        (self.repo / "tools/native/source-inputs.lock.json").write_text(json.dumps(lock) + "\n")
         (self.repo / "tools/native/prepare_source_inputs.py").write_text("def validate(lock):\n    return None\n")
+        recipe_hashes = []
+        for package in lock["packages"]:
+            relative = package["name"] + "/build.sh"
+            source = self.evidence / "termux-recipes" / relative
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text("recipe-" + package["name"] + "\n")
+            data = source.read_bytes()
+            package["recipe"]["sha256"] = hashlib.sha256(data).hexdigest()
+            recipe_hashes.append(f"{relative} {len(data)} {package['recipe']['sha256']}")
+        (self.evidence / "termux-recipes/blob-hashes.txt").write_text("\n".join(recipe_hashes) + "\n")
+        (self.repo / "tools/native/source-inputs.lock.json").write_text(json.dumps(lock) + "\n")
         for commit in ["0" * 40] + [f"{index + 1:040x}" for index in range(6)]:
             (self.evidence / "sol/official-checksums" / f"commit-{commit}.json").write_text(
                 json.dumps({"sha": commit}) + "\n")
@@ -97,12 +107,28 @@ class SourceBundleTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.prepare(self.evidence, self.repo, output)
 
-    def test_nested_symlink_in_reviewed_recipe_snapshot_is_rejected(self):
-        link = self.evidence / "termux-recipes/nested-link"
+    def test_symlink_in_selected_recipe_is_rejected(self):
+        link = self.evidence / "termux-recipes/freetype/build.sh"
+        link.unlink()
         try:
-            link.symlink_to(self.evidence / "termux-full")
+            link.symlink_to(self.evidence / "termux-full/actual-input-blob-verification.json")
         except (OSError, NotImplementedError) as error:
             self.skipTest("symlinks unavailable: " + str(error))
+        with self.assertRaises(ValueError):
+            MODULE.prepare(self.evidence, self.repo, self.root / "bundle")
+
+    def test_unselected_evidence_files_are_not_published(self):
+        private = self.evidence / "sol/official-checksums/unrelated-private-fixture.json"
+        private.write_text("secret\n")
+        unlocked = self.evidence / "termux-recipes/unlocked.sh"
+        unlocked.write_text("unreviewed\n")
+        output = self.root / "bundle"
+        MODULE.prepare(self.evidence, self.repo, output)
+        self.assertFalse((output / "provenance/official-checksums/unrelated-private-fixture.json").exists())
+        self.assertFalse((output / "inputs/recipes/unlocked.sh").exists())
+
+    def test_tampered_locked_recipe_is_rejected(self):
+        (self.evidence / "termux-recipes/freetype/build.sh").write_text("tampered\n")
         with self.assertRaises(ValueError):
             MODULE.prepare(self.evidence, self.repo, self.root / "bundle")
 
