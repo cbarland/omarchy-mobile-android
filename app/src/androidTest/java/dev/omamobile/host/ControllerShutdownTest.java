@@ -43,6 +43,13 @@ public class ControllerShutdownTest {
             // Allow Activity destruction and Surface detachment to complete.
             SystemClock.sleep(1500);
             assertEquals("The controller must survive its Activity", 2, owners(context));
+            for (String profile : new String[]{"p", "d"}) {
+                try (var socket = new android.net.LocalSocket()) {
+                    socket.connect(new android.net.LocalSocketAddress(context.getFilesDir() + "/"
+                            + SessionRuntime.HOST_ALIAS + "/" + profile + "/ando/ando.sock",
+                            android.net.LocalSocketAddress.Namespace.FILESYSTEM));
+                }
+            }
             for (var task : context.getSystemService(ActivityManager.class).getAppTasks()) {
                 var component = task.getTaskInfo().baseIntent.getComponent();
                 if (component != null) {
@@ -55,7 +62,8 @@ public class ControllerShutdownTest {
             for (String profile : new String[]{"p", "d"}) {
                 var socket = new android.net.LocalSocket();
                 try (socket) {
-                    socket.connect(new android.net.LocalSocketAddress(context.getFilesDir() + "/r/" + profile
+                    socket.connect(new android.net.LocalSocketAddress(context.getFilesDir() + "/"
+                            + SessionRuntime.HOST_ALIAS + "/" + profile
                             + "/ando/ando.sock", android.net.LocalSocketAddress.Namespace.FILESYSTEM));
                     fail("Stopped controller left its Android broker accepting clients");
                 } catch (java.io.IOException expectedClosed) { }

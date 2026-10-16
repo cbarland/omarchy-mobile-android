@@ -21,7 +21,7 @@ public class AndroidAppPortalTest {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         context.startForegroundService(new Intent(context, DesktopService.class));
-        String path = new File(context.getFilesDir(), "r/android.sock").toString();
+        String path = new File(context.getFilesDir(), SessionRuntime.HOST_ALIAS + "/android.sock").toString();
         for (int attempt = 0; attempt < 100; attempt++) {
             try {
                 LocalSocket socket = new LocalSocket();
