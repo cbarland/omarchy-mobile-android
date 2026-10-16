@@ -7,7 +7,8 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
-from build_graphite import validate_output
+from build_freetype import validate_output as validate_freetype
+from build_graphite import validate_output as validate_graphite
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--abi", choices=["x86_64", "arm64-v8a"], required=True)
@@ -17,9 +18,11 @@ p.add_argument("--project", type=Path, default=Path(__file__).resolve().parents[
 a = p.parse_args()
 base = a.cache / a.abi
 owned = base / "owned/graphite2"
+owned_freetype = base / "owned/freetype"
 # Validate before writing the destination, even when a legacy Termux copy exists.
 cache_cmake = a.cache / "venv/bin/cmake"
-validate_output(owned, a.abi, a.ndk.resolve(), cache_cmake if cache_cmake.is_file() else "cmake")
+validate_graphite(owned, a.abi, a.ndk.resolve(), cache_cmake if cache_cmake.is_file() else "cmake")
+validate_freetype(owned_freetype, a.abi, a.ndk.resolve(), cache_cmake if cache_cmake.is_file() else "cmake", base / "ndk-prefix")
 source = base / "anhyprland"
 prefix = source / "build/android-prefix"
 tools = a.ndk / "toolchains/llvm/prebuilt/linux-x86_64/bin"
@@ -55,11 +58,14 @@ def copy_library(path, name=None):
     if name == "libgraphite2.so":
         seen[name]["origin"] = {"kind": "project-built", "component": "graphite2", "version": "1.3.15",
                                 "buildManifestSha256": hashlib.sha256((owned / "build.json").read_bytes()).hexdigest()}
+    if name == "libfreetype.so":
+        seen[name]["origin"] = {"kind": "project-built", "component": "freetype", "version": "2.15.0",
+                                "buildManifestSha256": hashlib.sha256((owned_freetype / "build.json").read_bytes()).hexdigest()}
     for dep in needed:
         if dep in system:
             continue
         # Use the exact NDK C++ runtime shared by our JNI adapter and compositor.
-        candidate = (owned / dep if dep == "libgraphite2.so" else ndklib / dep if dep == "libc++_shared.so"
+        candidate = (owned / dep if dep == "libgraphite2.so" else owned_freetype / dep if dep == "libfreetype.so" else ndklib / dep if dep == "libc++_shared.so"
                      else next((folder / dep for folder in search if (folder / dep).exists()), None))
         if candidate is None or not candidate.exists():
             raise RuntimeError(f"{name}: unresolved native dependency {dep}")
@@ -90,6 +96,11 @@ proof.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(owned / "build.json", proof / "build.json")
 for folder in ("recipes", "patches", "notices", "logs"):
     shutil.copytree(owned / folder, proof / folder, dirs_exist_ok=True)
+freetype_proof = notices / "owned/freetype"
+freetype_proof.mkdir(parents=True, exist_ok=True)
+shutil.copyfile(owned_freetype / "build.json", freetype_proof / "build.json")
+for folder in ("recipes", "notices", "logs"):
+    shutil.copytree(owned_freetype / folder, freetype_proof / folder, dirs_exist_ok=True)
 shutil.copy2(source / "LICENSE", notices / "Hyprland-BSD-3-Clause.txt")
 shutil.copy2(source / "android/deps.lock.json", notices / "upstream-deps.lock.json")
 shutil.copy2(base / "termux-packages.json", notices / "termux-packages.json")

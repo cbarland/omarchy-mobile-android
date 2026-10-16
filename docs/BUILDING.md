@@ -94,6 +94,10 @@ python3 tools/native/stage_port.py --abi arm64-v8a --cache "$NATIVE_CACHE" --ndk
 ```
 
 The scripts pin the Android Hyprland port and retain its dependency lock file.
+The default build also produces owned FreeType and Graphite proofs. FreeType
+runs after dependency installs and generated pkg-config shims are final. A clean-cache run,
+runtime font/render checks, and corresponding-source/delivery review remain
+separate gates.
 Termux dependency downloads use the committed per-ABI package manifests as locks:
 exact versions, official URLs, and SHA-256 values. Missing pinned packages fail
 without falling back to a newer version. `build_port.py --refresh-termux` resolves
