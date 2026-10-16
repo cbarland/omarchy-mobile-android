@@ -11,6 +11,7 @@ app/src/main/jniLibs/
 app/src/main/prebuilt/
 app/src/main/assets/native/
 app/src/main/assets/install/
+app/src/main/assets/licenses/native/*/owned/
 __pycache__/
 *.py[cod]
 .build-tools/
