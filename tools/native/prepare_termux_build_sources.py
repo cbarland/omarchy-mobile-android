@@ -9,6 +9,8 @@ import shutil
 import stat
 import tarfile
 import tempfile
+import re
+import importlib.util
 
 CHUNK = 1024 * 1024
 EXPECTED_PACKAGES = {"freetype", "fribidi", "glib", "libcairo", "libiconv", "pango"}
@@ -39,7 +41,16 @@ def copy_file(source, destination):
         fail("evidence input is not a regular file: " + str(source))
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, destination)
-    destination.chmod(stat.S_IMODE(source.stat().st_mode))
+    destination.chmod(0o644)
+
+
+def validate_regular_tree(source):
+    if source.is_symlink() or not source.is_dir():
+        fail("evidence directory is not a real directory: " + str(source))
+    for path in source.rglob("*"):
+        info = path.lstat()
+        if stat.S_ISLNK(info.st_mode) or not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+            fail("evidence tree contains an unsafe entry: " + str(path))
 
 
 def load_tree_manifest(evidence):
@@ -52,9 +63,14 @@ def load_tree_manifest(evidence):
     if {entry.get("package") for entry in entries} != EXPECTED_PACKAGES or len(entries) != 6:
         fail("actual archive manifest must contain exactly the six non-Graphite packages")
     for entry in entries:
-        if not isinstance(entry.get("archive"), str) or not entry["archive"].startswith("actual-"):
+        archive = entry.get("archive", "")
+        commit = entry.get("commit", "")
+        if not isinstance(archive, str) or not re.fullmatch(r"actual-[0-9a-f]{40}\.tar\.gz", archive):
             fail("actual archive manifest has an invalid archive name")
-        if len(entry.get("sha256", "")) != 64 or entry["bytes"] <= 0:
+        if commit != archive[7:-7] or not re.fullmatch(r"[0-9a-f]{40}", commit):
+            fail("actual archive name is not bound to its reviewed commit")
+        safe_relative(archive)
+        if type(entry.get("bytes")) is not int or entry["bytes"] <= 0 or not re.fullmatch(r"[0-9a-f]{64}", entry.get("sha256", "")):
             fail("actual archive manifest has invalid size or digest")
     return manifest
 
@@ -72,7 +88,44 @@ def selected_provenance(evidence, repo_root):
     for name, source in sources.items():
         if not source.exists() or source.is_symlink():
             fail("missing provenance input: " + name)
+        if source.is_dir():
+            validate_regular_tree(source)
     return sources
+
+
+def source_inputs(evidence, repo_root):
+    lock_path = repo_root / "tools/native/source-inputs.lock.json"
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    spec = importlib.util.spec_from_file_location("source_input_validator", repo_root / "tools/native/prepare_source_inputs.py")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    validator.validate(lock)
+    archives = evidence / "archives"
+    validate_regular_tree(archives)
+    selected = []
+    for package in lock["packages"]:
+        expected = package["upstream"]["sha256"]
+        matches = [path for path in archives.iterdir() if path.is_file() and digest(path) == expected]
+        if not matches:
+            fail("source-input archive is missing: " + package["name"])
+        preferred = [path for path in matches if "sfdownload" in path.name]
+        selected.append((package["name"], sorted(preferred or matches)[0]))
+    return lock, selected
+
+
+def validate_commit_records(evidence, manifest, lock):
+    root = evidence / "sol/official-checksums"
+    commits = [entry["commit"] for entry in manifest["archives"]]
+    for commit in set(commits):
+        record = root / ("commit-" + commit + ".json")
+        if not record.is_file() or record.is_symlink():
+            fail("missing reviewed commit provenance: " + commit)
+        try:
+            data = json.loads(record.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise ValueError("invalid reviewed commit provenance: " + commit) from error
+        if data.get("sha") != commit:
+            fail("reviewed commit provenance does not match its filename: " + commit)
 
 
 def copy_provenance(sources, destination):
@@ -82,6 +135,34 @@ def copy_provenance(sources, destination):
             shutil.copytree(source, target, symlinks=False)
         else:
             copy_file(source, target)
+
+
+def selected_official_files(evidence, manifest, lock):
+    root = evidence / "sol/official-checksums"
+    validate_regular_tree(root)
+    commits = {entry["commit"] for entry in manifest["archives"]}
+    commits.update(package["recipe"]["commit"] for package in lock["packages"])
+    aliases = {"freetype": ("freetype",), "fribidi": ("fribidi",), "glib": ("glib",),
+               "libcairo": ("cairo", "libcairo"), "libiconv": ("iconv", "libiconv"),
+               "pango": ("pango",)}
+    selected = []
+    for path in root.iterdir():
+        if not path.is_file() or path.is_symlink():
+            continue
+        if path.name.startswith("commit-") and path.name[7:47] in commits:
+            selected.append(path)
+            continue
+        if any(path.name.startswith(token + "-") for tokens in aliases.values() for token in tokens):
+            selected.append(path)
+            continue
+        if path.name.startswith("artifact-") and path.suffix == ".txt":
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if any(any(alias in text for alias in tokens) for tokens in aliases.values()):
+                selected.append(path)
+                zip_path = path.with_suffix(".zip")
+                if zip_path.is_file():
+                    selected.append(zip_path)
+    return selected
 
 
 def bundle_files(root):
@@ -110,29 +191,39 @@ def write_deterministic_tar(source, target):
             for directory in directories:
                 info = tarfile.TarInfo(directory.relative_to(source).as_posix() + "/")
                 info.type = tarfile.DIRTYPE
-                info.mode = stat.S_IMODE(directory.stat().st_mode)
+                info.mode = 0o755
                 info.mtime = 0
                 info.uid = info.gid = 0
                 archive.addfile(info)
             for path in bundle_files(source):
                 info = tarfile.TarInfo(path.relative_to(source).as_posix())
                 info.size = path.stat().st_size
-                info.mode = stat.S_IMODE(path.stat().st_mode)
+                info.mode = 0o644
                 info.mtime = 0
                 info.uid = info.gid = 0
                 with path.open("rb") as data:
                     archive.addfile(info, data)
 
 
-def verify_tar(target, records):
+def verify_tar(target, records, manifest_bytes):
     expected = {record["path"]: record for record in records}
     with tarfile.open(target, "r:gz") as archive:
         files = {}
+        seen = set()
         for member in archive.getmembers():
+            if member.name in seen:
+                fail("portable archive contains a duplicate member: " + member.name)
+            seen.add(member.name)
             path = safe_relative(member.name.rstrip("/")) if member.name.rstrip("/") else None
             if member.issym() or member.islnk() or (path and path.parts[0] == ".."):
                 fail("portable archive contains an unsafe member: " + member.name)
+            if not member.isdir() and not member.isfile():
+                fail("portable archive contains an unsupported member: " + member.name)
+            if member.isdir() and member.mode != 0o755:
+                fail("portable archive directory mode is not canonical: " + member.name)
             if member.isfile():
+                if member.mode != 0o644:
+                    fail("portable archive file mode is not canonical: " + member.name)
                 files[member.name] = (member.size, hashlib.sha256(archive.extractfile(member).read()).hexdigest())
         require_files = set(expected) | {"manifest.json"}
         if set(files) != require_files:
@@ -140,17 +231,26 @@ def verify_tar(target, records):
         for path, record in expected.items():
             if files[path] != (record["bytes"], record["sha256"]):
                 fail("portable archive content differs: " + path)
+        manifest_member = archive.getmember("manifest.json")
+        if archive.extractfile(manifest_member).read() != manifest_bytes:
+            fail("portable archive manifest differs from the staged manifest")
 
 
 def prepare(evidence, repo_root, output):
     evidence = Path(evidence).resolve()
     repo_root = Path(repo_root).resolve()
     output = Path(output).resolve()
-    if output.exists() or output.is_symlink():
+    archive_output = output.with_suffix(".tar.gz")
+    if output.exists() or output.is_symlink() or archive_output.exists() or archive_output.is_symlink():
         fail("refusing to overwrite bundle: " + str(output))
     manifest = load_tree_manifest(evidence)
     sources = selected_provenance(evidence, repo_root)
+    lock, inputs = source_inputs(evidence, repo_root)
+    validate_commit_records(evidence, manifest, lock)
+    official = selected_official_files(evidence, manifest, lock)
+    output.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=".termux-source-bundle-", dir=output.parent))
+    temporary_tar = output.parent / ("." + archive_output.name + ".tmp")
     try:
         trees = temporary / "build-trees"
         for entry in manifest["archives"]:
@@ -160,14 +260,26 @@ def prepare(evidence, repo_root, output):
             if source.stat().st_size != entry["bytes"] or digest(source) != entry["sha256"]:
                 fail("actual archive does not match manifest: " + entry["package"])
             copy_file(source, trees / entry["package"] / entry["archive"])
+        input_root = temporary / "inputs"
+        for package, source in inputs:
+            copy_file(source, input_root / "archives" / package / source.name)
+        copy_file(repo_root / "tools/native/source-inputs.lock.json", input_root / "source-inputs.lock.json")
+        validate_regular_tree(evidence / "termux-recipes")
+        shutil.copytree(evidence / "termux-recipes", input_root / "recipes", symlinks=True)
         copy_provenance(sources, temporary / "provenance")
+        for path in official:
+            copy_file(path, temporary / "provenance/official-checksums" / path.name)
         (temporary / "BUILD-SOURCES.md").write_text(
             "# Termux build source evidence\n\n"
             "This bundle contains six pinned workflow source trees, the locked Termux "
-            "recipe material, and provenance metadata. It is for inspection and "
-            "independent rebuild/relink attempts. It does not establish that shipped "
-            "binaries came from these trees, and this tool never executes recovered "
-            "build scripts. Review the manifest before any separate build.\n",
+            "recipe material, and provenance metadata. To attempt a rebuild or relink, "
+            "unpack the six trees, select the matching package record in "
+            "inputs/source-inputs.lock.json, verify the recipe and patch blobs under "
+            "inputs/recipes, and use a separately reviewed Termux toolchain. This "
+            "bundle does not supply all build-system objects or relink dependencies. "
+            "It does not establish that shipped binaries came from these trees, and "
+            "this tool never executes recovered build scripts. Review the manifest "
+            "before any separate build.\n",
             encoding="utf-8")
         records = file_records(temporary)
         bundle_manifest = {"format": 1, "kind": "termux-build-source-evidence",
@@ -177,13 +289,15 @@ def prepare(evidence, repo_root, output):
                            "files": records}
         (temporary / "manifest.json").write_text(json.dumps(bundle_manifest, sort_keys=True, indent=2) + "\n",
                                                   encoding="utf-8")
-        output.parent.mkdir(parents=True, exist_ok=True)
+        write_deterministic_tar(temporary, temporary_tar)
+        verify_tar(temporary_tar, records, (temporary / "manifest.json").read_bytes())
         shutil.move(str(temporary), str(output))
-        archive = output.with_suffix(".tar.gz")
-        write_deterministic_tar(output, archive)
-        verify_tar(archive, records)
+        shutil.move(str(temporary_tar), str(archive_output))
     except Exception:
         shutil.rmtree(temporary, ignore_errors=True)
+        temporary_tar.unlink(missing_ok=True)
+        if output.exists() and output.is_dir() and not (output / "manifest.json").exists():
+            shutil.rmtree(output, ignore_errors=True)
         raise
 
 

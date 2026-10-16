@@ -2,10 +2,12 @@
 
 `tools/native/prepare_termux_build_sources.py` packages the six recovered
 official Termux workflow source trees: freetype, fribidi, glib, libcairo,
-libiconv, and pango. It copies only the verified `actual-<commit>.tar.gz`
-archives, the locked recipe and patch snapshot, and the supplied provenance
-metadata. Graphite is excluded because its owned native builder has a separate
-source and release-evidence path.
+libiconv, and pango. It copies only the verified `actual-<40-hex-commit>.tar.gz`
+archives, the seven lock-selected upstream archives and their 36 verified recipe
+or patch files, and the reviewed per-package commit, artifact, and job metadata.
+Graphite is excluded from the build trees because its owned native builder has a
+separate source and release-evidence path; its lock-selected upstream input may
+remain under `inputs/` for the complete historical input snapshot.
 
 Example, using the private evidence snapshot supplied to the review:
 
@@ -17,8 +19,11 @@ python3 tools/native/prepare_termux_build_sources.py \
 ```
 
 The command verifies archive size and SHA-256 values from the actual-tree
-manifest, rejects missing or unsafe inputs, emits a deterministic directory and
-`termux-build-source-evidence.tar.gz`, and never executes recovered source or
-build scripts. The output records that it is evidence for inspection and
-independent rebuild or relink attempts; it does not prove binary provenance or
-clear a release gate.
+manifest and lock, rejects missing, unsafe, duplicate, or symlinked inputs,
+emits a deterministic directory and `termux-build-source-evidence.tar.gz`, and
+checks the tar contents before publishing either output. To attempt an
+independent rebuild or relink, unpack the matching tree, select its lock record,
+verify its recipe and patches, then provide a separately reviewed Termux
+toolchain and missing build-system objects. The bundle does not contain every
+relink dependency, does not prove Debian package identity or shipped-binary
+provenance, and never executes recovered source or build scripts.
