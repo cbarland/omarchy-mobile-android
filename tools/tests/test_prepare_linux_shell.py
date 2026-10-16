@@ -96,7 +96,7 @@ def main():
         "usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.omamobile.service",
         "root/.local/share/omamobile/verify-access-portal",
     }
-    assert required_portal <= before, f"Access portal payload members missing: {required_portal - before}"
+    assert required_portal <= before.keys(), f"Access portal payload members missing: {required_portal - before.keys()}"
     portal_config = member_bytes(directory / "clean.tar.gz", "etc/xdg/xdg-desktop-portal/hyprland-portals.conf")
     assert portal_config == b"[preferred]\ndefault=*\norg.freedesktop.impl.portal.Access=omamobile\n"
     for profile in ("phone", "desktop"):
