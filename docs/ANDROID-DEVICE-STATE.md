@@ -21,6 +21,11 @@ Use `omamobile-android device-state` from Linux. Freshly prepared images include
 the CLI; updating the APK alone does not refresh an existing Linux installation.
 An older or malformed reply fails with stderr and nonzero exit status.
 
+Use `omamobile-android display-settings` from Linux to open the fixed Android
+host panel. It owns external display selection, Android mode and rotation facts,
+and the safe desktop scale preview/keep/revert flow. Omarchy's Display panel
+continues to own normal Hyprland monitor controls.
+
 On the disposable API35 emulator, the previous APK rejects the new operation.
 The candidate passes direct Android API and real Linux CLI comparisons, plus
 existing protocol/discovery checks (three tests, 2.321s). A separate short
