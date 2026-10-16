@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+from build_graphite import validate_output
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--abi", choices=["x86_64", "arm64-v8a"], required=True)
@@ -15,6 +16,10 @@ p.add_argument("--ndk", type=Path, required=True)
 p.add_argument("--project", type=Path, default=Path(__file__).resolve().parents[2])
 a = p.parse_args()
 base = a.cache / a.abi
+owned = base / "owned/graphite2"
+# Validate before writing the destination, even when a legacy Termux copy exists.
+cache_cmake = a.cache / "venv/bin/cmake"
+validate_output(owned, a.abi, a.ndk.resolve(), cache_cmake if cache_cmake.is_file() else "cmake")
 source = base / "anhyprland"
 prefix = source / "build/android-prefix"
 tools = a.ndk / "toolchains/llvm/prebuilt/linux-x86_64/bin"
@@ -45,11 +50,17 @@ def copy_library(path, name=None):
     output_name = apk_name(name)
     seen[name] = {"name_in_apk": output_name, "sha256_source": hashlib.sha256(path.read_bytes()).hexdigest(), "needed": needed,
                   "source": str(path.relative_to(base)) if path.is_relative_to(base) else "Android NDK " + str(path.relative_to(a.ndk))}
+    if path.is_relative_to(base / "ndk-prefix"):
+        seen[name]["origin"] = {"kind": "termux-package"}
+    if name == "libgraphite2.so":
+        seen[name]["origin"] = {"kind": "project-built", "component": "graphite2", "version": "1.3.15",
+                                "buildManifestSha256": hashlib.sha256((owned / "build.json").read_bytes()).hexdigest()}
     for dep in needed:
         if dep in system:
             continue
         # Use the exact NDK C++ runtime shared by our JNI adapter and compositor.
-        candidate = ndklib / dep if dep == "libc++_shared.so" else next((folder / dep for folder in search if (folder / dep).exists()), None)
+        candidate = (owned / dep if dep == "libgraphite2.so" else ndklib / dep if dep == "libc++_shared.so"
+                     else next((folder / dep for folder in search if (folder / dep).exists()), None))
         if candidate is None or not candidate.exists():
             raise RuntimeError(f"{name}: unresolved native dependency {dep}")
         copy_library(candidate, dep)
@@ -74,6 +85,11 @@ assets.mkdir(parents=True, exist_ok=True)
 shutil.copy2(prefix / "share/misc/magic.mgc", assets / "magic.mgc")
 notices = a.project / "app/src/main/assets/licenses/native" / a.abi
 notices.mkdir(parents=True, exist_ok=True)
+proof = notices / "owned/graphite2"
+proof.mkdir(parents=True, exist_ok=True)
+shutil.copyfile(owned / "build.json", proof / "build.json")
+for folder in ("recipes", "patches", "notices", "logs"):
+    shutil.copytree(owned / folder, proof / folder, dirs_exist_ok=True)
 shutil.copy2(source / "LICENSE", notices / "Hyprland-BSD-3-Clause.txt")
 shutil.copy2(source / "android/deps.lock.json", notices / "upstream-deps.lock.json")
 shutil.copy2(base / "termux-packages.json", notices / "termux-packages.json")

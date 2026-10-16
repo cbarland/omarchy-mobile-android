@@ -10,7 +10,9 @@ import argparse
 import hashlib
 import json
 import re
+import zipfile
 from pathlib import Path
+from build_graphite import validate_materials, sha256
 
 ABIS = ("arm64-v8a", "x86_64")
 INSTALL_PINS = {
@@ -65,10 +67,37 @@ def notice_files(path: Path) -> list[Path]:
             p.name.lower().startswith(("license", "licence", "copying", "copyright", "notice"))]
 
 
-def audit(project: Path) -> dict:
+def apk_native_errors(apk):
+    errors, checked = [], 0
+    required = ("libomamobile_hyprland.so", "libanhyprland.so", "libtawcroot.so", "libando.so")
+    try:
+        with zipfile.ZipFile(apk) as archive:
+            names = archive.namelist()
+            for abi, machine in (("x86_64", 62), ("arm64-v8a", 183)):
+                for name in required:
+                    entry = "lib/" + abi + "/" + name
+                    if names.count(entry) != 1:
+                        errors.append({"kind": "missing_or_duplicate_apk_native", "entry": entry})
+                        continue
+                    with archive.open(entry) as stream:
+                        header = stream.read(20)
+                    if (len(header) != 20 or header[:6] != b"\x7fELF\x02\x01"
+                            or int.from_bytes(header[18:20], "little") != machine
+                            or int.from_bytes(header[16:18], "little") not in
+                            ((3,) if name in ("libomamobile_hyprland.so", "libanhyprland.so") else (2, 3))):
+                        errors.append({"kind": "invalid_apk_native_elf", "entry": entry})
+                    else:
+                        checked += 1
+    except (OSError, ValueError, zipfile.BadZipFile, RuntimeError) as exc:
+        errors.append({"kind": "invalid_apk", "detail": str(exc)})
+    return errors, checked
+
+
+def audit(project: Path, apk=None) -> dict:
     main = project / "app/src/main"
     errors, missing = [], []
     source_versions = {}
+    owned_source_versions = set()
     checked = 0
     def error(kind, **details):
         errors.append({"kind": kind, **details})
@@ -127,7 +156,23 @@ def audit(project: Path) -> dict:
                     error("missing_dependency", abi=abi, library=name, dependency=dependency)
             stem = name.removeprefix("lib").split(".so")[0]
             package = version = None
-            if name == "libanhyprland.so":
+            if stem == "graphite2":
+                package, component, version = "libgraphite", "graphite2", "1.3.15"
+                source_versions.setdefault((package, version), []).append(abi)
+                owned_source_versions.add((package, version))
+                proof = notices / "owned/graphite2"
+                notice = proof / "notices"
+                try:
+                    origin = item.get("origin", {})
+                    if origin != {"kind": "project-built", "component": component, "version": version,
+                                  "buildManifestSha256": sha256(proof / "build.json")}:
+                        raise ValueError("Graphite requires its explicit owned-build origin")
+                    build = validate_materials(proof, abi)
+                    if build["librarySha256"] != item.get("sha256_source"):
+                        raise ValueError("Graphite source library differs from its build evidence")
+                except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+                    error("invalid_owned_graphite", abi=abi, detail=str(exc))
+            elif name == "libanhyprland.so":
                 component, notice = "Hyprland", notices / "Hyprland-BSD-3-Clause.txt"
                 version = manifest.get("commit")
             elif item.get("source", "").startswith("ndk-prefix/") and stem in TERMUX:
@@ -176,16 +221,26 @@ def audit(project: Path) -> dict:
         required = ("upstreamSourceUrl", "upstreamSourceSha256", "termuxRecipeCommit",
                     "termuxRecipePath", "sourceBundleUrl", "sourceBundleSha256")
         absent = [field for field in required if not isinstance(record.get(field), str) or not record[field].strip()]
+        if (package, version) in owned_source_versions:
+            # The owned-build migration must not turn a source obligation into
+            # a satisfied Termux record. Actual public source/relink delivery is
+            # a separate verified unit; placeholder manifest strings cannot lift it.
+            absent = ["ownedSourceBundleDelivery", "ownedRelinkingMaterials"]
         for field in ("upstreamSourceSha256", "sourceBundleSha256", "termuxRecipeCommit"):
-            if field not in absent and not re.fullmatch(r"[0-9a-f]{40}" if field.endswith("Commit") else r"[0-9a-f]{64}", record[field]):
+            if (package, version) not in owned_source_versions and field not in absent and not re.fullmatch(r"[0-9a-f]{40}" if field.endswith("Commit") else r"[0-9a-f]{64}", record[field]):
                 absent.append(field)
         if absent:
             source_gaps.append({"package": package, "version": version, "abis": sorted(set(abis)),
                                 "missingFields": absent})
+    checked_apk = 0
+    if apk is not None:
+        apk_errors, checked_apk = apk_native_errors(apk)
+        errors.extend(apk_errors)
     passed = not errors and not missing
     return {"passed": passed, "readyForPublicBinaryRelease": passed and not source_gaps,
             "checkedLibraries": checked,
             "checkedInstallerFiles": checked_install,
+            "checkedApkNativeEntries": checked_apk,
             "errors": errors, "missingLicenses": missing, "sourceMaterialGaps": source_gaps,
             "scope": "Mechanical staged files/hashes/pins/closure/notices and known corresponding-source mappings; not certification of license compliance or source completeness."}
 
@@ -194,7 +249,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--mechanical-only", action="store_true", help="Exit on file/hash/notice checks only; does not clear binary release holds")
+    parser.add_argument("--apk", type=Path, help="Also require both ABI native owners/runtimes in the actual APK")
     args = parser.parse_args()
-    result = audit(args.project.resolve())
+    result = audit(args.project.resolve(), args.apk)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["passed" if args.mechanical_only else "readyForPublicBinaryRelease"] else 1)
