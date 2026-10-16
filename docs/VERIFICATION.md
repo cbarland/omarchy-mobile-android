@@ -4,6 +4,26 @@ Development began 2026-10-14. This file records the tested milestone, not overal
 
 ## Current accounting — 2026-10-15
 
+### Combined PR verification — 2026-10-15
+
+PRs #11 (HTTPS theme fixture), #12 (user-data export), and #13 (desktop scale
+preview) were squash-merged and tested together at `9b11d11`. The full graphical
+debug APK and test APK built with both native ABIs; 34 JVM tests and lint passed.
+The Linux host suite passed 42 tests in 6.608s, and merged-main contribution CI
+[run 38854437427](https://github.com/cbarland/omarchy-mobile-android/actions/runs/38854437427)
+passed both jobs.
+
+The existing disposable API35 emulator was cold-booted without wiping its data,
+and both APKs were installed as updates. Direct instrumentation passed all six
+display-preview, user-data-export and service-lifecycle tests in 69.506s. This
+includes the native scale acknowledgment, Keep/Revert, dialog-independent
+timeout, export cancellation and service completion races. Both real shells
+then reopened with live Hyprland IPC. Unmodified SurfaceFlinger captures were
+visually checked: the phone showed its clock/calendar widgets and launcher,
+and the 1920×1080 desktop showed the upstream bar and matching wallpaper.
+These combined checks do not replace the individual PRs' broader evidence or
+establish new physical-device or public APK release readiness.
+
 Physical device work remains paused for this batch. Resumed verification uses
 the prepared emulator and a separate disposable emulator; this task has not
 reconnected to or changed the Nubia. Preserve the prepared Linux data and
