@@ -58,6 +58,11 @@ class SourceBundleTest(unittest.TestCase):
         for commit in ["0" * 40] + [f"{index + 1:040x}" for index in range(6)]:
             (self.evidence / "sol/official-checksums" / f"commit-{commit}.json").write_text(
                 json.dumps({"sha": commit}) + "\n")
+        self.provenance_manifest = self.root / "provenance-manifest.json"
+        self.provenance_manifest.write_text(json.dumps({"files": [
+            {"path": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+            for path in sorted((self.evidence / "sol/official-checksums").iterdir())
+        ]}) + "\n")
         entries = []
         for index, package in enumerate(sorted(MODULE.EXPECTED_PACKAGES)):
             commit = f"{index + 1:040x}"
@@ -76,8 +81,8 @@ class SourceBundleTest(unittest.TestCase):
     def test_bundle_is_portable_and_reproducible(self):
         first = self.root / "bundle-one"
         second = self.root / "bundle-two"
-        MODULE.prepare(self.evidence, self.repo, first)
-        MODULE.prepare(self.evidence, self.repo, second)
+        MODULE.prepare(self.evidence, self.repo, first, self.provenance_manifest)
+        MODULE.prepare(self.evidence, self.repo, second, self.provenance_manifest)
         self.assertEqual((first.with_suffix(".tar.gz")).read_bytes(), (second.with_suffix(".tar.gz")).read_bytes())
         manifest = json.loads((first / "manifest.json").read_text())
         self.assertEqual({record["name"] for record in manifest["packages"]}, MODULE.EXPECTED_PACKAGES)
@@ -90,7 +95,7 @@ class SourceBundleTest(unittest.TestCase):
         archive = next((self.evidence / "termux-full/archives").iterdir())
         archive.write_bytes(b"tampered\n")
         with self.assertRaises(ValueError):
-            MODULE.prepare(self.evidence, self.repo, self.root / "bundle")
+            MODULE.prepare(self.evidence, self.repo, self.root / "bundle", self.provenance_manifest)
 
     def test_archive_path_traversal_and_existing_outputs_are_rejected(self):
         manifest_path = self.evidence / "termux-full/actual-tree-archive-manifest.json"
@@ -98,14 +103,14 @@ class SourceBundleTest(unittest.TestCase):
         manifest["archives"][0]["archive"] = "actual-../escape.tar.gz"
         manifest_path.write_text(json.dumps(manifest))
         with self.assertRaises(ValueError):
-            MODULE.prepare(self.evidence, self.repo, self.root / "bundle")
+            MODULE.prepare(self.evidence, self.repo, self.root / "bundle", self.provenance_manifest)
         manifest["archives"][0]["archive"] = "actual-0000000000000000000000000000000000000001.tar.gz"
         manifest_path.write_text(json.dumps(manifest))
         output = self.root / "existing"
         output.mkdir()
         (self.root / "existing.tar.gz").write_bytes(b"owned")
         with self.assertRaises(ValueError):
-            MODULE.prepare(self.evidence, self.repo, output)
+            MODULE.prepare(self.evidence, self.repo, output, self.provenance_manifest)
 
     def test_symlink_in_selected_recipe_is_rejected(self):
         link = self.evidence / "termux-recipes/freetype/build.sh"
@@ -115,22 +120,25 @@ class SourceBundleTest(unittest.TestCase):
         except (OSError, NotImplementedError) as error:
             self.skipTest("symlinks unavailable: " + str(error))
         with self.assertRaises(ValueError):
-            MODULE.prepare(self.evidence, self.repo, self.root / "bundle")
+            MODULE.prepare(self.evidence, self.repo, self.root / "bundle", self.provenance_manifest)
 
     def test_unselected_evidence_files_are_not_published(self):
         private = self.evidence / "sol/official-checksums/unrelated-private-fixture.json"
         private.write_text("secret\n")
+        artifact = self.evidence / "sol/official-checksums/artifact-private.txt"
+        artifact.write_text("freetype reviewed artifact name\n")
         unlocked = self.evidence / "termux-recipes/unlocked.sh"
         unlocked.write_text("unreviewed\n")
         output = self.root / "bundle"
-        MODULE.prepare(self.evidence, self.repo, output)
+        MODULE.prepare(self.evidence, self.repo, output, self.provenance_manifest)
         self.assertFalse((output / "provenance/official-checksums/unrelated-private-fixture.json").exists())
+        self.assertFalse((output / "provenance/official-checksums/artifact-private.txt").exists())
         self.assertFalse((output / "inputs/recipes/unlocked.sh").exists())
 
     def test_tampered_locked_recipe_is_rejected(self):
         (self.evidence / "termux-recipes/freetype/build.sh").write_text("tampered\n")
         with self.assertRaises(ValueError):
-            MODULE.prepare(self.evidence, self.repo, self.root / "bundle")
+            MODULE.prepare(self.evidence, self.repo, self.root / "bundle", self.provenance_manifest)
 
     def test_tar_duplicate_member_is_rejected(self):
         target = self.root / "bad.tar.gz"

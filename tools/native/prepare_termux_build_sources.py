@@ -167,31 +167,29 @@ def copy_provenance(sources, destination):
             copy_file(source, target)
 
 
-def selected_official_files(evidence, manifest, lock):
+def selected_official_files(evidence, manifest, lock, provenance_manifest):
     root = evidence / "sol/official-checksums"
     validate_regular_tree(root)
-    commits = {entry["commit"] for entry in manifest["archives"]}
-    commits.update(package["recipe"]["commit"] for package in lock["packages"])
-    aliases = {"freetype": ("freetype",), "fribidi": ("fribidi",), "glib": ("glib",),
-               "libcairo": ("cairo", "libcairo"), "libiconv": ("iconv", "libiconv"),
-               "pango": ("pango",)}
+    try:
+        entries = json.loads(Path(provenance_manifest).read_text(encoding="utf-8"))["files"]
+    except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
+        raise ValueError("invalid provenance manifest") from error
     selected = []
-    for path in root.iterdir():
-        if not path.is_file() or path.is_symlink():
-            continue
-        if path.name.startswith("commit-") and path.name[7:47] in commits:
-            selected.append(path)
-            continue
-        if any(path.name.startswith(token + "-") for tokens in aliases.values() for token in tokens):
-            selected.append(path)
-            continue
-        if path.name.startswith("artifact-") and path.suffix == ".txt":
-            text = path.read_text(encoding="utf-8", errors="replace")
-            if any(any(alias in text for alias in tokens) for tokens in aliases.values()):
-                selected.append(path)
-                zip_path = path.with_suffix(".zip")
-                if zip_path.is_file():
-                    selected.append(zip_path)
+    seen = set()
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str) or not re.fullmatch(r"[0-9a-f]{64}", entry.get("sha256", "")):
+            fail("invalid provenance manifest entry")
+        relative = safe_relative(entry["path"]).as_posix()
+        if relative in seen:
+            fail("duplicate provenance manifest entry: " + relative)
+        seen.add(relative)
+        path = root / relative
+        if not path.is_file() or path.is_symlink() or digest(path) != entry["sha256"]:
+            fail("provenance file does not match manifest: " + relative)
+        selected.append(path)
+    required = {"commit-" + entry["commit"] + ".json" for entry in manifest["archives"]}
+    if not required.issubset(seen):
+        fail("provenance manifest omits a required commit record")
     return selected
 
 
@@ -290,7 +288,7 @@ def verify_tar(target, records, manifest_bytes):
             fail("portable archive manifest differs from the staged manifest")
 
 
-def prepare(evidence, repo_root, output):
+def prepare(evidence, repo_root, output, provenance_manifest=None):
     evidence = Path(evidence).resolve()
     repo_root = Path(repo_root).resolve()
     output = Path(output).resolve()
@@ -301,7 +299,9 @@ def prepare(evidence, repo_root, output):
     sources = selected_provenance(evidence, repo_root)
     lock, inputs = source_inputs(evidence, repo_root)
     validate_commit_records(evidence, manifest, lock)
-    official = selected_official_files(evidence, manifest, lock)
+    if provenance_manifest is None:
+        provenance_manifest = repo_root / "tools/native/termux-provenance-manifest.json"
+    official = selected_official_files(evidence, manifest, lock, provenance_manifest)
     package_metadata = package_records(manifest, lock, inputs, official)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=".termux-source-bundle-", dir=output.parent))
@@ -362,8 +362,9 @@ def main():
     parser.add_argument("--evidence-root", type=Path, required=True)
     parser.add_argument("--repo-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--provenance-manifest", type=Path, required=True)
     args = parser.parse_args()
-    prepare(args.evidence_root, args.repo_root, args.output)
+    prepare(args.evidence_root, args.repo_root, args.output, args.provenance_manifest)
     print(json.dumps({"bundle": str(args.output), "tar": str(args.output.with_suffix(".tar.gz"))}))
 
 
