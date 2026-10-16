@@ -13,12 +13,17 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.List;
+import java.util.HashSet;
+import java.util.concurrent.TimeUnit;
 import static org.junit.Assert.*;
 
 public class AndroidAppPortalTest {
     private byte[] lastImage = new byte[0];
     private LocalSocket connect() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        org.junit.Assume.assumeTrue("Prepared Linux installation required", HostRuntime.get(context).installed());
         context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         context.startForegroundService(new Intent(context, DesktopService.class));
         String path = new File(context.getFilesDir(), SessionRuntime.HOST_ALIAS + "/android.sock").toString();
@@ -48,6 +53,45 @@ public class AndroidAppPortalTest {
             assertTrue(list.toString(), list.getBoolean("ok"));
             assertTrue(list.getJSONArray("apps").length() > 0);
         }
+    }
+    @Test public void linuxClientReachesTheSamePortal() throws Exception {
+        org.junit.Assume.assumeTrue("Explicit -e graphics true and prepared Linux required",
+                "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        org.json.JSONArray hostApps;
+        try (LocalSocket socket = connect()) {
+            JSONObject reply = request(socket, new JSONObject().put("op", "list"));
+            assertTrue(reply.toString(), reply.getBoolean("ok"));
+            hostApps = reply.getJSONArray("apps");
+        }
+        var root = context.getFilesDir().toPath().resolve("linux/rootfs");
+        var argv = RuntimeSpec.command(new File(context.getApplicationInfo().nativeLibraryDir, "libtawcroot.so").toPath(),
+                root, List.of(new RuntimeSpec.Bind("/dev", "/dev", false),
+                        new RuntimeSpec.Bind("/proc", "/proc", false)),
+                List.of("/usr/bin/omamobile-android", "list"));
+        var captured = Files.createTempFile(context.getCacheDir().toPath(), "portal-list-", ".json");
+        ProcessBuilder builder = new ProcessBuilder(argv).directory(root.toFile()).redirectErrorStream(true)
+                .redirectOutput(captured.toFile());
+        builder.environment().clear(); builder.environment().putAll(RuntimeSpec.environment(false));
+        Process process = null;
+        try {
+            process = builder.start();
+            process.getOutputStream().close();
+            assertTrue("Linux portal client timed out", process.waitFor(10, TimeUnit.SECONDS));
+            String output = new String(Files.readAllBytes(captured), StandardCharsets.UTF_8);
+            assertEquals(output, 0, process.exitValue());
+            var guestApps = new org.json.JSONArray(output);
+            assertTrue("Expected discoverable Android applications", guestApps.length() > 0);
+            assertEquals(packages(hostApps), packages(guestApps));
+        } finally {
+            if (process != null) process.destroyForcibly();
+            Files.deleteIfExists(captured);
+        }
+    }
+    private static java.util.Set<String> packages(org.json.JSONArray apps) throws Exception {
+        var packages = new HashSet<String>();
+        for (int i = 0; i < apps.length(); i++) packages.add(apps.getJSONObject(i).getString("package"));
+        return packages;
     }
     @Test public void settingsHasLiveFramesAndDisplayDiesWithClient() throws Exception {
         org.junit.Assume.assumeTrue("Explicit -e androidWindows true and device Shizuku authorization required",
