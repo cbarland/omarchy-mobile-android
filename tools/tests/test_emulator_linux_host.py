@@ -47,6 +47,38 @@ class EmulatorHelperTests(unittest.TestCase):
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("session", result.stdout)
+        command_help = subprocess.run([sys.executable, str(SCRIPT), "command", "--help"],
+                                      capture_output=True, text=True, timeout=10)
+        self.assertEqual(command_help.returncode, 0, command_help.stderr)
+        self.assertIn("--allow-app-restart", command_help.stdout)
+
+    def test_command_requires_restart_acknowledgement_before_adb(self):
+        calls = []
+        with patch.object(sys, "argv", [str(SCRIPT), "--adb", "fake-adb", "command", "printf test"]), \
+                patch("subprocess.run", side_effect=lambda *args, **kwargs: calls.append(args) or self.fail("subprocess.run called")), \
+                patch("subprocess.check_output", side_effect=lambda *args, **kwargs: calls.append(args) or self.fail("subprocess.check_output called")), \
+                contextlib.redirect_stderr(io.StringIO()) as stderr:
+            with self.assertRaises(SystemExit) as failed:
+                runpy.run_path(str(SCRIPT), run_name="__main__")
+        self.assertEqual(failed.exception.code, 2)
+        self.assertEqual(calls, [])
+        self.assertIn("--allow-app-restart", stderr.getvalue())
+        self.assertIn("use session", stderr.getvalue())
+
+    def test_command_acknowledgement_preserves_instrumentation_path(self):
+        commands = []
+
+        def run(command, **kwargs):
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 0, "OK (1 test)\n", "")
+
+        with patch.object(sys, "argv", [str(SCRIPT), "--adb", "fake-adb", "--serial", "emulator-5556",
+                                         "command", "printf test", "--allow-app-restart"]), \
+                patch("subprocess.run", side_effect=run), \
+                patch("subprocess.check_output", return_value=b"command output\n"), \
+                contextlib.redirect_stdout(io.TextIOWrapper(io.BytesIO(), encoding="utf-8")):
+            runpy.run_path(str(SCRIPT), run_name="__main__")
+        self.assertEqual(commands[0][3:6], ["shell", "am", "instrument"])
 
     def test_start_retries_direct_bounded_adb_probe(self):
         # Exercise the actual CLI path without launching any process/device.
