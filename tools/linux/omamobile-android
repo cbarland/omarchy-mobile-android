@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Android applications as real, resizable Wayland clients in the shared Linux.
 
-`omamobile-android list`, `device-state`, `sync` (desktop entries), or `open PACKAGE`.
+`omamobile-android list`, `device-state`, `display-settings`, `sync` (desktop entries), or `open PACKAGE`.
 The private Unix socket authenticates the app UID; it never listens on TCP.
 The initial transport is changed-frame JPEG at <=10 fps. Secure Android
 surfaces remain protected. This transport is an integration prototype.
@@ -192,7 +192,7 @@ class Portal:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["list", "device-state", "sync", "open"])
+    parser.add_argument("action", choices=["list", "device-state", "display-settings", "sync", "open"])
     parser.add_argument("package", nargs="?")
     args = parser.parse_args()
     portal = Portal()
@@ -200,6 +200,15 @@ def main():
         try:
             state = device_state(portal.request("device-state")[0])
             print(json.dumps(state, sort_keys=True))
+        finally:
+            portal.close()
+        return
+    if args.action == "display-settings":
+        try:
+            reply = portal.request("display-settings")[0]
+            if reply.get("requested") is not True:
+                raise RuntimeError("Android display settings request was not accepted")
+            print("Android display settings requested")
         finally:
             portal.close()
         return

@@ -46,6 +46,34 @@ class DeviceStateCliTest(unittest.TestCase):
         self.assertEqual({"deviceLocked": False, "interactive": True, "keyguardLocked": False},
                          json.loads(output))
 
+    def test_display_settings_opens_fixed_host_panel_and_closes(self):
+        fake = FakePortal({"ok": True, "requested": True})
+        old_argv = sys.argv
+        output = io.StringIO()
+        try:
+            fixture.Portal = lambda: fake
+            sys.argv = [str(SCRIPT), "display-settings"]
+            with redirect_stdout(output), redirect_stderr(io.StringIO()):
+                fixture.main()
+        finally:
+            sys.argv = old_argv
+        self.assertTrue(fake.closed)
+        self.assertEqual("display-settings", fake.operation)
+        self.assertEqual("Android display settings requested\n", output.getvalue())
+
+    def test_display_settings_rejects_missing_launch_ack(self):
+        fake = FakePortal({"ok": True})
+        old_argv = sys.argv
+        try:
+            fixture.Portal = lambda: fake
+            sys.argv = [str(SCRIPT), "display-settings"]
+            with self.assertRaises(RuntimeError):
+                fixture.main()
+        finally:
+            sys.argv = old_argv
+        self.assertTrue(fake.closed)
+        self.assertEqual("display-settings", fake.operation)
+
     def test_invalid_state_fields_fail_and_close_portal(self):
         for value in (None, "false", 0):
             with self.subTest(value=value):

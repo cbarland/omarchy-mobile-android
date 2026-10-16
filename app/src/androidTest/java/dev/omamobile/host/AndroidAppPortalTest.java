@@ -15,17 +15,26 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
 import java.util.HashSet;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.Assert.*;
 
 public class AndroidAppPortalTest {
     private byte[] lastImage = new byte[0];
-    private LocalSocket connect() throws Exception {
+    private LocalSocket connect() throws Exception { return connect(true); }
+    private LocalSocket connect(boolean startMainActivity) throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         org.junit.Assume.assumeTrue("Prepared Linux installation required", HostRuntime.get(context).installed());
-        context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        context.startForegroundService(new Intent(context, DesktopService.class));
+        if (startMainActivity)
+            context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        if (startMainActivity)
+            context.startForegroundService(new Intent(context, DesktopService.class));
         String path = new File(context.getFilesDir(), SessionRuntime.HOST_ALIAS + "/android.sock").toString();
         for (int attempt = 0; attempt < 100; attempt++) {
             try {
@@ -77,6 +86,133 @@ public class AndroidAppPortalTest {
         assertEquals(host.getBoolean("keyguardLocked"), cli.getBoolean("keyguardLocked"));
         assertEquals(host.getBoolean("deviceLocked"), cli.getBoolean("deviceLocked"));
         assertEquals(host.getBoolean("interactive"), cli.getBoolean("interactive"));
+    }
+    @Test public void linuxDisplaySettingsRequestShowsColdAndReusedPhonePanel() throws Exception {
+        org.junit.Assume.assumeTrue("Explicit -e graphics true and prepared Linux required",
+                "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
+        var instrumentation = InstrumentationRegistry.getInstrumentation();
+        Context context = instrumentation.getTargetContext();
+        // Reuse the repository's real two-session readiness probe before
+        // testing the Linux request, so this path is exercised with both
+        // graphical peers alive.
+        new GraphicsSmokeTest().upstreamShellsMapOnBothNativeHyprlandSessions();
+        List<MainActivity> stale = finishMainActivities(instrumentation);
+        awaitDestroyed(instrumentation, stale);
+        MainActivity first = null;
+        try (LocalSocket socket = connect(false)) {
+            JSONObject reply = request(socket, new JSONObject().put("op", "display-settings"));
+            assertTrue(reply.toString(), reply.getBoolean("ok"));
+            assertTrue(reply.toString(), reply.getBoolean("requested"));
+            first = awaitMainActivity(instrumentation);
+            assertEquals(android.view.Display.DEFAULT_DISPLAY, first.getDisplay().getDisplayId());
+            awaitDialogShowing(instrumentation, first);
+            dismissDialog(instrumentation, first);
+
+            String cli = runLinuxClient(context, context.getFilesDir().toPath().resolve("linux/rootfs"),
+                    "display-settings", "portal-display-settings-");
+            assertEquals("Android display settings requested", cli);
+            MainActivity second = awaitMainActivity(instrumentation);
+            assertSame("Existing phone activity should receive the host action", first, second);
+            assertEquals(android.view.Display.DEFAULT_DISPLAY, second.getDisplay().getDisplayId());
+            awaitDialogShowing(instrumentation, second);
+            dismissDialog(instrumentation, second);
+        } finally {
+            if (first != null) dismissDialog(instrumentation, first);
+            instrumentation.runOnMainSync(() -> context.startService(new Intent(context, DesktopService.class)
+                    .setAction(DesktopService.STOP_SCREENS)));
+        }
+    }
+    private static List<MainActivity> finishMainActivities(android.app.Instrumentation instrumentation) {
+        List<MainActivity> found = new ArrayList<>();
+        instrumentation.runOnMainSync(() -> {
+            Set<android.app.Activity> unique = Collections.newSetFromMap(new IdentityHashMap<>());
+            for (var stage : androidx.test.runner.lifecycle.Stage.values())
+                if (stage == androidx.test.runner.lifecycle.Stage.PRE_ON_CREATE
+                        || stage == androidx.test.runner.lifecycle.Stage.DESTROYED) continue;
+                else
+                for (var activity : androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                        .getActivitiesInStage(stage))
+                    if (activity instanceof MainActivity && unique.add(activity)) {
+                        found.add((MainActivity) activity);
+                        activity.finish();
+                    }
+        });
+        return found;
+    }
+    private static void awaitDestroyed(android.app.Instrumentation instrumentation, List<MainActivity> activities) {
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        while (SystemClock.uptimeMillis() < deadline) {
+            AtomicBoolean alive = new AtomicBoolean();
+            instrumentation.runOnMainSync(() -> {
+                for (MainActivity activity : activities) if (!activity.isDestroyed()) alive.set(true);
+            });
+            if (!alive.get()) return;
+            SystemClock.sleep(50);
+        }
+        fail("Cold display-settings request requires every prior MainActivity to be destroyed first");
+    }
+    private static MainActivity awaitMainActivity(android.app.Instrumentation instrumentation) {
+        AtomicReference<MainActivity> found = new AtomicReference<>();
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        while (SystemClock.uptimeMillis() < deadline) {
+            instrumentation.runOnMainSync(() -> {
+                for (var activity : androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                        .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED))
+                    if (activity instanceof MainActivity) found.set((MainActivity) activity);
+            });
+            if (found.get() != null) return found.get();
+            SystemClock.sleep(50);
+        }
+        AtomicReference<String> state = new AtomicReference<>("unknown");
+        instrumentation.runOnMainSync(() -> {
+            StringBuilder value = new StringBuilder();
+            for (var stage : androidx.test.runner.lifecycle.Stage.values()) {
+                int count = 0;
+                for (var activity : androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                        .getActivitiesInStage(stage)) {
+                    count++;
+                    if (activity instanceof MainActivity)
+                        value.append(" MainActivity@").append(activity.getDisplay().getDisplayId());
+                }
+                if (count != 0) value.append(" ").append(stage).append("=").append(count);
+            }
+            state.set(value.toString());
+        });
+        fail("Display request must resume MainActivity on the default display; lifecycle:" + state.get());
+        return null;
+    }
+    private static boolean dialogShowing(android.app.Instrumentation instrumentation, MainActivity activity) {
+        AtomicBoolean showing = new AtomicBoolean();
+        instrumentation.runOnMainSync(() -> {
+            android.app.Dialog dialog = displayDialogUnchecked(activity);
+            showing.set(dialog != null && dialog.isShowing());
+        });
+        return showing.get();
+    }
+    private static void awaitDialogShowing(android.app.Instrumentation instrumentation, MainActivity activity) {
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (dialogShowing(instrumentation, activity)) return;
+            SystemClock.sleep(50);
+        }
+        fail("Display request did not show the existing Android display dialog");
+    }
+    private static void dismissDialog(android.app.Instrumentation instrumentation, MainActivity activity) {
+        instrumentation.runOnMainSync(() -> {
+            android.app.Dialog dialog = displayDialogUnchecked(activity);
+            if (dialog != null && dialog.isShowing()) dialog.dismiss();
+        });
+    }
+    private static android.app.Dialog displayDialogUnchecked(MainActivity activity) {
+        try {
+            var owner = MainActivity.class.getDeclaredField("displaySettings");
+            owner.setAccessible(true);
+            var dialog = DisplaySettings.class.getDeclaredField("dialog");
+            dialog.setAccessible(true);
+            return (android.app.Dialog) dialog.get(owner.get(activity));
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError(error);
+        }
     }
     @Test public void linuxClientReachesTheSamePortal() throws Exception {
         org.junit.Assume.assumeTrue("Explicit -e graphics true and prepared Linux required",

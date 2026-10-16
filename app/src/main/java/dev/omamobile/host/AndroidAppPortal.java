@@ -10,10 +10,12 @@ import android.net.LocalServerSocket;
 import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
 import android.app.KeyguardManager;
+import android.app.ActivityOptions;
 import android.os.Process;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.system.Os;
+import android.view.Display;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
@@ -107,6 +109,15 @@ final class AndroidAppPortal implements AutoCloseable {
                         reply.put("keyguardLocked", keyguard.isKeyguardLocked())
                                 .put("deviceLocked", keyguard.isDeviceLocked())
                                 .put("interactive", power.isInteractive());
+                    } else if (op.equals("display-settings")) {
+                        // The Linux entry point can reveal only this fixed
+                        // host panel, never an arbitrary Android component.
+                        Intent controls = new Intent(context, MainActivity.class)
+                                .setAction(MainActivity.SHOW_DISPLAY_SETTINGS)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                        context.startActivity(controls, ActivityOptions.makeBasic()
+                                .setLaunchDisplayId(Display.DEFAULT_DISPLAY).toBundle());
+                        reply.put("requested", true);
                     } else if (op.equals("open")) {
                         if (hosted != null) throw new IOException("A connection already owns a display");
                         if (windows.incrementAndGet() > 3) { windows.decrementAndGet(); throw new IOException("At most three Android windows"); }

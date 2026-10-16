@@ -29,3 +29,24 @@ display owners remain stable. No Shizuku app grant is present for these checks.
 This does not verify secure-keyguard transitions: the emulator has no device
 credential and both lock booleans remained false. The three API reads are
 separate observations rather than an atomic security snapshot.
+
+## Android display controls
+
+Choose **Android displays** in the Linux application menu, or run
+`omamobile-android display-settings`, to request the existing host display panel
+on the phone's default display. The panel supplies external display selection,
+Android mode and rotation facts, and the existing desktop scale
+preview/keep/revert flow. Omarchy's Display panel remains available for its
+Hyprland monitor controls.
+
+The private portal accepts only this fixed host action and reports that Android
+was asked to show it; it cannot launch arbitrary components. Android still owns
+activity launch policy. Fresh Linux payloads contain the command and desktop
+entry; an APK update alone does not refresh installed Linux helper files.
+
+On API35 x86_64, the graphical integration test passed in 50.439s with both
+upstream shells ready. It checked a cold host activity, reuse of the same
+activity through the real Linux CLI, actual dialog visibility, and routing to
+the default display. The APK passed 117 native/installer payload comparisons
+and eight ELF presence/ABI checks. Installation identity markers were preserved.
+This does not establish other Android versions or physical display behavior.
