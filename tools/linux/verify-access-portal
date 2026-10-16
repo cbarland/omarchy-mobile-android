@@ -1,6 +1,7 @@
 #!/bin/bash
 # Start a real AccessDialog request and wait for a human phone-sheet decision.
-# The harness never calls AccessSheet.Answer or the plugin's dismiss method.
+# The harness never calls AccessSheet.Answer; failure cleanup may dismiss only
+# the exact request ID it created after closing its D-Bus handle.
 set -euo pipefail
 
 decision=${1:-}
@@ -10,8 +11,6 @@ for tool in gdbus omarchy-shell python3 timeout; do
 done
 
 name=org.freedesktop.impl.portal.desktop.omamobile
-iface=org.omamobile.AccessSheet
-path=/org/omamobile/AccessSheet
 request_iface=org.freedesktop.impl.portal.Request
 token=$(python3 -c 'import secrets; print(secrets.token_hex(12))')
 request_handle="/org/freedesktop/portal/desktop/request/1_1/$token"
@@ -29,6 +28,10 @@ import json, sys
 try:
     value = json.load(sys.stdin)
 except ValueError:
+    raise SystemExit(1)
+if (not isinstance(value, dict) or not isinstance(value.get("opened"), bool)
+        or not isinstance(value.get("pending"), int) or isinstance(value.get("pending"), bool)
+        or "current" not in value):
     raise SystemExit(1)
 current = value.get("current") if isinstance(value, dict) else None
 if isinstance(current, dict) and isinstance(current.get("id"), str):
@@ -58,6 +61,8 @@ except ValueError:
     raise SystemExit("invalid final access snapshot")
 if not isinstance(value, dict) or value.get("current") is not None:
     raise SystemExit("Access request remains pending after the UI reply")
+if value.get("opened") is not False or value.get("pending") != 0 or "current" not in value:
+    raise SystemExit("invalid final access snapshot")
 '
 }
 cleanup() {
@@ -87,9 +92,11 @@ try:
     value = json.load(sys.stdin)
 except ValueError:
     raise SystemExit("Access plugin is not ready or enabled in this profile")
-if not isinstance(value, dict) or "current" not in value:
+if (not isinstance(value, dict) or not isinstance(value.get("opened"), bool)
+        or not isinstance(value.get("pending"), int) or isinstance(value.get("pending"), bool)
+        or "current" not in value):
     raise SystemExit("unsupported access snapshot schema")
-if value["current"] is not None:
+if value["opened"] is not False or value["pending"] != 0 or value["current"] is not None:
     raise SystemExit("an Access request is already pending")
 '
 
@@ -107,11 +114,14 @@ while (( SECONDS < deadline )); do
   snapshot=$(timeout 2s omarchy-shell shell call omamobile.access snapshot '') || {
     cat "$tmp/call.err" >&2; exit 1;
   }
-  request_id=$(printf '%s' "$snapshot" | PROBE_TOKEN="$token" PROBE_TITLE="$title" PROBE_BODY="$body" python3 -c '
+request_id=$(printf '%s' "$snapshot" | PROBE_TITLE="$title" PROBE_BODY="$body" python3 -c '
 import json, os, re, sys
 value = json.load(sys.stdin)
 current = value.get("current") if isinstance(value, dict) else None
-if isinstance(current, dict) and current.get("title") == os.environ["PROBE_TITLE"] \
+if isinstance(value, dict) and isinstance(value.get("opened"), bool) \
+        and isinstance(value.get("pending"), int) and not isinstance(value.get("pending"), bool) \
+        and "current" in value and isinstance(current, dict) \
+        and current.get("title") == os.environ["PROBE_TITLE"] \
         and current.get("body") == os.environ["PROBE_BODY"] \
         and current.get("appId") == "org.example.OmamobileProbe":
     request_id = current.get("id")
@@ -127,6 +137,6 @@ done
 printf 'request-id=%s expected=%s; tap the real phone sheet now\n' "$request_id" "$decision"
 wait "$call_pid" || { cat "$tmp/call.err" >&2; exit 1; }
 expected=$([[ "$decision" == allow ]] && echo 0 || echo 1)
-grep -q "uint32 $expected" "$tmp/result" || { cat "$tmp/result" >&2; exit 1; }
+grep -Eq "^\\(uint32 ${expected}, " "$tmp/result" || { cat "$tmp/result" >&2; exit 1; }
 require_empty_snapshot
 cat "$tmp/result"
