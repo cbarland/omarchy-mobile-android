@@ -2,8 +2,13 @@ package dev.omamobile.host;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Color;
 import android.widget.LinearLayout;
+import android.widget.Button;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.ScrollView;
@@ -17,6 +22,10 @@ final class DisplaySettings {
     private LinearLayout content;
     private List<DisplayCatalog.Output> shown;
     private String shownPreference;
+    private DisplayPreviewController preview;
+    private final BroadcastReceiver previewChanged = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) { shown = null; refresh(); }
+    };
 
     DisplaySettings(Activity activity) { this.activity = activity; }
 
@@ -30,7 +39,13 @@ final class DisplaySettings {
         scroll.addView(content);
         dialog = new AlertDialog.Builder(activity).setTitle("Android displays")
                 .setView(scroll).setPositiveButton("Done", null).create();
-        dialog.setOnDismissListener(ignored -> { dialog = null; shown = null; });
+        dialog.setOnDismissListener(ignored -> {
+            activity.unregisterReceiver(previewChanged);
+            dialog = null; shown = null;
+        });
+        IntentFilter changes = new IntentFilter(DesktopService.DISPLAY_SETTINGS_CHANGED);
+        if (android.os.Build.VERSION.SDK_INT >= 33) activity.registerReceiver(previewChanged, changes, Context.RECEIVER_NOT_EXPORTED);
+        else registerLegacyReceiver(changes);
         refresh();
         dialog.show();
     }
@@ -45,6 +60,8 @@ final class DisplaySettings {
         content.removeAllViews();
         addText("One external desktop is supported. Windows cannot move between phone and desktop.");
         addText("For desktop scaling, open Omarchy’s Display panel: Super + Ctrl + D. Android modes and rotation are read-only here.");
+        preview = new DisplayPreviewController(activity);
+        addScaleControls();
         addText(DisplayCatalog.selectionSummary(activity, outputs));
         addText("Choose the desktop display. Apply with Stop screens, then Start screens. The phone keeps its Mobile profile.");
         RadioGroup choices = new RadioGroup(activity);
@@ -77,6 +94,31 @@ final class DisplaySettings {
     }
 
     void dismiss() { if (dialog != null) dialog.dismiss(); }
+    private void addScaleControls() {
+        addText("Desktop scale preview applies for 30 seconds. Keep it or revert it; custom monitor files are preserved.");
+        if (preview.hasPending()) {
+            Button keep = new Button(activity); keep.setText("Keep desktop scale preview");
+            keep.setOnClickListener(v -> sendPreviewAction(DesktopService.KEEP_PREVIEW, -1));
+            content.addView(keep);
+            Button revert = new Button(activity); revert.setText("Revert desktop scale preview");
+            revert.setOnClickListener(v -> sendPreviewAction(DesktopService.REVERT_PREVIEW, -1)); content.addView(revert);
+            return;
+        }
+        for (int scale : DisplayPreviewController.SCALES) {
+            Button button = new Button(activity);
+            button.setText("Preview desktop scale " + (scale / 100f) + "×");
+            button.setOnClickListener(v -> sendPreviewAction(DesktopService.PREVIEW_SCALE, scale));
+            content.addView(button);
+        }
+    }
+    private void sendPreviewAction(String action, int scale) {
+        try { activity.startService(new Intent(activity, DesktopService.class).setAction(action).putExtra("scale", scale)); }
+        catch (Exception error) { addText("Preview unavailable: " + error.getMessage()); }
+    }
+    @android.annotation.SuppressLint("UnspecifiedRegisterReceiverFlag")
+    private void registerLegacyReceiver(IntentFilter changes) {
+        activity.registerReceiver(previewChanged, changes, "dev.omamobile.host.permission.CONTROL_SCREENS", null);
+    }
     private void addText(String value) {
         TextView view = new TextView(activity);
         view.setText(value);

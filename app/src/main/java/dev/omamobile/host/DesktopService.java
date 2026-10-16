@@ -16,6 +16,12 @@ import android.view.Display;
 /** Android lifecycle owner for the two graphics hosts; both use the same Linux rootfs. */
 public final class DesktopService extends Service {
     static final String STOP_SCREENS = "dev.omamobile.host.STOP_SCREENS";
+    static final String PREVIEW_SCALE = "dev.omamobile.host.PREVIEW_SCALE";
+    static final String KEEP_PREVIEW = "dev.omamobile.host.KEEP_PREVIEW";
+    static final String REVERT_PREVIEW = "dev.omamobile.host.REVERT_PREVIEW";
+    static final String DISPLAY_SETTINGS_CHANGED = "dev.omamobile.host.DISPLAY_SETTINGS_CHANGED";
+    private final Handler previewHandler = new Handler(Looper.getMainLooper());
+    private DisplayPreviewController preview;
     private DisplayManager displays;
     private boolean running;
     private int externalId = -1;
@@ -39,10 +45,32 @@ public final class DesktopService extends Service {
         AndroidShell.get(this).reconnect();
         portal = new AndroidAppPortal(this);
         try { portal.start(); } catch (java.io.IOException e) { android.util.Log.e("OmamobilePortal", "Cannot start Android app portal", e); }
+        preview = new DisplayPreviewController(this);
+        // A new service cannot inherit an unconfirmed preview from a dead owner.
+        revertPreview();
     }
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && STOP_SCREENS.equals(intent.getAction())) {
             stopScreens();
+            return START_NOT_STICKY;
+        }
+        if (intent != null && (PREVIEW_SCALE.equals(intent.getAction())
+                || KEEP_PREVIEW.equals(intent.getAction()) || REVERT_PREVIEW.equals(intent.getAction()))) {
+            try {
+                if (!running) throw new java.io.IOException("Start Omarchy screens before previewing desktop scale");
+                switch (intent.getAction()) {
+                    case PREVIEW_SCALE -> preview.preview(intent.getIntExtra("scale", -1), System.currentTimeMillis());
+                    case KEEP_PREVIEW -> preview.keep(System.currentTimeMillis());
+                    case REVERT_PREVIEW -> preview.revert();
+                    default -> throw new IllegalArgumentException("Unknown preview action");
+                }
+                schedulePreviewExpiry();
+            } catch (Exception error) {
+                android.util.Log.w("OmamobileDisplay", "Display preview action failed", error);
+            } finally {
+                notifyDisplaySettings();
+                if (!running) stopSelf(startId);
+            }
             return START_NOT_STICKY;
         }
         getSystemService(NotificationManager.class).createNotificationChannel(new NotificationChannel(
@@ -60,6 +88,27 @@ public final class DesktopService extends Service {
                 | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS), phoneOutput.toBundle());
         showDesktop();
         return START_NOT_STICKY;
+    }
+    private void notifyDisplaySettings() {
+        sendBroadcast(new Intent(DISPLAY_SETTINGS_CHANGED).setPackage(getPackageName()));
+    }
+    private void revertPreview() {
+        try {
+            if (preview != null && preview.revert() == DisplayPreviewController.RevertResult.CHANGED)
+                android.util.Log.w("OmamobileDisplay", "Newer desktop config preserved during preview rollback");
+        } catch (java.io.IOException error) {
+            android.util.Log.w("OmamobileDisplay", "Display preview recovery unavailable", error);
+        }
+        notifyDisplaySettings();
+    }
+    private void schedulePreviewExpiry() {
+        previewHandler.removeCallbacksAndMessages(null);
+        if (!preview.hasPending()) return;
+        long delay;
+        try { delay = Math.max(0, Math.min(DisplayPreviewController.TIMEOUT_MS, preview.deadline() - System.currentTimeMillis())); }
+        catch (Exception error) { android.util.Log.w("OmamobileDisplay", "Malformed display preview state", error); return; }
+        // Handler time is monotonic: changing the wall clock cannot extend a live preview.
+        previewHandler.postDelayed(this::revertPreview, delay);
     }
     private void showDesktop() {
         // A saved target is applied only to a new desktop. Do not move an existing compositor
@@ -92,6 +141,6 @@ public final class DesktopService extends Service {
                 && rootIntent.getComponent().getClassName().equals(MainActivity.class.getName())) stopScreens();
         super.onTaskRemoved(rootIntent);
     }
-    @Override public void onDestroy() { displays.unregisterDisplayListener(listener); portal.close(); AndroidShell.get(this).close(); super.onDestroy(); }
+    @Override public void onDestroy() { previewHandler.removeCallbacksAndMessages(null); revertPreview(); displays.unregisterDisplayListener(listener); portal.close(); AndroidShell.get(this).close(); super.onDestroy(); }
     @Override public IBinder onBind(Intent intent) { return null; }
 }
