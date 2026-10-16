@@ -1,5 +1,22 @@
 # Verification record
 
+## Guest command failure diagnostics
+
+The graphical instrumentation helper runs from the guest home and captures
+output in an owned temporary file. A nonzero exit, five-second timeout, or
+successful output above 64 KiB fails explicitly with command/profile context
+and bounded output/session log tails. The output limit bounds accepted data
+and diagnostics, not disk writes during the command. No retry or longer command
+timeout was added. The existing shell-startup readiness loop still tolerates a
+stale ready file while its replacement session starts; later IPC failures fail
+directly.
+
+On the API35 Adapter Test emulator, the opt-in diagnostics test exercised real
+success, exit 7, a timeout, and 200 KiB of output (5.469s). The complete desktop
+scale Keep/Revert/timeout test then passed with the final helper (50.496s).
+An earlier intermittent final phone IPC timeout remains unclassified; these
+passing checks establish useful failure reporting rather than its resolution.
+
 Development began 2026-10-14. This file records the tested milestone, not overall product completion.
 
 ## Current accounting — 2026-10-16
