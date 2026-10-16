@@ -112,15 +112,74 @@ class OwnedFreeTypeValidationTest(unittest.TestCase):
             (prefix / "lib/libpng.so").write_bytes(b"changed-link")
             self.assertNotEqual(before, freetype.dependency_inputs(prefix, self.pkg_config(prefix)))
 
-    def test_missing_dependency_hash_key_is_rejected(self):
-        with tempfile.TemporaryDirectory() as root:
-            directory = Path(root)
-            (directory / "build.json").write_text(json.dumps({"format": 1, "kind": "project-built", "abi": "x86_64",
-                "specification": {"recipes": {}, "referenceRecipe": {"sha256": "unused"}}, "dependencies": list(freetype.DEPENDENCIES), "dependencyHashes": {},
-                "materials": {}, "toolchain": {"files": {}}}))
-            with patch.object(freetype, "specification", return_value=json.loads((directory / "build.json").read_text())["specification"]):
-                with self.assertRaises(ValueError):
-                    freetype.validate_materials(directory, "x86_64")
+    def test_complete_cache_reuse_then_stale_inputs_preserve_output(self):
+        # Only the source specification/toolchain are synthetic. Dependency
+        # enumeration, material validation and build's existing-output path run.
+        for mutation in ("dependencyHashes", "header", "pngAlias", "pkgConfig"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as root:
+                root = Path(root)
+                prefix = self.make_prefix(root)
+                for name in freetype.DEPENDENCIES:
+                    (prefix / "lib" / name).write_bytes(name.encode())
+                (prefix / "lib/libpng.so").write_bytes(b"actual-png-link")
+                pkg_config = self.pkg_config(prefix)
+                directory = root / "output"
+                (directory / "recipes").mkdir(parents=True)
+                for name, content in (("build_freetype.py", b"recipe"),
+                                      ("prepare_source_inputs.py", b"prepare"),
+                                      ("termux-reference-build.sh", b"reference")):
+                    (directory / "recipes" / name).write_bytes(content)
+                (directory / "notices").mkdir()
+                (directory / "notices/copyright").write_bytes(b"notice")
+                (directory / "upstream.tar.xz").write_bytes(b"archive")
+                header = bytearray(64)
+                header[:6] = b"\x7fELF\x02\x01"
+                header[18:20] = (62).to_bytes(2, "little")
+                (directory / "libfreetype.so").write_bytes(header)
+                spec = {
+                    "recipes": {name: freetype.sha256(directory / "recipes" / name)
+                                for name in freetype.RECIPE_FILES},
+                    "referenceRecipe": {"sha256": freetype.sha256(directory / "recipes/termux-reference-build.sh")},
+                    "upstream": {"sha256": freetype.sha256(directory / "upstream.tar.xz")},
+                }
+                compiler = {"files": {"tool": "hash"}}
+                inputs = freetype.dependency_inputs(prefix, pkg_config)
+                record = {
+                    "format": 1, "kind": "project-built", "abi": "x86_64",
+                    "specification": spec, "toolchain": compiler,
+                    "dependencyPrefix": str(prefix.resolve()),
+                    "dependencies": list(freetype.DEPENDENCIES),
+                    "dependencyHashes": {name: {"libraryAliasesSha256": inputs["sha256"]}
+                                         for name in freetype.DEPENDENCIES},
+                    "dependencyInputs": inputs,
+                    "materials": {"notices/copyright": freetype.sha256(directory / "notices/copyright")},
+                    "librarySha256": freetype.sha256(directory / "libfreetype.so"),
+                }
+                manifest = directory / "build.json"
+                manifest.write_text(json.dumps(record))
+                with patch.object(freetype, "specification", return_value=spec), \
+                     patch.object(freetype, "toolchain", return_value=compiler), \
+                     patch.object(freetype.shutil, "which", return_value=str(pkg_config)), \
+                     patch.object(freetype, "fetch_checked", side_effect=AssertionError("cache reuse fetched source")):
+                    self.assertEqual(record, freetype.validate_output(directory, "x86_64", root / "ndk", "cmake", prefix))
+                    self.assertEqual(directory, freetype.build(directory, "x86_64", root / "ndk", dependencies=prefix))
+                    if mutation == "dependencyHashes":
+                        del record["dependencyHashes"][freetype.DEPENDENCIES[0]]
+                        manifest.write_text(json.dumps(record))
+                        error = "dependency closure"
+                    else:
+                        target = {"header": prefix / "include/freetype.h",
+                                  "pngAlias": prefix / "lib/libpng.so",
+                                  "pkgConfig": pkg_config}[mutation]
+                        target.write_bytes(b"changed-input")
+                        error = "Dependency headers, pkg-config files, or linker aliases changed"
+                    before = {str(p.relative_to(directory)): p.read_bytes()
+                              for p in directory.rglob("*") if p.is_file()}
+                    with self.assertRaisesRegex(ValueError, error):
+                        freetype.build(directory, "x86_64", root / "ndk", dependencies=prefix)
+                    after = {str(p.relative_to(directory)): p.read_bytes()
+                             for p in directory.rglob("*") if p.is_file()}
+                    self.assertEqual(before, after)
 
     def test_reference_recipe_change_is_rejected(self):
         with tempfile.TemporaryDirectory() as root:
