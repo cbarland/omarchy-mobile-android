@@ -103,13 +103,22 @@ class OwnedFreeTypeValidationTest(unittest.TestCase):
             (prefix / "lib/libz.so").write_bytes(b"different-target")
             self.assertNotEqual(before, freetype.dependency_inputs(prefix, self.pkg_config(prefix)))
 
+    def test_actual_png_link_alias_change_changes_fingerprint(self):
+        with tempfile.TemporaryDirectory() as root:
+            prefix = self.make_prefix(Path(root))
+            (prefix / "lib/libpng.so").write_bytes(b"png-link")
+            (prefix / "lib/libpng16.so").write_bytes(b"png-soname")
+            before = freetype.dependency_inputs(prefix, self.pkg_config(prefix))
+            (prefix / "lib/libpng.so").write_bytes(b"changed-link")
+            self.assertNotEqual(before, freetype.dependency_inputs(prefix, self.pkg_config(prefix)))
+
     def test_missing_dependency_hash_key_is_rejected(self):
         with tempfile.TemporaryDirectory() as root:
             directory = Path(root)
             (directory / "build.json").write_text(json.dumps({"format": 1, "kind": "project-built", "abi": "x86_64",
                 "specification": {"recipes": {}, "referenceRecipe": {"sha256": "unused"}}, "dependencies": list(freetype.DEPENDENCIES), "dependencyHashes": {},
                 "materials": {}, "toolchain": {"files": {}}}))
-            with patch.object(freetype, "specification", return_value={}):
+            with patch.object(freetype, "specification", return_value=json.loads((directory / "build.json").read_text())["specification"]):
                 with self.assertRaises(ValueError):
                     freetype.validate_materials(directory, "x86_64")
 
@@ -133,9 +142,10 @@ class OwnedFreeTypeValidationTest(unittest.TestCase):
             prefix = self.make_prefix(Path(root))
             pkg_config = Path(root) / "pkgconf"
             pkg_config.write_bytes(b"pkgconf")
-            env = freetype.sanitized_environment(prefix, pkg_config)
             with patch.dict(freetype.os.environ, {"C_INCLUDE_PATH": "/tmp/escape", "PKG_CONFIG": "/tmp/override"}, clear=False):
+                env = freetype.sanitized_environment(prefix, pkg_config)
                 self.assertNotIn("C_INCLUDE_PATH", env)
+                self.assertNotIn("CPLUS_INCLUDE_PATH", env)
                 self.assertNotIn("PKG_CONFIG_PATH_OVERRIDE", env)
                 self.assertEqual(env["PKG_CONFIG"], str(pkg_config))
 

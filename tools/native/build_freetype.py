@@ -64,20 +64,27 @@ def dependency_inputs(prefix, pkg_config=None):
             else:
                 raise ValueError("Unsupported dependency input: " + str(path))
     aliases = {}
-    for soname in DEPENDENCIES:
-        stem = soname.split(".so", 1)[0] + ".so"
-        alias = prefix / "lib" / stem
-        if not alias.is_file():
-            raise ValueError("Missing linker alias for " + soname)
-        aliases[soname] = {"path": (Path("lib") / stem).as_posix(),
-                           "target": os.readlink(alias) if alias.is_symlink() else None,
-                           "sha256": sha256(alias.resolve())}
+    lib_root = prefix / "lib"
+    for alias in sorted(lib_root.iterdir()):
+        if not re.fullmatch(r"lib.*\.so(?:\..*)?", alias.name):
+            continue
+        resolved = alias.resolve(strict=True)
+        try:
+            resolved.relative_to(prefix.resolve())
+        except ValueError as error:
+            raise ValueError("Dependency library symlink escapes prefix: " + str(alias)) from error
+        if resolved.is_dir():
+            raise ValueError("Dependency library directory symlink is not supported: " + str(alias))
+        aliases[(Path("lib") / alias.name).as_posix()] = {
+            "target": resolved.relative_to(prefix).as_posix(), "sha256": sha256(resolved)}
+    if not aliases:
+        raise ValueError("No dependency library aliases found")
     pkg_config = Path(pkg_config or shutil.which("pkg-config") or "").resolve()
     if not pkg_config.is_file():
         raise ValueError("A fixed pkg-config executable is required")
     pkg = {"path": str(pkg_config), "sha256": sha256(pkg_config)}
     encoded = json.dumps({"files": files, "aliases": aliases, "pkgConfig": pkg}, sort_keys=True).encode()
-    return {"files": files, "aliases": aliases,
+    return {"files": files, "libraryAliases": aliases,
             "pkgConfig": pkg, "sha256": hashlib.sha256(encoded).hexdigest()}
 
 
@@ -263,7 +270,7 @@ def build(output, abi, ndk, cmake="cmake", source_cache=None, dependencies=None,
         shutil.copyfile(install_dir / "lib/libfreetype.so", library)
         elf = readelf(binaries / "llvm-readelf", library); check_elf(elf, abi)
         (temporary / "logs/elf.txt").write_text(elf)
-        dependency_hashes = inputs["aliases"]
+        dependency_hashes = {name: {"libraryAliasesSha256": inputs["sha256"]} for name in DEPENDENCIES}
         materials = {str(path.relative_to(temporary)).replace("\\", "/"): sha256(path)
                      for folder in ("recipes", "notices", "logs") for path in (temporary / folder).rglob("*") if path.is_file()}
         record = {"format": 1, "kind": "project-built", "abi": abi, "specification": spec,
