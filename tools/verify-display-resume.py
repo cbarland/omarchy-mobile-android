@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Audit prepared Omarchy display sessions across sleep, wake, and unlock."""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+
+AVD = "Omamobile_Adapter_Test_API35"
+APP = "dev.omamobile.host"
+PROFILES = ("phone", "desktop")
+
+
+def run(command, timeout=30, check=True):
+    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    if check and result.returncode:
+        raise RuntimeError(f"Command failed: {command!r}: {result.stdout[-800:]}{result.stderr[-800:]}")
+    return result
+
+
+def power_state(text):
+    match = re.search(r"\bmWakefulness=(\w+)", text)
+    if not match:
+        raise RuntimeError("Power state did not expose mWakefulness")
+    return match.group(1)
+
+
+def keyguard_state(text):
+    fields = {}
+    for name in ("mShowingLockscreen", "mDreamingLockscreen", "mKeyguardShown"):
+        match = re.search(rf"\b{name}=(true|false)", text, re.IGNORECASE)
+        if match:
+            fields[name] = match.group(1).lower() == "true"
+    return fields
+
+
+def ready(adb, profile):
+    result = run(adb + ["shell", "run-as", APP, "cat", f"files/graphics/{profile}/ready.properties"])
+    values = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+    pid = run(adb + ["shell", "pidof", f"{APP}:{profile}"] , check=False)
+    return {
+        "pid": pid.stdout.strip(),
+        "signature": values.get("HYPRLAND_INSTANCE_SIGNATURE"),
+        "displayId": values.get("ANDROID_DISPLAY_ID"),
+        "rootfs": values.get("ROOTFS"),
+    }
+
+
+def session_health(root, adb, profile):
+    command = [sys.executable, str(root / "tools/emulator-linux.py"),
+               "--adb", adb[0], "--serial", adb[2], "session", profile,
+               "hyprctl -j monitors"]
+    result = run(command, timeout=30, check=False)
+    try:
+        monitors = json.loads(result.stdout)
+        healthy = result.returncode == 0 and isinstance(monitors, list) and bool(monitors)
+    except (json.JSONDecodeError, TypeError):
+        monitors = None
+        healthy = False
+    return {"healthy": healthy, "monitors": monitors,
+            "stdout": result.stdout[-800:], "stderr": result.stderr[-800:]}
+
+
+def snapshot(root, adb):
+    power = run(adb + ["shell", "dumpsys", "power"]).stdout
+    window = run(adb + ["shell", "dumpsys", "window"]).stdout
+    return {
+        "power": power_state(power),
+        "keyguard": keyguard_state(window),
+        "profiles": {profile: ready(adb, profile) for profile in PROFILES},
+        "health": {profile: session_health(root, adb, profile) for profile in PROFILES},
+    }
+
+
+def wait_power(adb, expected, timeout=15):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        state = power_state(run(adb + ["shell", "dumpsys", "power"]).stdout)
+        if state == expected:
+            return state
+        time.sleep(.25)
+    raise RuntimeError(f"Power state did not reach {expected!r}")
+
+
+def verify(adb, root):
+    avd = run(adb + ["emu", "avd", "name"]).stdout.splitlines()[0].strip()
+    if avd != AVD:
+        raise RuntimeError(f"Refusing AVD {avd!r}; expected {AVD}")
+    baseline = snapshot(root, adb)
+    initial_power = baseline["power"]
+    result = {"serial": adb[2], "avd": avd, "passed": False,
+              "initialPower": initial_power, "baseline": baseline}
+    try:
+        if not all(item["healthy"] for item in baseline["health"].values()):
+            raise RuntimeError("Baseline Hyprland IPC is unhealthy; start both prepared screens before auditing")
+        run(adb + ["shell", "input", "keyevent", "KEYCODE_SLEEP"])
+        result["afterSleepPower"] = wait_power(adb, "Asleep")
+        run(adb + ["shell", "input", "keyevent", "KEYCODE_WAKEUP"])
+        wait_power(adb, "Awake")
+        # This is a no-op on an unlocked prepared emulator and dismisses the
+        # emulator keyguard when it is present; it does not alter credentials.
+        run(adb + ["shell", "wm", "dismiss-keyguard"])
+        result["afterWake"] = snapshot(root, adb)
+        result["passed"] = all(item["healthy"] for item in result["afterWake"]["health"].values())
+        if not result["passed"]:
+            result["error"] = "One or more Hyprland sessions lost IPC after sleep/wake"
+    except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, KeyError) as error:
+        result["error"] = str(error)
+    finally:
+        try:
+            if initial_power == "Asleep":
+                run(adb + ["shell", "input", "keyevent", "KEYCODE_SLEEP"])
+                result["restoredPower"] = wait_power(adb, "Asleep")
+            else:
+                run(adb + ["shell", "input", "keyevent", "KEYCODE_WAKEUP"])
+                result["restoredPower"] = wait_power(adb, initial_power)
+        except (OSError, subprocess.SubprocessError, RuntimeError, ValueError) as error:
+            result["cleanupError"] = str(error)
+    result["passed"] = result["passed"] and result.get("restoredPower") == initial_power and "cleanupError" not in result
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--serial", required=True)
+    parser.add_argument("--adb", default=str(Path(os.environ.get("LOCALAPPDATA", "")) / "Android/Sdk/platform-tools/adb.exe"))
+    parser.add_argument("--output", type=Path, default=Path("app/build/verification/display-resume.json"))
+    args = parser.parse_args()
+    if not args.serial.startswith("emulator-"):
+        parser.error("Only named emulator serials are supported")
+    adb = [args.adb, "-s", args.serial]
+    try:
+        result = verify(adb, Path(__file__).resolve().parents[1])
+    except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, KeyError, IndexError) as error:
+        result = {"serial": args.serial, "passed": False, "error": str(error)}
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"passed": result["passed"], "output": str(args.output),
+                      "error": result.get("error"), "cleanupError": result.get("cleanupError")}))
+    return 0 if result["passed"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
