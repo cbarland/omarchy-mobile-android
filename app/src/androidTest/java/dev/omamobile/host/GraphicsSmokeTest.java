@@ -3,6 +3,7 @@ package dev.omamobile.host;
 import android.content.Context;
 import android.content.Intent;
 import android.hardware.display.DisplayManager;
+import android.os.SystemClock;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import org.junit.Assume;
@@ -121,6 +122,73 @@ public class GraphicsSmokeTest {
                     discovered.length() >= 1);
         }
         awaitWidgetGuard(files);
+    }
+
+    @Test public void coveredPhoneStaysResponsiveWhileMainServiceOwnsBindings() throws Exception {
+        Assume.assumeTrue("Explicit -e freezer true required",
+                "true".equals(InstrumentationRegistry.getArguments().getString("freezer")));
+        var instrumentation = InstrumentationRegistry.getInstrumentation();
+        Context context = instrumentation.getTargetContext();
+        Path files = context.getFilesDir().toPath();
+        try {
+            // Reuse the full startup/readiness path, including stale-ready
+            // replacement handling, before beginning the freezer interval.
+            upstreamShellsMapOnBothNativeHyprlandSessions();
+            Properties[] properties = new Properties[2];
+            for (int i = 0; i < 2; i++) {
+                String profile = i == 0 ? "phone" : "desktop";
+                Path ready = files.resolve("graphics/" + profile + "/ready.properties");
+                properties[i] = new Properties();
+                try (var in = Files.newInputStream(ready)) { properties[i].load(in); }
+                assertTrue(profile + " compositor was not initially responsive",
+                        ipc(context, profile, properties[i], "monitors").contains("width"));
+            }
+            // Put the controls activity over the phone output while the main
+            // FGS owns both cross-process bindings. The external output is
+            // intentionally left in its normal presentation state.
+            instrumentation.runOnMainSync(() -> context.startActivity(new Intent(context, MainActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+            instrumentation.waitForIdleSync();
+            // Leave the app as a user would. Settings becomes the foreground
+            // task, moving the covered phone process out of Android's recent
+            // process band so the freezer decision is exercised.
+            instrumentation.runOnMainSync(() -> context.startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+            instrumentation.waitForIdleSync();
+            // Android's cached-process promotion was observed 45-60 seconds
+            // after readiness on the failing build; stay beyond that window.
+            SystemClock.sleep(65000);
+            for (int i = 0; i < 2; i++) {
+                String profile = i == 0 ? "phone" : "desktop";
+                Properties current = new Properties();
+                try (var in = Files.newInputStream(files.resolve("graphics/" + profile + "/ready.properties"))) {
+                    current.load(in);
+                }
+                assertEquals(profile + " compositor was replaced while covered",
+                        properties[i].getProperty("HYPRLAND_INSTANCE_SIGNATURE"),
+                        current.getProperty("HYPRLAND_INSTANCE_SIGNATURE"));
+                assertTrue(profile + " compositor stopped responding while covered",
+                        ipc(context, profile, current, "monitors").contains("width"));
+            }
+            instrumentation.runOnMainSync(() -> context.startService(new Intent(context, DesktopService.class)
+                    .setAction(DesktopService.STOP_SCREENS)));
+            long stopped = SystemClock.uptimeMillis() + 15000;
+            while (outputProcessesRunning() && SystemClock.uptimeMillis() < stopped) SystemClock.sleep(100);
+            assertFalse("Stopping the main service left compositor owners running", outputProcessesRunning());
+            SystemClock.sleep(1000);
+            assertFalse("A released compositor owner was recreated", outputProcessesRunning());
+        } finally {
+            if (outputProcessesRunning()) instrumentation.runOnMainSync(() -> context.startService(new Intent(context, DesktopService.class)
+                    .setAction(DesktopService.STOP_SCREENS)));
+        }
+    }
+
+    private static boolean outputProcessesRunning() throws Exception {
+        var ui = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        try (var parcel = ui.executeShellCommand("pidof dev.omamobile.host:phone dev.omamobile.host:desktop");
+             var in = new android.os.ParcelFileDescriptor.AutoCloseInputStream(parcel)) {
+            return !new String(in.readAllBytes(), StandardCharsets.UTF_8).trim().isEmpty();
+        }
     }
 
     static void awaitWidgetGuard(Path files) throws Exception {
