@@ -109,7 +109,7 @@ def baseline_ready(snapshot_value):
 
 def snapshot(root, adb, deadline=None):
     power = run(adb + ["shell", "dumpsys", "power"], deadline=deadline).stdout
-    window = run(adb + ["shell", "dumpsys", "window"], deadline=deadline).stdout
+    window = run(adb + ["shell", "dumpsys", "window", "policy"], deadline=deadline).stdout
     return {
         "power": power_state(power),
         "keyguard": keyguard_state(window),
