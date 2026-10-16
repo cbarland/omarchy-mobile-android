@@ -9,16 +9,13 @@ import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import java.io.File;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.Assert.*;
 
 /** Opt-in end-to-end check against a prepared Linux installation and two Android displays. */
@@ -48,6 +45,14 @@ public class GraphicsSmokeTest {
         } catch (IllegalStateException expected) {
             assertTrue(expected.getMessage().contains("timed out after 5s"));
             assertTrue(expected.getMessage().contains("profile=desktop"));
+        }
+        try {
+            runGuest(context, "desktop", properties,
+                    List.of("/usr/bin/python3", "-c", "print('x' * 200000)"));
+            fail("Oversized guest output unexpectedly succeeded");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("output exceeded 65536 bytes"));
+            assertTrue(expected.getMessage().contains("outputTail="));
         }
     }
 
@@ -217,18 +222,18 @@ public class GraphicsSmokeTest {
         builder.environment().put("WAYLAND_DISPLAY", properties.getProperty("WAYLAND_DISPLAY"));
         builder.environment().put("HYPRLAND_INSTANCE_SIGNATURE", properties.getProperty("HYPRLAND_INSTANCE_SIGNATURE"));
         final String command = guest.toString();
+        final int maxOutput = 64 * 1024;
+        Path capture = Files.createTempFile(files, ".guest-ipc-", ".log");
         Process process;
         try {
+            builder.redirectOutput(capture.toFile());
             process = builder.start();
-            process.getOutputStream().close();
+            try { process.getOutputStream().close(); }
+            catch (IOException error) { process.destroyForcibly(); throw error; }
         } catch (IOException error) {
+            Files.deleteIfExists(capture);
             throw new IOException("Guest command could not start: profile=" + profile + " command=" + command, error);
         }
-        OutputTail output = new OutputTail(64 * 1024);
-        AtomicReference<IOException> readFailure = new AtomicReference<>();
-        Thread reader = new Thread(() -> drain(process.getInputStream(), output, readFailure), "guest-output-" + profile);
-        reader.setDaemon(true);
-        reader.start();
         boolean completed = false;
         try {
             completed = process.waitFor(5, TimeUnit.SECONDS);
@@ -236,54 +241,41 @@ public class GraphicsSmokeTest {
                 process.destroyForcibly();
                 process.waitFor(2, TimeUnit.SECONDS);
                 throw new IllegalStateException("Guest command timed out after 5s: profile=" + profile
-                        + " command=" + command + " outputTail=" + output.text());
+                        + " command=" + command + " outputTail=" + readTail(capture, maxOutput));
             }
-            reader.join(1000);
-            if (reader.isAlive()) {
-                process.destroyForcibly();
-                throw new IllegalStateException("Guest output did not drain after exit: profile=" + profile
-                        + " command=" + command + " outputTail=" + output.text());
-            }
-            IOException failure = readFailure.get();
-            if (failure != null) throw new IOException("Guest output read failed: profile=" + profile
-                    + " command=" + command + " outputTail=" + output.text(), failure);
             int exit = process.exitValue();
             if (exit != 0) throw new IllegalStateException("Guest command exited " + exit + ": profile="
-                    + profile + " command=" + command + " outputTail=" + output.text());
-            return output.text();
+                    + " command=" + command + " outputTail=" + readTail(capture, maxOutput));
+            long size = Files.size(capture);
+            if (size > maxOutput) throw new IllegalStateException("Guest command output exceeded " + maxOutput
+                    + " bytes: profile=" + profile + " command=" + command + " outputTail=" + readTail(capture, maxOutput));
+            return new String(Files.readAllBytes(capture), StandardCharsets.UTF_8);
         } finally {
             if (!completed && process.isAlive()) process.destroyForcibly();
-            if (!completed) {
-                try { reader.join(1000); }
-                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
-            }
+            Files.deleteIfExists(capture);
         }
     }
 
-    private static void drain(InputStream input, OutputTail output, AtomicReference<IOException> failure) {
-        byte[] buffer = new byte[4096];
-        try (InputStream stream = input) {
-            int count;
-            while ((count = stream.read(buffer)) != -1) output.append(buffer, 0, count);
-        } catch (IOException error) { failure.set(error); }
-    }
-
-    private static final class OutputTail {
-        private final int limit;
-        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        OutputTail(int limit) { this.limit = limit; }
-        synchronized void append(byte[] value, int offset, int length) {
-            if (length >= limit) {
-                bytes.reset(); bytes.write(value, offset + length - limit, limit); return;
+    private static String readTail(Path path, int limit) throws IOException {
+        if (!Files.exists(path)) return "<no capture>";
+        long size = Files.size(path);
+        int wanted = (int) Math.min(size, limit);
+        try (var input = Files.newInputStream(path)) {
+            long skip = size - wanted;
+            while (skip > 0) {
+                long skipped = input.skip(skip);
+                if (skipped <= 0) break;
+                skip -= skipped;
             }
-            byte[] old = bytes.toByteArray();
-            bytes.reset();
-            int keep = Math.min(old.length, limit - length);
-            bytes.write(old, old.length - keep, keep);
-            bytes.write(value, offset, length);
-        }
-        synchronized String text() {
-            return new String(bytes.toByteArray(), StandardCharsets.UTF_8);
+            byte[] bytes = new byte[wanted];
+            int offset = 0;
+            while (offset < wanted) {
+                int count = input.read(bytes, offset, wanted - offset);
+                if (count < 0) break;
+                offset += count;
+            }
+            if (offset != wanted) bytes = java.util.Arrays.copyOf(bytes, offset);
+            return new String(bytes, StandardCharsets.UTF_8);
         }
     }
 
