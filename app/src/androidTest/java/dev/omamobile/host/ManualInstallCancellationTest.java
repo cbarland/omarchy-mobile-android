@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.SystemClock;
+import android.os.Build;
 import androidx.test.platform.app.InstrumentationRegistry;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -20,6 +21,8 @@ public final class ManualInstallCancellationTest {
     @Test public void blockedManualArchiveReadClosesAndCleansBeforePrepare() throws Exception {
         Assume.assumeTrue("Fresh disposable install-cancel emulator required", "true".equals(
                 InstrumentationRegistry.getArguments().getString("installCancel")));
+        Assume.assumeTrue("Emulator-only cancellation proof", "ranchu".equals(Build.HARDWARE)
+                || "goldfish".equals(Build.HARDWARE));
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         HostRuntime runtime = HostRuntime.get(context);
         assertFalse("This test must never replace a prepared rootfs", runtime.installed());
@@ -36,6 +39,8 @@ public final class ManualInstallCancellationTest {
 
             runtime.stop();
             awaitIdle(runtime, 10000);
+            assertTrue("Provider writer closed before cancellation proof",
+                    callProvider(context, "state").getBoolean("writerHeld"));
             assertFalse("Manual cancellation activated rootfs", Files.exists(runtime.root));
             assertFalse("Preparation ran before archive completion", hasPrefix(runtime.linux, "setup-"));
             assertFalse("Import staging survived cancellation", hasPrefix(runtime.linux, "import-"));
