@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Android applications as real, resizable Wayland clients in the shared Linux.
 
-`omamobile-android list`, `sync` (desktop entries), or `open PACKAGE`.
+`omamobile-android list`, `device-state`, `sync` (desktop entries), or `open PACKAGE`.
 The private Unix socket authenticates the app UID; it never listens on TCP.
 The initial transport is changed-frame JPEG at <=10 fps. Secure Android
 surfaces remain protected. This transport is an integration prototype.
@@ -17,6 +17,17 @@ import threading
 import time
 
 SOCKET = "/run/omamobile/android.sock"
+DEVICE_STATE_KEYS = ("deviceLocked", "interactive", "keyguardLocked")
+
+
+def device_state(reply):
+    state = {}
+    for key in DEVICE_STATE_KEYS:
+        value = reply.get(key)
+        if type(value) is not bool:
+            raise RuntimeError("Android device state field is not boolean: " + key)
+        state[key] = value
+    return state
 
 
 class Portal:
@@ -53,10 +64,17 @@ class Portal:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["list", "sync", "open"])
+    parser.add_argument("action", choices=["list", "device-state", "sync", "open"])
     parser.add_argument("package", nargs="?")
     args = parser.parse_args()
     portal = Portal()
+    if args.action == "device-state":
+        try:
+            state = device_state(portal.request("device-state")[0])
+            print(json.dumps(state, sort_keys=True))
+        finally:
+            portal.close()
+        return
     if args.action in ("list", "sync"):
         apps = portal.request("list")[0]["apps"]
         if args.action == "list":
