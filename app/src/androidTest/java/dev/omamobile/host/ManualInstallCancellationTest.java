@@ -17,6 +17,7 @@ import static org.junit.Assert.*;
 /** Opt-in fresh-emulator proof that manual provider reads are cancellable. */
 public final class ManualInstallCancellationTest {
     private static final Uri BLOCKED = Uri.parse("content://dev.omamobile.host.test.blocking-archive/rootfs");
+    private static final Uri BLOCKED_OPEN = Uri.parse("content://dev.omamobile.host.test.blocking-archive/rootfs-open");
 
     @Test public void blockedManualArchiveReadClosesAndCleansBeforePrepare() throws Exception {
         Assume.assumeTrue("Fresh disposable install-cancel emulator required", "true".equals(
@@ -32,39 +33,91 @@ public final class ManualInstallCancellationTest {
         callProvider(context, "reset");
         try {
             context.startForegroundService(new Intent(context, LinuxService.class)
-                    .setData(BLOCKED).putExtra("installOmarchy", true));
-            assertTrue("Provider was not opened", awaitProviderOpened(context, 10000));
+                    .setData(BLOCKED));
+            assertTrue("Provider was not opened", awaitProviderOpened(context, BLOCKED, 10000));
             assertTrue("Install worker did not claim busy state", runtime.busy());
             assertTrue("Importer staging was not created", awaitImportStaging(runtime.linux, 10000));
 
-            runtime.stop();
+            stopLinuxService(context);
+            awaitServiceStopped(context, 10000);
             awaitIdle(runtime, 10000);
-            assertTrue("Provider writer closed before cancellation proof",
+            assertTrue("Provider writer was not held before cancellation",
                     callProvider(context, "state").getBoolean("writerHeld"));
             assertFalse("Manual cancellation activated rootfs", Files.exists(runtime.root));
-            assertFalse("Preparation ran before archive completion", hasPrefix(runtime.linux, "setup-"));
-            assertFalse("Import staging survived cancellation", hasPrefix(runtime.linux, "import-"));
+            assertTrue("Import staging cleanup timed out", awaitNoPrefix(runtime.linux, "import-", 10000));
             assertEquals("preserve", new String(Files.readAllBytes(sentinel), StandardCharsets.UTF_8));
             awaitServiceStopped(context, 10000);
         } finally {
-            runtime.stop();
+            stopLinuxService(context);
             callProvider(context, "release");
             GuestPaths.deleteTree(sentinel);
+            awaitServiceStopped(context, 10000);
             awaitIdle(runtime, 10000);
         }
     }
 
-    private static boolean awaitProviderOpened(Context context, long timeout) {
+    @Test public void blockedProviderOpenCancelsBeforeImporterStaging() throws Exception {
+        Assume.assumeTrue("Fresh disposable install-cancel emulator required", "true".equals(
+                InstrumentationRegistry.getArguments().getString("installCancel")));
+        Assume.assumeTrue("Emulator-only cancellation proof", "ranchu".equals(Build.HARDWARE)
+                || "goldfish".equals(Build.HARDWARE));
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        HostRuntime runtime = HostRuntime.get(context);
+        assertFalse("This test must never replace a prepared rootfs", runtime.installed());
+        Files.createDirectories(runtime.linux);
+        Path sentinel = runtime.linux.resolve("keep-install-cancel-open-sentinel");
+        Files.write(sentinel, "preserve".getBytes(StandardCharsets.UTF_8));
+        callProvider(context, "reset");
+        try {
+            context.startForegroundService(new Intent(context, LinuxService.class)
+                    .setData(BLOCKED_OPEN));
+            assertTrue("Provider open was not entered", awaitProviderOpened(context, BLOCKED_OPEN, 10000));
+            assertFalse("Provider-open test reached importer staging", hasPrefix(runtime.linux, "import-"));
+            assertTrue("Provider-open worker did not claim busy state", runtime.busy());
+            assertTrue("Provider open was not held inside provider",
+                    callProvider(context, BLOCKED_OPEN, "state").getBoolean("openHeld"));
+            stopLinuxService(context);
+            awaitServiceStopped(context, 10000);
+            awaitIdle(runtime, 10000);
+            assertTrue("Provider open remained blocked after cancellation",
+                    awaitProviderReleased(context, BLOCKED_OPEN, 10000));
+            assertFalse("Provider-open cancellation activated rootfs", Files.exists(runtime.root));
+            assertTrue("Provider-open staging cleanup timed out", awaitNoPrefix(runtime.linux, "import-", 10000));
+            assertEquals("preserve", new String(Files.readAllBytes(sentinel), StandardCharsets.UTF_8));
+        } finally {
+            stopLinuxService(context);
+            callProvider(context, "release");
+            GuestPaths.deleteTree(sentinel);
+            awaitServiceStopped(context, 10000);
+            awaitIdle(runtime, 10000);
+        }
+    }
+
+    private static boolean awaitProviderOpened(Context context, Uri uri, long timeout) {
         long deadline = SystemClock.uptimeMillis() + timeout;
         do {
-            if (callProvider(context, "state").getBoolean("opened")) return true;
+            android.os.Bundle state = callProvider(context, uri, "state");
+            if (state.getBoolean("opened") || state.getBoolean("openHeld")) return true;
+            SystemClock.sleep(25);
+        } while (SystemClock.uptimeMillis() < deadline);
+        return false;
+    }
+
+    private static boolean awaitProviderReleased(Context context, Uri uri, long timeout) {
+        long deadline = SystemClock.uptimeMillis() + timeout;
+        do {
+            if (!callProvider(context, uri, "state").getBoolean("openHeld")) return true;
             SystemClock.sleep(25);
         } while (SystemClock.uptimeMillis() < deadline);
         return false;
     }
 
     private static android.os.Bundle callProvider(Context context, String method) {
-        android.os.Bundle result = context.getContentResolver().call(BLOCKED, method, null, null);
+        return callProvider(context, BLOCKED, method);
+    }
+
+    private static android.os.Bundle callProvider(Context context, Uri uri, String method) {
+        android.os.Bundle result = context.getContentResolver().call(uri, method, null, null);
         return result == null ? new android.os.Bundle() : result;
     }
 
@@ -84,10 +137,23 @@ public final class ManualInstallCancellationTest {
         }
     }
 
+    private static boolean awaitNoPrefix(Path directory, String prefix, long timeout) throws Exception {
+        long deadline = SystemClock.uptimeMillis() + timeout;
+        do {
+            if (!hasPrefix(directory, prefix)) return true;
+            SystemClock.sleep(25);
+        } while (SystemClock.uptimeMillis() < deadline);
+        return false;
+    }
+
+    private static void stopLinuxService(Context context) {
+        context.stopService(new Intent(context, LinuxService.class));
+    }
+
     private static void awaitIdle(HostRuntime runtime, long timeout) {
         long deadline = SystemClock.uptimeMillis() + timeout;
         while (runtime.busy() && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(25);
-        assertFalse("Manual install remained busy: " + runtime.output(), runtime.busy());
+        assertFalse("Linux operation remained busy: " + runtime.output(), runtime.busy());
     }
 
     @SuppressWarnings("deprecation")

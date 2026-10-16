@@ -1,9 +1,11 @@
 package dev.omamobile.host;
 
 import android.content.Context;
+import android.content.res.AssetFileDescriptor;
 import android.hardware.display.DisplayManager;
 import android.net.ConnectivityManager;
 import android.net.Uri;
+import android.os.CancellationSignal;
 import android.os.Handler;
 import android.os.Looper;
 import android.system.ErrnoException;
@@ -44,6 +46,7 @@ final class HostRuntime {
     private volatile boolean stopping;
     private volatile Process guest;
     private java.io.Closeable activeInput;
+    private CancellationSignal activeInputCancellation;
     private BootstrapDownload activeDownload;
     private volatile AndroidBroker broker;
     private volatile Thread activeWorker;
@@ -178,9 +181,7 @@ final class HostRuntime {
                     }
                 }
                 checkSetupRunning();
-                var input = context.getContentResolver().openInputStream(archive);
-                if (input == null) throw new IOException("Cannot read the selected recovery archive");
-                synchronized (this) { activeInput = input; }
+                java.io.InputStream input = openProviderInput(archive);
                 try (input) {
                     checkSetupRunning();
                     importer().recoverUserData(input, root, this::appendLine);
@@ -189,7 +190,7 @@ final class HostRuntime {
             } catch (Exception e) {
                 appendLine(stopping ? "Operation cancelled." : "Error: " + (e.getMessage() == null ? e.toString() : e.getMessage()));
             } finally {
-                Thread.interrupted(); synchronized (this) { activeInput = null; } activeWorker = null; recordingSetup = false;
+                Thread.interrupted(); synchronized (this) { activeInput = null; activeInputCancellation = null; } activeWorker = null; recordingSetup = false;
                 synchronized (this) { busy = false; }
                 changed(); main.post(done);
             }
@@ -211,10 +212,8 @@ final class HostRuntime {
                     if (installOmarchy) {
                         beginOmarchyInstall("Installing Omarchy from the selected trusted Linux archive.");
                     }
-                    var input = context.getContentResolver().openInputStream(image);
-                    if (input == null) throw new IOException("Cannot read the selected archive");
+                    java.io.InputStream input = openProviderInput(image);
                     inputForCleanup = input;
-                    synchronized (this) { activeInput = input; }
                     try (input) {
                         // Register before this check: stop() may race with provider open.
                         checkSetupRunning();
@@ -239,6 +238,7 @@ final class HostRuntime {
                 recordingSetup = false;
                 synchronized (this) {
                     if (inputForCleanup != null && activeInput == inputForCleanup) activeInput = null;
+                    activeInputCancellation = null;
                 }
                 synchronized (this) { busy = false; }
                 changed();
@@ -275,7 +275,7 @@ final class HostRuntime {
                         + (error.getMessage() == null ? error.toString() : error.getMessage()));
             } finally {
                 Thread.interrupted();
-                synchronized (this) { activeInput = null; activeDownload = null; }
+                synchronized (this) { activeInput = null; activeInputCancellation = null; activeDownload = null; }
                 guest = null; activeWorker = null; recordingSetup = false;
                 synchronized (this) { busy = false; }
                 changed(); main.post(done);
@@ -304,6 +304,48 @@ final class HostRuntime {
     }
 
     private void appendLine(String line) { append(line + "\n"); }
+
+    /** Opens provider-backed input with cancellation registered before IPC enters the provider. */
+    private java.io.InputStream openProviderInput(Uri uri) throws IOException {
+        CancellationSignal cancellation = new CancellationSignal();
+        boolean cancelImmediately;
+        synchronized (this) {
+            cancelImmediately = stopping;
+            if (!cancelImmediately) activeInputCancellation = cancellation;
+        }
+        if (cancelImmediately) {
+            cancellation.cancel();
+            throw new IOException("Operation cancelled");
+        }
+        try {
+            AssetFileDescriptor descriptor = context.getContentResolver()
+                    .openAssetFileDescriptor(uri, "r", cancellation);
+            if (descriptor == null) throw new IOException("Cannot read the selected archive");
+            java.io.InputStream input;
+            try {
+                input = descriptor.createInputStream();
+            } catch (IOException | RuntimeException error) {
+                try { descriptor.close(); } catch (IOException ignored) { }
+                throw error;
+            }
+            boolean rejected;
+            synchronized (this) {
+                rejected = stopping;
+                if (!rejected) activeInput = input;
+            }
+            if (rejected) {
+                try { input.close(); } catch (IOException ignored) { }
+                throw new IOException("Operation cancelled");
+            }
+            return input;
+        } catch (IOException | RuntimeException error) {
+            cancellation.cancel();
+            synchronized (this) {
+                if (activeInputCancellation == cancellation) activeInputCancellation = null;
+            }
+            throw error;
+        }
+    }
 
     private void prepareOmarchy(Path staging) throws Exception {
         Path assets = linux.resolve("setup-" + java.util.UUID.randomUUID());
@@ -449,16 +491,26 @@ final class HostRuntime {
         appendLine("Updated Linux /etc/resolv.conf from Android (requested for this operation).");
     }
 
-    synchronized void stop() {
-        stopping = true;
-        Thread job = activeWorker;
-        if (activeDownload != null) activeDownload.cancel();
-        java.io.Closeable input = activeInput;
+    void stop() {
+        Thread job;
+        BootstrapDownload download;
+        java.io.Closeable input;
+        CancellationSignal cancellation;
+        Process process;
+        synchronized (this) {
+            stopping = true;
+            job = activeWorker;
+            download = activeDownload;
+            input = activeInput;
+            cancellation = activeInputCancellation;
+            process = guest;
+        }
+        if (download != null) download.cancel();
+        if (cancellation != null) new Thread(cancellation::cancel, "linux-provider-cancel").start();
         if (input != null) new Thread(() -> {
             try { input.close(); } catch (java.io.IOException ignored) { }
         }, "linux-recovery-close").start();
-        if (job != null && guest == null) job.interrupt();
-        Process process = guest;
+        if (job != null && process == null) job.interrupt();
         if (process != null) {
             process.destroy();
             // Do not block Android's main thread waiting for uncooperative guest programs.
