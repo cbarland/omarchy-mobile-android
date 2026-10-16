@@ -133,6 +133,9 @@ NDK C++ runtime. Then use the normal Gradle assemble tasks.
 Staging requires the validated owned Graphite output and selects it explicitly;
 there is no fallback to the downloaded Termux Graphite binary. Its notices and
 hashed build evidence are copied alongside an explicit `project-built` origin.
+Previously staged Termux Graphite files fail this check until both ABI owned
+builds are produced and staged; existing generated assets are not migrated by
+changing the Python tools alone.
 The full retained source archive/object tree remains in the build cache, rather
 than being duplicated in each ABI's APK notices. Corresponding-source and
 relinking-material delivery remain publication holds.

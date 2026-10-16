@@ -1,5 +1,37 @@
 # Verification record
 
+## Owned Graphite build and runtime — 2026-10-16
+
+The first-party Graphite 1.3.15 recipe built both ABIs from locked source and
+the reviewed install-layout patch with NDK r30/API29. Raw recipe-byte validation
+caught a pre-commit CRLF cache after Git normalized the recipe to LF; fresh
+builds from the committed bytes replaced that proof. Both builds retained
+source, objects, exact recipes, patch, toolchain hashes and logs privately.
+Independent Sol review and 11 focused host tests passed.
+
+Root staging and the actual APK audit checked 114 native libraries, all three
+installer files and eight required APK native entries. The packaged Graphite
+bytes match staging for both ABIs. APK: 96,642,100 bytes, SHA-256
+`2fdcfa72cc74e3db5e72a8ce4b4e51fc96bb5f16b1785358ad2dc20e6adf886b`.
+Debug/test APKs, 70 JVM checks and lint passed; the POSIX-only JVM fixture is
+skipped on Windows. The opt-in real two-display shell smoke check passed on
+the API35 x86_64 emulator in 9.914s. After normal startup, both native compositor
+owners mapped the packaged Graphite library.
+
+A separate empty-rootfs emulator compared the final APK's Graphite bytes with
+the original library using both the APK and cached Termux C++ runtimes. All
+four cases parsed the real Padauk font and produced glyphs
+`[234, 99, 209, 172, 226, 224]` with advance `47.320312`; `dladdr` confirmed the
+intended libraries. Root checked the actual fixture against the APK entry
+after rejecting an earlier run that accidentally used prototype bytes.
+This is one font-shaping compatibility case. ARM64 execution remains untested.
+
+All seven source/relink delivery holds remain active, including explicit owned
+Graphite delivery holds. This change does not authorize a public graphical APK.
+Generated per-build notices/manifests are recreated by staging and are not
+committed with host-specific logs. Private proof is retained under the parent
+workspace's `.build-tools/omamobile-night-20261015/source-audit/`.
+
 ## Public HTTPS theme persistence — 2026-10-16
 
 On the merged `aaf3a1d` host in the disposable API35 x86_64 emulator, the opt-in
