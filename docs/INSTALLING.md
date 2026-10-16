@@ -33,10 +33,12 @@ content encoding, response-size limits, truncation checks, one bounded retry, an
 temporary-file cleanup are part of this path. Cancellation stops the request and
 removes unpublished download state.
 
-Runtime verification of this automatic path on a device or emulator is **pending**;
-the final integrated JVM/Android suite must prove it before this paragraph is
-treated as a validation result. The preparation stage still downloads signed
-distribution packages, so it needs internet access.
+The automatic x86_64 path passed on a fresh disposable API35 emulator: the actual
+button downloaded and authenticated the official bootstrap, prepared signed
+packages, activated Linux, and rendered both phone widgets and the external
+desktop. Five Android graphics/asset/service checks and 62 JVM checks passed.
+The ARM64 automatic path remains unverified. The preparation stage downloads
+signed distribution packages, so it needs internet access.
 
 The manual path remains supported. Download an official archive separately, verify
 its publisher signature before importing it, then copy the verified archive into
@@ -182,7 +184,7 @@ completed through the document provider. Inspection of the resulting 98,904,258
 byte tar.gz found 1,256 regular files and 13 symlinks, all under root/ or home/;
 the foreground LinuxService had exited after completion. No archive or private
 Linux data is committed to the repository. In-place restore/replacement and authenticated
-image download remain open in issue #3.
+ARM64 installation remain open in issue #3.
 
 Separate-copy recovery then passed with the existing export and service tests:
 seven Android checks in 29.945s, plus 39 JVM tests and lint. A separate actual

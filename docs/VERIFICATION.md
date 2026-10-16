@@ -4,6 +4,32 @@ Development began 2026-10-14. This file records the tested milestone, not overal
 
 ## Current accounting — 2026-10-15
 
+### Authenticated automatic installation — 2026-10-15
+
+A new empty disposable API35 x86_64 emulator (`Omamobile_Install_Trust_API35`,
+emulator-5558) installed the full graphical APK and used its actual **Download
+and install authenticated Arch base** control. The app fetched the official
+127,355,946-byte zstd bootstrap and detached signature over HTTPS, verified full
+primary fingerprint `3E80CA1A8B89F69CBA57D98A76A5EF9054449A5C` before extraction,
+and logged SHA-256 `0c9c97b7a58a8a023c9e07f84cb307a9e8006e65d8fc4c17b83ddc8010b45c10`.
+Signed package preparation completed and activated the new installation.
+
+An initial attempt rejected the official archive's two release metadata files
+beside `root.x86_64/`; it published no rootfs. The corrected importer consumes
+only those two bounded regular files without extracting them. The retry passed.
+Both native Hyprland sessions then responded to live IPC. Unmodified captures
+were visually inspected: phone clock/calendar widgets and launcher, external
+1920×1080 desktop bar and matching wallpaper. Android's first-run fullscreen
+tips were dismissed before capturing the unobstructed shells.
+
+The final graphical APK build, 62 JVM tests and lint passed. Direct Android
+instrumentation passed five graphics, installer-asset and service-lifecycle
+checks in 13.706s, including refusal of an authenticated install over existing
+Linux data and idle foreground-service cleanup. No connected-test runner, root,
+Shizuku grant, physical device or prepared-emulator reset was involved.
+Automatic ARM64 installation, public binary distribution and full ecosystem
+compatibility remain unverified.
+
 ### Combined PR verification — 2026-10-15
 
 PRs #11 (HTTPS theme fixture), #12 (user-data export), and #13 (desktop scale

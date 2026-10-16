@@ -80,7 +80,7 @@ XERJ's shared local indexes were used for concrete mechanism lookup, followed by
 
 - Apache Commons Compress 1.28.0, Commons IO 2.20.0, Codec 1.19.0 and Lang 3.18.0: Apache-2.0, resolved through Gradle. Their license/notice resources are copied into APK assets. AGP also supplies Kotlin stdlib 2.2.10 and JetBrains annotations 13.0 (Apache-2.0).
 - Bouncy Castle Java 1.86: `bcpg-jdk18on`, `bcprov-jdk18on`, and transitively `bcutil-jdk18on`. Maven Central artifacts: https://central.sonatype.com/artifact/org.bouncycastle/bcpg-jdk18on, https://central.sonatype.com/artifact/org.bouncycastle/bcprov-jdk18on, and https://central.sonatype.com/artifact/org.bouncycastle/bcutil-jdk18on. Exact resolved notices are copied under `app/src/main/assets/licenses/bouncycastle-*.txt`.
-- zstd-jni 1.5.7-23: BSD-2-Clause binding from https://github.com/luben/zstd-jni; bundled Zstandard native code carries the upstream BSD notice from https://github.com/facebook/zstd/blob/dev/LICENSE. Exact notices are copied under `app/src/main/assets/licenses/zstd-jni.txt` and `app/src/main/assets/licenses/zstd.txt`.
+- zstd-jni 1.5.7-23: BSD-2-Clause binding from https://github.com/luben/zstd-jni; bundled Zstandard native code carries its BSD-3-Clause notice at https://github.com/luben/zstd-jni/blob/v1.5.7-23/src/main/native/LICENSE. Exact notices from that tag are copied under `app/src/main/assets/licenses/zstd-jni.txt` and `app/src/main/assets/licenses/zstd.txt`.
 - Statically linked Android bionic code: Android NDK notices included in APK assets under `licenses/`.
 - Gradle wrapper: copied from the existing workspace, pinned Gradle 9.5.0 distribution SHA-256 in `gradle-wrapper.properties`.
 

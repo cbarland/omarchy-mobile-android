@@ -44,18 +44,23 @@ is 1 MiB. The x86_64 `ARCH_BOOTSTRAP` layout uses the official zstd
 `root.x86_64/` wrapper; ARM uses the official gzip rootfs. Extraction and publish
 remain downstream of signature verification.
 
-The automatic path has not yet received final device/emulator runtime proof in
-this checkout. Existing manual archive/import/setup evidence remains valid and is
-reported separately in `INSTALLING.md` and `VERIFICATION.md`.
+The automatic x86_64 path passed through the actual UI on fresh disposable API35
+emulator-5558. It authenticated the 127,355,946-byte official bootstrap with full
+primary fingerprint `3E80CA1A8B89F69CBA57D98A76A5EF9054449A5C` and SHA-256
+`0c9c97b7a58a8a023c9e07f84cb307a9e8006e65d8fc4c17b83ddc8010b45c10`, then
+prepared signed packages and rendered both real shells. Five Android graphics,
+asset and service tests passed, including refusal to replace installed Linux.
+The two small release metadata files outside `root.x86_64/` are consumed only as
+bounded regular files and are not extracted. ARM64 automatic installation is
+still unverified. Manual import evidence is recorded separately.
 
 ## Resolved dependency and license evidence
 
 The verifier resolves Bouncy Castle Java 1.86 from Maven Central:
 `bcpg-jdk18on:1.86` and `bcprov-jdk18on:1.86`, with `bcutil-jdk18on:1.86`
 resolved transitively by the OpenPGP module. The exact JAR notices are retained
-in `app/src/main/assets/licenses/bouncycastle-bcpg.txt`,
-`app/src/main/assets/licenses/bouncycastle-bcprov.txt`, and
-`app/src/main/assets/licenses/bouncycastle-bcutil.txt`. The official release and artifact records are:
+in `app/src/main/assets/licenses/bouncycastle-LICENSE.txt` (the three resolved JARs
+carry identical license bytes). The official release and artifact records are:
 
 * [Bouncy Castle Java 1.86 release](https://www.bouncycastle.org/resources/new-release-bouncy-castle-java-1-86/)
 * [bcpg-jdk18on on Maven Central](https://central.sonatype.com/artifact/org.bouncycastle/bcpg-jdk18on)
@@ -67,8 +72,9 @@ declares the zstd-jni BSD-2-Clause license. Its Android archive and JVM artifact
 are retained as build inputs; exact notices are in
 `app/src/main/assets/licenses/zstd-jni.txt` and
 `app/src/main/assets/licenses/zstd.txt`. The bundled native Zstandard
-implementation carries its upstream BSD-3-Clause notice from the [official zstd
-source](https://github.com/facebook/zstd/blob/dev/LICENSE). These notices are
+implementation carries its BSD-3-Clause notice from the [pinned bundled
+source](https://github.com/luben/zstd-jni/blob/v1.5.7-23/src/main/native/LICENSE).
+The binding notice is copied from the same tag's `LICENSE`. These notices are
 copied as assets by the build; no corresponding-source claim is made here.
 
 No global JCA provider registration is used. No network access, extraction, root
