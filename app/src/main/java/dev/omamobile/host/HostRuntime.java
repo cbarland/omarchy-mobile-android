@@ -44,6 +44,7 @@ final class HostRuntime {
     private volatile boolean stopping;
     private volatile Process guest;
     private java.io.Closeable activeInput;
+    private BootstrapDownload activeDownload;
     private volatile AndroidBroker broker;
     private volatile Thread activeWorker;
     private volatile boolean recordingSetup;
@@ -207,20 +208,7 @@ final class HostRuntime {
                 checkSetupRunning();
                 if (image != null) {
                     if (installOmarchy) {
-                        if (!installerAvailable()) throw new IOException("Install the full graphical APK to set up Omarchy");
-                        if (installed()) throw new IOException("An installation already exists; it will not be replaced");
-                        Files.createDirectories(linux);
-                        Files.write(linux.resolve("install.log"), new byte[0]);
-                        recordingSetup = true;
-                        appendLine("Installing Omarchy from the selected trusted Linux archive. Signed packages require internet access.");
-                        // Android may have killed a previous setup before its
-                        // finally block. Reclaim only our unpublished work trees.
-                        try (var children = Files.list(linux)) {
-                            for (Path child : (Iterable<Path>) children::iterator) {
-                                if (child.getFileName().toString().matches("(?:import|setup)-[0-9a-f-]{36}"))
-                                    GuestPaths.deleteTree(child);
-                            }
-                        }
+                        beginOmarchyInstall("Installing Omarchy from the selected trusted Linux archive.");
                     }
                     var input = context.getContentResolver().openInputStream(image);
                     if (input == null) throw new IOException("Cannot read the selected archive");
@@ -250,6 +238,61 @@ final class HostRuntime {
             }
         });
         return true;
+    }
+
+    synchronized boolean installDownloaded(Runnable done) {
+        if (busy || installed()) return false;
+        busy = true; stopping = false; changed();
+        worker.execute(() -> {
+            activeWorker = Thread.currentThread();
+            try {
+                checkSetupRunning();
+                BootstrapSource source = BootstrapSource.forMachine(machine());
+                beginOmarchyInstall("Downloading a publisher-authenticated Arch bootstrap.");
+                BootstrapDownload download = new BootstrapDownload();
+                synchronized (this) { activeDownload = download; }
+                checkSetupRunning();
+                BootstrapDownload.Verified verified;
+                try (var key = context.getResources().openRawResource(source.keyResource)) {
+                    verified = download.prepare(source, linux, key, this::appendLine);
+                }
+                try (verified; var input = Files.newInputStream(verified.archive)) {
+                    synchronized (this) { activeInput = input; }
+                    checkSetupRunning();
+                    importer().install(input, linux, source.machine, this::appendLine, this::prepareOmarchy, source.layout);
+                }
+                appendLine("Omarchy is ready. Press Start Omarchy screens.");
+            } catch (Exception error) {
+                appendLine(stopping ? "Operation cancelled." : "Error: "
+                        + (error.getMessage() == null ? error.toString() : error.getMessage()));
+            } finally {
+                Thread.interrupted();
+                synchronized (this) { activeInput = null; activeDownload = null; }
+                guest = null; activeWorker = null; recordingSetup = false;
+                synchronized (this) { busy = false; }
+                changed(); main.post(done);
+            }
+        });
+        return true;
+    }
+
+    private void beginOmarchyInstall(String description) throws IOException {
+        if (!installerAvailable()) throw new IOException("Install the full graphical APK to set up Omarchy");
+        if (installed()) throw new IOException("An installation already exists; it will not be replaced");
+        checkSetupRunning();
+        Files.createDirectories(linux);
+        Files.write(linux.resolve("install.log"), new byte[0]);
+        recordingSetup = true;
+        appendLine(description + " Signed packages require internet access.");
+        // A killed worker cannot run finally. Only unpublished app-owned work
+        // is reclaimed, after the foreground operation has claimed ownership.
+        try (var children = Files.list(linux)) {
+            for (Path child : (Iterable<Path>) children::iterator) {
+                checkSetupRunning();
+                if (child.getFileName().toString().matches("(?:import|setup|download)-[0-9a-f-]{36}"))
+                    GuestPaths.deleteTree(child);
+            }
+        }
     }
 
     private void appendLine(String line) { append(line + "\n"); }
@@ -401,6 +444,7 @@ final class HostRuntime {
     synchronized void stop() {
         stopping = true;
         Thread job = activeWorker;
+        if (activeDownload != null) activeDownload.cancel();
         java.io.Closeable input = activeInput;
         if (input != null) new Thread(() -> {
             try { input.close(); } catch (java.io.IOException ignored) { }

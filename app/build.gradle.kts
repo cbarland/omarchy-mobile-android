@@ -13,7 +13,7 @@ abstract class AttributionAssets : DefaultTask() {
 }
 android {
     namespace = "dev.omamobile.host"
-    compileSdk = 35
+    compileSdk = 37
     ndkVersion = "30.0.14904198"
     defaultConfig {
         applicationId = "dev.omamobile.host"
@@ -33,7 +33,13 @@ android {
     externalNativeBuild {
         cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "4.1.2" }
     }
-    packaging { jniLibs { useLegacyPackaging = true; keepDebugSymbols += "**/libtawcroot.so" } }
+    packaging {
+        jniLibs { useLegacyPackaging = true; keepDebugSymbols += "**/libtawcroot.so" }
+        resources {
+            merges += "META-INF/LICENSE.md"
+            pickFirsts += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        }
+    }
 }
 androidComponents.onVariants { variant ->
     val attribution = tasks.register<AttributionAssets>("${variant.name}AttributionAssets") {
@@ -50,6 +56,8 @@ dependencies {
     // (Maven Central/Bouncy Castle release page, checked 2026-10-15).
     implementation("org.bouncycastle:bcpg-jdk18on:1.86")
     implementation("org.bouncycastle:bcprov-jdk18on:1.86")
+    implementation("com.github.luben:zstd-jni:1.5.7-23@aar")
+    testImplementation("com.github.luben:zstd-jni:1.5.7-23")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

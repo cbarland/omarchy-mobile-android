@@ -16,6 +16,9 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayDeque;
 import java.util.Queue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.Test;
 
@@ -42,12 +45,12 @@ public final class BootstrapDownloadTest {
             encoded.encoding = "gzip";
             BootstrapDownload encodedDownload = new BootstrapDownload(url -> encoded);
             assertThrows(IOException.class, () -> encodedDownload.fetch(
-                    encoded.url, dir.resolve("encoded"), 100, QUIET));
+                    encoded.getURL(), dir.resolve("encoded"), 100, QUIET));
 
             FakeConnection oversized = new FakeConnection(new URL("https://example.test/b"), 200, bytes(4));
             BootstrapDownload oversizedDownload = new BootstrapDownload(url -> oversized);
             assertThrows(IOException.class, () -> oversizedDownload.fetch(
-                    oversized.url, dir.resolve("oversized"), 3, QUIET));
+                    oversized.getURL(), dir.resolve("oversized"), 3, QUIET));
             assertFalse(Files.exists(dir.resolve("oversized")) && Files.size(dir.resolve("oversized")) > 3);
         } finally { delete(dir); }
     }
@@ -60,7 +63,7 @@ public final class BootstrapDownloadTest {
             truncated.contentLength = 4;
             BootstrapDownload one = new BootstrapDownload(url -> truncated);
             assertThrows(IOException.class, () -> one.fetch(
-                    truncated.url, dir.resolve("truncated"), 100, QUIET));
+                    truncated.getURL(), dir.resolve("truncated"), 100, QUIET));
 
             FakeConnection failure = new FakeConnection(new URL("https://example.test/retry"), 503, new byte[0]);
             FakeConnection success = new FakeConnection(new URL("https://example.test/retry"), 200, bytes(7));
@@ -68,7 +71,7 @@ public final class BootstrapDownloadTest {
             connections.add(failure); connections.add(success);
             BootstrapDownload retry = new BootstrapDownload(url -> connections.remove());
             Path destination = dir.resolve("retry");
-            String hash = retry.fetch(success.url, destination, 100, QUIET);
+            String hash = retry.fetch(success.getURL(), destination, 100, QUIET);
             assertEquals(hex(MessageDigest.getInstance("SHA-256").digest(bytes(7))), hash);
             assertEquals(7, Files.size(destination));
         } finally { delete(dir); }
@@ -82,9 +85,64 @@ public final class BootstrapDownloadTest {
         Path dir = Files.createTempDirectory("bootstrap-download");
         try {
             assertThrows(IOException.class, () -> download.fetch(
-                    connection.url, dir.resolve("cancelled"), 100, QUIET));
+                    connection.getURL(), dir.resolve("cancelled"), 100, QUIET));
             assertFalse(Files.exists(dir.resolve("cancelled")));
         } finally { delete(dir); }
+    }
+
+    @Test public void cancellationDisconnectsBlockedActiveRead() throws Exception {
+        CountDownLatch reading = new CountDownLatch(1), disconnected = new CountDownLatch(1);
+        HttpURLConnection connection = new HttpURLConnection(new URL("https://example.test/blocked")) {
+            @Override public int getResponseCode() { return 200; }
+            @Override public InputStream getInputStream() {
+                return new InputStream() {
+                    @Override public int read() throws IOException {
+                        reading.countDown();
+                        try {
+                            if (!disconnected.await(5, TimeUnit.SECONDS)) throw new IOException("test read timed out");
+                        } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                        throw new IOException("connection disconnected");
+                    }
+                };
+            }
+            @Override public void disconnect() { disconnected.countDown(); }
+            @Override public boolean usingProxy() { return false; }
+            @Override public void connect() { }
+        };
+        BootstrapDownload download = new BootstrapDownload(url -> connection);
+        Path dir = Files.createTempDirectory("bootstrap-cancel");
+        AtomicReference<Throwable> result = new AtomicReference<>();
+        Thread worker = new Thread(() -> {
+            try { download.fetch(connection.getURL(), dir.resolve("archive"), 100, QUIET); }
+            catch (Throwable error) { result.set(error); }
+        });
+        try {
+            worker.start();
+            assertTrue("read never began", reading.await(5, TimeUnit.SECONDS));
+            download.cancel();
+            worker.join(5000);
+            assertFalse("cancel left download blocked", worker.isAlive());
+            assertTrue(result.get() instanceof java.io.InterruptedIOException);
+            assertEquals(0, Files.size(dir.resolve("archive")));
+        } finally { download.cancel(); worker.interrupt(); worker.join(5000); delete(dir); }
+    }
+
+    @Test public void signatureFailureDeletesOnlyItsDownloadTree() throws Exception {
+        Path linux = Files.createTempDirectory("bootstrap-trust");
+        Path sentinel = Files.writeString(linux.resolve("keep"), "existing unrelated data");
+        BootstrapSource source = BootstrapSource.ARCH_X86;
+        Queue<FakeConnection> responses = new ArrayDeque<>();
+        responses.add(new FakeConnection(new URL(source.url + ".sig"), 200, new byte[]{1}));
+        responses.add(new FakeConnection(new URL(source.url), 200, bytes(7)));
+        BootstrapDownload download = new BootstrapDownload(url -> responses.remove());
+        java.util.List<String> log = new java.util.ArrayList<>();
+        try (InputStream key = Files.newInputStream(Path.of("src/main/res/raw/arch_signing_key.asc"))) {
+            assertThrows(IOException.class, () -> download.prepare(source, linux, key, log::add));
+            assertFalse(Files.exists(linux.resolve("rootfs")));
+            assertEquals("existing unrelated data", Files.readString(sentinel));
+            try (var children = Files.list(linux)) { assertEquals(1, children.count()); }
+            assertFalse(log.stream().anyMatch(line -> line.startsWith("Authenticated bootstrap:")));
+        } finally { delete(linux); }
     }
 
     private static byte[] bytes(int length) {

@@ -20,7 +20,7 @@ public final class MainActivity extends Activity {
     private HostRuntime runtime;
     private TextView status, console;
     private EditText command;
-    private Button run, importImage, install, exportData, recoverData, screens, stop;
+    private Button run, importImage, install, downloadInstall, exportData, recoverData, screens, stop;
     private CheckBox ando, androidDns;
     private DisplaySettings displaySettings;
     private android.app.AlertDialog credits;
@@ -53,6 +53,11 @@ public final class MainActivity extends Activity {
         layout.addView(attribution);
         status = text("", 14);
         layout.addView(status);
+        downloadInstall = new Button(this);
+        downloadInstall.setText("Download and install authenticated Arch base");
+        downloadInstall.setOnClickListener(v -> startOperation(new Intent(this, LinuxService.class)
+                .putExtra("downloadBootstrap", true)));
+        layout.addView(downloadInstall);
         install = new Button(this);
         install.setText("Install Omarchy from Linux archive");
         install.setOnClickListener(v -> startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT)
@@ -62,7 +67,7 @@ public final class MainActivity extends Activity {
         stop.setText("Cancel operation");
         stop.setOnClickListener(v -> runtime.stop());
         layout.addView(stop);
-        layout.addView(text("First setup: choose a trusted Arch Linux ARM tar.gz (x86_64 on an emulator). Verify its upstream signature before importing. Setup installs signed Linux packages over the internet and can take several minutes and multiple GB of storage. Existing Linux data is never replaced.", 14));
+        layout.addView(text("First setup: download an Arch base with publisher-signature verification, or select an archive you have verified. Setup installs signed Linux packages over the internet and can take several minutes and multiple GB of storage. Existing Linux data is never replaced.", 14));
         exportData = new Button(this);
         exportData.setText("Export Linux user data");
         exportData.setOnClickListener(v -> startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT)
@@ -191,6 +196,7 @@ public final class MainActivity extends Activity {
         run.setEnabled(runtime.installed() && !runtime.busy());
         importImage.setEnabled(!runtime.installed() && !runtime.busy());
         install.setEnabled(runtime.installerAvailable() && !runtime.installed() && !runtime.busy());
+        downloadInstall.setEnabled(runtime.installerAvailable() && !runtime.installed() && !runtime.busy());
         screens.setEnabled(runtime.graphicsReady() && !runtime.busy());
         ando.setEnabled(!runtime.busy());
         androidDns.setEnabled(!runtime.busy());

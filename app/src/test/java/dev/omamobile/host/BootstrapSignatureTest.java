@@ -185,7 +185,7 @@ public final class BootstrapSignatureTest {
     public void weakDigestAndCanonicalTextAreRejected() throws Exception {
         Fixture weak = fixture("weak".getBytes(), HashAlgorithmTags.SHA1, PGPSignature.BINARY_DOCUMENT);
         assertThrows(IOException.class, () -> verifyFixture(weak, weak.signature));
-        Fixture text = fixture("text".getBytes(), HashAlgorithmTags.SHA256, PGPSignature.CANONICAL_TEXT);
+        Fixture text = fixture("text".getBytes(), HashAlgorithmTags.SHA256, PGPSignature.CANONICAL_TEXT_DOCUMENT);
         assertThrows(IOException.class, () -> verifyFixture(text, text.signature));
     }
 

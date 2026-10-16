@@ -24,9 +24,11 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.Collections;
+import com.github.luben.zstd.ZstdInputStream;
 
 /** Imports a standard tar/tar.gz without executing its contents or changing Android. */
 final class RootfsImporter {
+    enum Layout { ROOT, ARCH_BOOTSTRAP }
     interface Modes { void chmod(Path path, int mode) throws IOException; }
     interface Hardlinks { boolean create(Path source, Path destination) throws IOException; }
     interface Progress { void update(String message); }
@@ -48,6 +50,10 @@ final class RootfsImporter {
     }
 
     String install(InputStream source, Path linux, int machine, Progress progress, Prepare prepare) throws Exception {
+        return install(source, linux, machine, progress, prepare, Layout.ROOT);
+    }
+
+    String install(InputStream source, Path linux, int machine, Progress progress, Prepare prepare, Layout layout) throws Exception {
         Files.createDirectories(linux);
         Path root = linux.resolve("rootfs");
         if (Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
@@ -62,10 +68,11 @@ final class RootfsImporter {
             buffered.mark(2);
             int first = buffered.read(), second = buffered.read();
             buffered.reset();
-            try (InputStream payload = first == 0x1f && second == 0x8b
-                    ? new GzipCompressorInputStream(buffered) : buffered) {
-                extract(payload, staging, progress);
-                // Finish the decompressor too, validating gzip trailer/CRC before activation.
+            try (InputStream payload = layout == Layout.ARCH_BOOTSTRAP
+                    ? new ZstdInputStream(buffered).setContinuous(false)
+                    : first == 0x1f && second == 0x8b ? new GzipCompressorInputStream(buffered) : buffered) {
+                extract(payload, staging, progress, Collections.emptySet(), layout);
+                // Finish the decompressor before package execution, including its trailer.
                 byte[] remainder = new byte[8192];
                 long trailing = 0;
                 int read;
@@ -204,6 +211,10 @@ final class RootfsImporter {
     }
 
     private void extract(InputStream payload, Path root, Progress progress, Set<String> allowedTop) throws IOException {
+        extract(payload, root, progress, allowedTop, Layout.ROOT);
+    }
+
+    private void extract(InputStream payload, Path root, Progress progress, Set<String> allowedTop, Layout layout) throws IOException {
         List<Link> links = new ArrayList<>();
         Set<Path> symlinks = new HashSet<>();
         List<Path> entries = new ArrayList<>();
@@ -216,8 +227,25 @@ final class RootfsImporter {
         while ((entry = tar.getNextEntry()) != null) {
             if (Thread.currentThread().isInterrupted()) throw new IOException("Import cancelled");
             if (++count > 500_000) throw new IOException("Archive contains too many entries");
-            if (!allowedTop.isEmpty()) validateNamespace(entry.getName(), allowedTop);
-            Path path = GuestPaths.archivePath(root, entry.getName());
+            // Official Arch bootstraps also carry two release metadata files
+            // beside the filesystem wrapper. They are not guest paths.
+            if (layout == Layout.ARCH_BOOTSTRAP && (entry.getName().equals("pkglist.x86_64.txt")
+                    || entry.getName().equals("version"))) {
+                if ((entry.getLinkFlag() != TarArchiveEntry.LF_NORMAL && entry.getLinkFlag() != TarArchiveEntry.LF_OLDNORM)
+                        || entry.isSparse() || entry.getSize() < 0 || entry.getSize() > 1024 * 1024)
+                    throw new IOException("Invalid Arch bootstrap release metadata");
+                while (tar.read(buffer) != -1) {
+                    if (Thread.currentThread().isInterrupted()) throw new IOException("Import cancelled");
+                }
+                continue;
+            }
+            String name = archiveName(entry.getName(), layout);
+            if (name.isEmpty()) {
+                if (!entry.isDirectory()) throw new IOException("Bootstrap wrapper must be a directory");
+                continue;
+            }
+            if (!allowedTop.isEmpty()) validateNamespace(name, allowedTop);
+            Path path = GuestPaths.archivePath(root, name);
             if (path.equals(root)) {
                 if (!entry.isDirectory()) throw new IOException("Invalid root entry");
                 continue;
@@ -230,7 +258,8 @@ final class RootfsImporter {
                         || links.stream().anyMatch(link -> link.path.equals(path))) {
                     throw new IOException("Duplicate link entry: " + entry.getName());
                 }
-                links.add(new Link(path, entry.getLinkName(), entry.isLink()));
+                String target = entry.isLink() ? archiveName(entry.getLinkName(), layout) : entry.getLinkName();
+                links.add(new Link(path, target, entry.isLink()));
                 if (entry.isSymbolicLink()) symlinks.add(path);
             } else if (entry.isDirectory()) {
                 if (Files.exists(path, LinkOption.NOFOLLOW_LINKS) && !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
@@ -319,6 +348,18 @@ final class RootfsImporter {
             throw new IOException("Recovery archive contains data outside /root or /home");
         for (String part : parts) if (part.isEmpty() || part.equals(".") || part.equals(".."))
             throw new IOException("Invalid recovery archive path");
+    }
+
+    private static String archiveName(String name, Layout layout) throws IOException {
+        if (layout == Layout.ROOT) return name;
+        String clean = name.endsWith("/") ? name.substring(0, name.length() - 1) : name;
+        for (String part : clean.split("/", -1)) {
+            if (part.isEmpty() || part.equals(".") || part.equals(".."))
+                throw new IOException("Invalid Arch bootstrap archive path");
+        }
+        if (clean.equals("root.x86_64")) return "";
+        if (!clean.startsWith("root.x86_64/")) throw new IOException("Unexpected Arch bootstrap wrapper");
+        return clean.substring("root.x86_64/".length());
     }
 
 }
