@@ -219,6 +219,10 @@ public abstract class CompositorActivity extends Activity {
                 @Override public boolean setComposingText(CharSequence text, int cursor) {
                     return !closed && super.setComposingText(text, cursor);
                 }
+                @Override public boolean replaceText(int start, int end, CharSequence text, int newCursorPosition,
+                        android.view.inputmethod.TextAttribute textAttribute) {
+                    return false;
+                }
                 @Override public boolean finishComposingText() {
                     if (closed) return false;
                     emit(clearDraft());

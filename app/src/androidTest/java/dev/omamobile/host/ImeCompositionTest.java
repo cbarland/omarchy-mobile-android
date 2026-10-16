@@ -133,6 +133,7 @@ public class ImeCompositionTest {
             int deleteStart = read(log).length();
             assertTrue(deleteSurrounding(instrumentation, deletingPending, 1, 0));
             assertTrue(deleteCodePoints(instrumentation, deletingPending, 1, 0));
+            assertFalse(replace(instrumentation, deletingPending, 0, 5, "replacement", 5));
             assertEquals("draft", editable(deletingPending));
             SystemClock.sleep(1000);
             assertTrue(canonical(read(log).substring(deleteStart)).isEmpty());
@@ -298,6 +299,13 @@ public class ImeCompositionTest {
             int before, int after) throws Exception {
         AtomicReference<Boolean> ok = new AtomicReference<>(false);
         instrumentation.runOnMainSync(() -> ok.set(input.deleteSurroundingTextInCodePoints(before, after)));
+        return ok.get();
+    }
+
+    private static boolean replace(android.app.Instrumentation instrumentation, InputConnection input,
+            int start, int end, CharSequence text, int cursor) throws Exception {
+        AtomicReference<Boolean> ok = new AtomicReference<>(false);
+        instrumentation.runOnMainSync(() -> ok.set(input.replaceText(start, end, text, cursor, null)));
         return ok.get();
     }
 
