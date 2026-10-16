@@ -110,14 +110,17 @@ final class CompositorController {
                 // Planned shutdown has a single cleanup owner below. Racing it
                 // here could discard the live shell before stopForUser records
                 // that its widget startup marker belongs to an intentional stop.
-                if (!stopping && session != null) session.stop();
                 // Planned stop keeps this owner process alive until the existing
                 // kill deadline, so its shared lease cannot race an installer.
                 if (!stopping) {
-                    InstallationLease lease = installationLease;
-                    installationLease = null;
-                    if (lease != null) try { lease.close(); }
-                    catch (java.io.IOException error) { android.util.Log.w("OmamobileHyprland", "Cannot release installation lease", error); }
+                    try {
+                        if (session != null) session.stop();
+                    } finally {
+                        InstallationLease lease = installationLease;
+                        installationLease = null;
+                        if (lease != null) try { lease.close(); }
+                        catch (java.io.IOException error) { android.util.Log.w("OmamobileHyprland", "Cannot release installation lease", error); }
+                    }
                 }
             }
         }, "native-hyprland");

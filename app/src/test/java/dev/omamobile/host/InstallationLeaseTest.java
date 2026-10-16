@@ -16,15 +16,26 @@ import org.junit.Test;
 public class InstallationLeaseTest {
     @Test public void sharedOwnersBlockExclusiveUntilBothRelease() throws Exception {
         Path linux = Files.createTempDirectory("lease-");
-        try (InstallationLease first = InstallationLease.acquire(linux, InstallationLease.Mode.SHARED_USE)) {
-            Process second = holder(linux, "SHARED_USE");
-            try {
-                assertTrue(second.getInputStream().read() != -1);
-                assertThrows(java.io.IOException.class, () -> InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL));
-                assertThrows(java.io.IOException.class, () -> { try (InstallationLease ignored = InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL)) { } });
-            } finally { stop(second); }
+        Process first = holder(linux, "SHARED_USE");
+        Process second = holder(linux, "SHARED_USE");
+        try {
+            assertThrows(java.io.IOException.class, () -> InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL));
+            stop(first);
+            assertThrows(java.io.IOException.class, () -> InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL));
+            stop(second);
+            try (InstallationLease ignored = InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL)) { assertNotNull(ignored); }
+        } finally { cleanup(first, second); }
+    }
+
+    @Test public void exclusiveOwnerBlocksSharedUntilRelease() throws Exception {
+        Path linux = Files.createTempDirectory("lease-");
+        try (InstallationLease ignored = InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL)) {
+            Process denied = launch(linux, "SHARED_USE");
+            assertTrue(denied.waitFor(5, TimeUnit.SECONDS));
+            assertTrue(!denied.isAlive());
         }
-        try (InstallationLease ignored = InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL)) { assertNotNull(ignored); }
+        Process shared = holder(linux, "SHARED_USE");
+        cleanup(shared);
     }
 
     @Test public void processDeathReleasesSharedLease() throws Exception {
@@ -36,11 +47,7 @@ public class InstallationLeaseTest {
     }
 
     private static Process holder(Path linux, String mode) throws Exception {
-        String classes = InstallationLease.class.getProtectionDomain().getCodeSource().getLocation().getPath()
-                + java.io.File.pathSeparator
-                + InstallationLeaseTest.class.getProtectionDomain().getCodeSource().getLocation().getPath();
-        Process process = new ProcessBuilder(javaBinary(), "-cp", classes,
-                Holder.class.getName(), linux.toString(), mode).redirectErrorStream(true).start();
+        Process process = launch(linux, mode);
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (process.getInputStream().available() == 0 && process.isAlive()
                 && System.nanoTime() < deadline) Thread.sleep(10);
@@ -51,12 +58,22 @@ public class InstallationLeaseTest {
         return process;
     }
 
+    private static Process launch(Path linux, String mode) throws Exception {
+        String classes = InstallationLease.class.getProtectionDomain().getCodeSource().getLocation().getPath()
+                + java.io.File.pathSeparator
+                + InstallationLeaseTest.class.getProtectionDomain().getCodeSource().getLocation().getPath();
+        return new ProcessBuilder(javaBinary(), "-cp", classes,
+                Holder.class.getName(), linux.toString(), mode).redirectErrorStream(true).start();
+    }
+
     private static String javaBinary() { return Path.of(System.getProperty("java.home"), "bin", "java").toString(); }
     private static void stop(Process process) throws Exception {
+        if (!process.isAlive()) return;
         try (PrintWriter writer = new PrintWriter(new OutputStreamWriter(process.getOutputStream()))) { writer.println("stop"); }
         if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly();
         assertTrue(!process.isAlive());
     }
+    private static void cleanup(Process... processes) throws Exception { for (Process process : processes) stop(process); }
 
     public static final class Holder {
         public static void main(String[] args) throws Exception {
