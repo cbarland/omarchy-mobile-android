@@ -101,8 +101,18 @@ are excluded. The export walks live files at one point in time; stop graphical a
 Linux sessions first if you need a quiescent user-data copy. Keep the export with
 the archive fingerprint and verify the resulting file before moving it. A failed
 copy can leave an incomplete newly-created document in the selected provider; do
-not use that file. An in-app restore/replacement flow is not yet provided; do not
-select an export as a base Linux archive.
+not use that file.
+
+To recover an export, choose **Recover user data as separate copy** and select the
+gzip archive. Recovery validates that every entry belongs to `/root` or `/home`,
+extracts into private staging, and publishes a new UUID directory under the
+Linux guest's `/Recovered/<UUID>/` only after the complete archive has been
+read. The existing Linux installation is left in place; cancellation, malformed paths, and
+unsafe links remove private staging without publishing a partial copy. Links that
+point outside `/root` or `/home` are re-rooted as dangling links inside the
+recovered copy, so they cannot reach the live guest root. Recovery
+does not run package commands or replace the active rootfs. The operation and its
+result are recorded in the app's persistent `linux/install.log`.
 
 ## 3. Start phone and desktop sessions
 

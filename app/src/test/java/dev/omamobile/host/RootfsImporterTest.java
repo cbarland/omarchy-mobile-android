@@ -11,6 +11,8 @@ import java.io.IOException;
 import java.util.zip.GZIPInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import static org.junit.Assert.*;
 
 public class RootfsImporterTest {
@@ -21,6 +23,48 @@ public class RootfsImporterTest {
             TarArchiveEntry entry = new TarArchiveEntry(path, true);
             entry.setSize(contents.length); entry.setMode(0755);
             out.putArchiveEntry(entry); out.write(contents); out.closeArchiveEntry();
+        }
+        return bytes.toByteArray();
+    }
+    private byte[] recoveryTar(String path, byte[] contents) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (TarArchiveOutputStream out = new TarArchiveOutputStream(bytes)) {
+            TarArchiveEntry entry = new TarArchiveEntry(path);
+            entry.setSize(contents.length); entry.setMode(0600);
+            out.putArchiveEntry(entry); out.write(contents); out.closeArchiveEntry();
+        }
+        return bytes.toByteArray();
+    }
+    private byte[] recoveryTarWithDirectory(String directory, String path, byte[] contents) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (TarArchiveOutputStream out = new TarArchiveOutputStream(bytes)) {
+            TarArchiveEntry dir = new TarArchiveEntry(directory, true);
+            dir.setMode(0750); out.putArchiveEntry(dir); out.closeArchiveEntry();
+            TarArchiveEntry entry = new TarArchiveEntry(path);
+            entry.setSize(contents.length); entry.setMode(0600);
+            out.putArchiveEntry(entry); out.write(contents); out.closeArchiveEntry();
+        }
+        return bytes.toByteArray();
+    }
+    private byte[] recoveryLinkTar(String path, String target) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (TarArchiveOutputStream out = new TarArchiveOutputStream(bytes)) {
+            TarArchiveEntry entry = new TarArchiveEntry(path, TarArchiveEntry.LF_SYMLINK);
+            entry.setLinkName(target);
+            out.putArchiveEntry(entry); out.closeArchiveEntry();
+        }
+        return bytes.toByteArray();
+    }
+    private byte[] safeRecoveryLinksTar() throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (TarArchiveOutputStream out = new TarArchiveOutputStream(bytes)) {
+            TarArchiveEntry file = new TarArchiveEntry("root/.config/target");
+            byte[] value = "linked".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            file.setSize(value.length); out.putArchiveEntry(file); out.write(value); out.closeArchiveEntry();
+            TarArchiveEntry relative = new TarArchiveEntry("root/.config/relative", TarArchiveEntry.LF_SYMLINK);
+            relative.setLinkName("target"); out.putArchiveEntry(relative); out.closeArchiveEntry();
+            TarArchiveEntry absolute = new TarArchiveEntry("home/alice/absolute", TarArchiveEntry.LF_SYMLINK);
+            absolute.setLinkName("/root/.config/target"); out.putArchiveEntry(absolute); out.closeArchiveEntry();
         }
         return bytes.toByteArray();
     }
@@ -94,6 +138,8 @@ public class RootfsImporterTest {
         Files.write(root.resolve("home/alice/note"), "hello".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         Files.createDirectories(root.resolve("usr/bin"));
         Files.write(root.resolve("usr/bin/secret"), "excluded".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Files.createDirectories(root.resolve("root/Recovered/old/root"));
+        Files.write(root.resolve("root/Recovered/old/root/duplicate"), "do not nest".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         ByteArrayOutputStream archive = new ByteArrayOutputStream();
         importer(1000).exportUserData(root, archive, message -> {});
         Path restored = base();
@@ -111,5 +157,68 @@ public class RootfsImporterTest {
         assertEquals("keep me", new String(Files.readAllBytes(restored.resolve("root/.config/settings")), java.nio.charset.StandardCharsets.UTF_8));
         assertEquals("hello", new String(Files.readAllBytes(restored.resolve("home/alice/note")), java.nio.charset.StandardCharsets.UTF_8));
         assertFalse(Files.exists(restored.resolve("usr")));
+        assertEquals("do not nest", new String(Files.readAllBytes(restored.resolve("root/Recovered/old/root/duplicate")), java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    @Test public void recoveryPublishesSeparateCopyAndPreservesExistingData() throws Exception {
+        Path root = base();
+        Files.createDirectories(root.resolve("root"));
+        Files.createDirectories(root.resolve("root/.config"));
+        Files.write(root.resolve("root/.config/live"), "keep".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        List<Integer> modes = new ArrayList<>();
+        String id = new RootfsImporter((p, mode) -> modes.add(mode), 1000).recoverUserData(new ByteArrayInputStream(
+                recoveryTarWithDirectory("root/.config", "root/.config/recovered", "restored".getBytes(java.nio.charset.StandardCharsets.UTF_8))), root, p -> {});
+        assertEquals("keep", new String(Files.readAllBytes(root.resolve("root/.config/live")), java.nio.charset.StandardCharsets.UTF_8));
+        assertEquals("restored", new String(Files.readAllBytes(root.resolve("Recovered").resolve(id).resolve("root/.config/recovered")), java.nio.charset.StandardCharsets.UTF_8));
+        assertTrue(Files.isDirectory(root.resolve("Recovered").resolve(id)));
+        assertTrue("Recovered directories must remain app-writable", modes.stream().anyMatch(mode -> (mode & 0700) == 0700));
+    }
+
+    @Test public void recoveryPreservesSafeRelativeAndGuestAbsoluteLinksInsideCopy() throws Exception {
+        Path root = base();
+        Files.createDirectories(root.resolve("root"));
+        String id = importer(1000).recoverUserData(new ByteArrayInputStream(safeRecoveryLinksTar()), root, p -> {});
+        Path copy = root.resolve("Recovered").resolve(id);
+        assertTrue(Files.isSymbolicLink(copy.resolve("root/.config/relative")));
+        assertTrue(Files.isSymbolicLink(copy.resolve("home/alice/absolute")));
+        assertEquals("target", Files.readSymbolicLink(copy.resolve("root/.config/relative")).toString());
+        assertEquals("linked", new String(Files.readAllBytes(copy.resolve("home/alice/absolute")), java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    @Test public void recoveryRejectsOutsideNamespaceAndEscapingLinks() throws Exception {
+        Path root = base();
+        Files.createDirectories(root.resolve("root"));
+        assertThrows(IOException.class, () -> importer(1000).recoverUserData(new ByteArrayInputStream(
+                recoveryTar("usr/bin/evil", new byte[]{1})), root, p -> {}));
+        assertThrows(IOException.class, () -> importer(1000).recoverUserData(new ByteArrayInputStream(
+                recoveryLinkTar("root/escape", "../../outside")), root, p -> {}));
+        assertFalse(Files.exists(root.resolve("outside")));
+        try (var children = Files.list(root.resolve("Recovered"))) {
+            assertEquals(0, children.count());
+        }
+    }
+
+    @Test public void recoveryRepresentsExternalLinksAsDanglingInCopy() throws Exception {
+        Path root = base();
+        Files.createDirectories(root.resolve("root"));
+        String id = importer(1000).recoverUserData(new ByteArrayInputStream(
+                recoveryLinkTar("root/shared", "/usr/share")), root, p -> {});
+        Path link = root.resolve("Recovered").resolve(id).resolve("root/shared");
+        assertTrue(Files.isSymbolicLink(link));
+        assertTrue(Files.readSymbolicLink(link).toString().contains("usr"));
+        assertFalse(Files.exists(link));
+    }
+
+    @Test public void cancelledRecoveryRemovesPrivateStaging() throws Exception {
+        Path root = base();
+        Files.createDirectories(root.resolve("root"));
+        Thread.currentThread().interrupt();
+        try {
+            assertThrows(IOException.class, () -> importer(1000).recoverUserData(new ByteArrayInputStream(
+                    recoveryTar("home/alice/note", new byte[]{1})), root, p -> {}));
+        } finally { Thread.interrupted(); }
+        try (var children = Files.list(root.resolve("Recovered"))) {
+            assertEquals(0, children.count());
+        }
     }
 }

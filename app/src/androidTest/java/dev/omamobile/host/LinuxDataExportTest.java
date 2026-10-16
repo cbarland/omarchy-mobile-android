@@ -97,6 +97,68 @@ public class LinuxDataExportTest {
         assertFalse("Invalid export request left an idle foreground service", running);
     }
 
+    @Test public void rejectedInvalidRecoveryStopsItsIdleForegroundService() throws Exception {
+        Assume.assumeTrue("Prepared disposable Linux required", "true".equals(
+                InstrumentationRegistry.getArguments().getString("recovery")));
+        var instrumentation = InstrumentationRegistry.getInstrumentation();
+        var context = instrumentation.getTargetContext();
+        assertTrue(HostRuntime.get(context).installed());
+        instrumentation.runOnMainSync(() -> context.startForegroundService(
+                new android.content.Intent(context, LinuxService.class).putExtra("recoverData", true)));
+        long deadline = SystemClock.uptimeMillis() + 10000;
+        boolean running;
+        do {
+            running = context.getSystemService(android.app.ActivityManager.class).getRunningServices(100).stream()
+                    .anyMatch(service -> service.service.getClassName().equals(LinuxService.class.getName()));
+            if (running) SystemClock.sleep(50);
+        } while (running && SystemClock.uptimeMillis() < deadline);
+        assertFalse("Invalid recovery request left an idle foreground service", running);
+    }
+
+    @Test public void recoveryCreatesSeparateCopyAndKeepsLiveData() throws Exception {
+        Assume.assumeTrue("Prepared disposable Linux required", "true".equals(
+                InstrumentationRegistry.getArguments().getString("recovery")));
+        var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        var runtime = HostRuntime.get(context);
+        assertTrue(runtime.installed());
+        Path fixture = runtime.root.resolve("root/.omamobile-recovery-fixture-" + SystemClock.uptimeMillis());
+        Path archive = context.getFilesDir().toPath().resolve("recovery-result.tar.gz");
+        Files.createDirectories(fixture);
+        Files.write(fixture.resolve("settings"), "recovery proof".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Path pluginLink = fixture.resolve("plugins");
+        Files.createSymbolicLink(pluginLink, java.nio.file.Paths.get("/usr/share/omamobile/shell/plugins"));
+        try {
+            try (var out = Files.newOutputStream(archive)) {
+                HostRuntime.importer().exportUserData(runtime.root, out, message -> { });
+            }
+            Path abandoned = runtime.root.resolve("Recovered/.01234567-89ab-cdef-0123-456789abcdef.staging");
+            Files.createDirectories(abandoned);
+            Files.write(abandoned.resolve("partial"), new byte[]{1});
+            assertTrue(runtime.recoverData(Uri.fromFile(archive.toFile()), () -> { }));
+            waitIdle(runtime, 30000);
+            assertFalse("Abandoned recovery staging survived", Files.exists(abandoned, java.nio.file.LinkOption.NOFOLLOW_LINKS));
+            assertEquals("recovery proof", new String(Files.readAllBytes(fixture.resolve("settings")), java.nio.charset.StandardCharsets.UTF_8));
+            Path copy;
+            try (var copies = Files.list(runtime.root.resolve("Recovered"))) {
+                copy = copies.filter(Files::isDirectory).findFirst().orElseThrow();
+            }
+            assertEquals("recovery proof", new String(Files.readAllBytes(copy.resolve("root").resolve(fixture.getFileName())), java.nio.charset.StandardCharsets.UTF_8));
+            Path recoveredLink = copy.resolve("root").resolve(fixture.getFileName()).resolve("plugins");
+            assertTrue("External plugin link was not retained", Files.isSymbolicLink(recoveredLink));
+            assertTrue(Files.readSymbolicLink(recoveredLink).toString().contains("usr/share"));
+            assertFalse("Recovered plugin link reached live root", Files.exists(recoveredLink));
+            assertTrue("Recovery phase was not persisted", new String(Files.readAllBytes(runtime.linux.resolve("install.log")), java.nio.charset.StandardCharsets.UTF_8).contains("recovery"));
+        } finally {
+            runtime.stop();
+            waitIdle(runtime, 30000);
+            GuestPaths.deleteTree(fixture);
+            try (var copies = Files.list(runtime.root.resolve("Recovered"))) {
+                copies.filter(Files::isDirectory).forEach(path -> { try { GuestPaths.deleteTree(path); } catch (IOException error) { throw new RuntimeException(error); } });
+            }
+            Files.deleteIfExists(archive);
+        }
+    }
+
     @Test public void cancellationRemovesPrivatePartialArchive() throws Exception {
         Assume.assumeTrue("Prepared disposable Linux required", "true".equals(
                 InstrumentationRegistry.getArguments().getString("export")));

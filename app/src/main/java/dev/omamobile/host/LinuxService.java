@@ -23,7 +23,10 @@ public final class LinuxService extends Service {
                 .setContentText("Linux operation in progress").setSmallIcon(android.R.drawable.stat_sys_download)
                 .setContentIntent(open).setOngoing(true).build());
         boolean export = intent.getBooleanExtra("exportData", false);
+        boolean recover = intent.getBooleanExtra("recoverData", false);
         boolean accepted = export ? runtime.exportData(intent.getData(), () -> {
+            if (!runtime.busy() && stopSelfResult(latestStartId)) stopForeground(STOP_FOREGROUND_REMOVE);
+        }) : recover ? runtime.recoverData(intent.getData(), () -> {
             if (!runtime.busy() && stopSelfResult(latestStartId)) stopForeground(STOP_FOREGROUND_REMOVE);
         }) : runtime.submit(intent.getStringExtra("command"), intent.getData(), intent.getBooleanExtra("ando", false),
                 intent.getBooleanExtra("androidDns", false), intent.getBooleanExtra("installOmarchy", false), () -> {
@@ -34,13 +37,13 @@ public final class LinuxService extends Service {
         });
         if (!accepted) {
             // Existing operation owns this foreground service until its completion callback.
-            if (export && !runtime.busy()) {
+            if ((export || recover) && !runtime.busy()) {
                 stopForeground(STOP_FOREGROUND_REMOVE);
                 stopSelfResult(latestStartId);
             }
             return START_NOT_STICKY;
         }
-        if (intent.getBooleanExtra("installOmarchy", false) || export) {
+        if (intent.getBooleanExtra("installOmarchy", false) || export || recover) {
             setupWakeLock = getSystemService(android.os.PowerManager.class).newWakeLock(
                     android.os.PowerManager.PARTIAL_WAKE_LOCK, "omamobile:setup");
             setupWakeLock.setReferenceCounted(false);
