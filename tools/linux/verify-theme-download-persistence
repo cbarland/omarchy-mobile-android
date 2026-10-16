@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Phased, opt-in disposable-fixture check; run inside a prepared Linux session.
 
-This tests Git HTTP download through unchanged omarchy-theme-install using a
-locally generated data-only repository. An opt-in loopback HTTPS mode uses an
-ephemeral certificate and scoped CA trust; it does not test public HTTPS, DNS,
-third-party themes, or prove rendered colors from an IPC acknowledgment.
+The default tests Git HTTP download through unchanged omarchy-theme-install
+using a generated data-only repository. Loopback HTTPS uses an ephemeral
+certificate and scoped CA trust. The separate public Hackerboy option checks
+one reviewed public repository; neither mode proves rendered colors from an
+IPC acknowledgment.
 Capture both Android displays after install and after owner reopening for the
 separate appearance check (flat cyan wallpaper, accent #12abef).
 
@@ -247,7 +248,7 @@ def prepare(work, transport="loopback-http-git", public_hackerboy=False):
             shutil.copytree(path, work / "snapshots" / str(index), symlinks=True, copy_function=shutil.copy2)
     state = {"version": 1, "home": str(HOME), "originalTheme": original,
              "fixture": work.name, "snapshots": saved, "signatures": {},
-             "transport": transport,
+             "transport": "public-https-git" if public_hackerboy else transport,
              "themeName": theme_name, "publicHackerboy": public_hackerboy,
              "publicHttpsVerified": False,
              "renderedPaletteVerified": False, "phase": "prepared"}

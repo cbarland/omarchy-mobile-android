@@ -106,6 +106,21 @@ class HackerboyFixtureTest(unittest.TestCase):
             partial.update(change)
             self.assertFalse(MODULE.public_install_complete(partial))
 
+    def test_public_prepare_records_public_transport_and_owned_name(self):
+        home = self.root / "home"
+        omarchy = home / ".local/share/omarchy"
+        (home / ".local/state/omarchy/current").mkdir(parents=True)
+        (home / ".local/state/omarchy/current/theme.name").write_text("tokyo-night\n", encoding="utf-8")
+        (omarchy / "themes/tokyo-night").mkdir(parents=True)
+        work = self.root / "prepare-work"
+        with mock.patch.object(MODULE, "HOME", home), mock.patch.object(MODULE, "OMARCHY", omarchy), \
+                mock.patch.object(MODULE, "SNAPSHOTS", (".local/state/omarchy",)), \
+                mock.patch.object(MODULE, "preconditions"):
+            MODULE.prepare(work, public_hackerboy=True)
+        state = json.loads((work / "state.json").read_text())
+        self.assertEqual(state["transport"], "public-https-git")
+        self.assertEqual(state["themeName"], "hackerboy")
+
     def test_restore_records_public_success_before_phase_transition(self):
         home = self.root / "home"
         work = self.root / "omamobile-theme-download-restore"
