@@ -47,7 +47,9 @@ def parse_proc_uid(text):
 
 def identity_matches(before, after):
     return (before["pid"] == after["pid"] and
-            before["starttime"] == after["starttime"])
+            before["starttime"] == after["starttime"] and
+            before.get("ownerPid") == after.get("ownerPid") and
+            before.get("ownerStarttime") == after.get("ownerStarttime"))
 
 
 def parse_positive_health(text):
@@ -94,13 +96,33 @@ class Sampler:
             raise RuntimeError(f"refusing AVD {self.avd!r}; expected {args.expected_avd!r}")
         self.app_uid = int(run(self.adb + ["exec-out", "run-as", APP, "id", "-u"], args.command_timeout).strip())
         self.page_size = int(run(self.adb + ["shell", "getconf", "PAGESIZE"], args.command_timeout).strip())
+        self.clock_ticks = int(run(self.adb + ["shell", "getconf", "CLK_TCK"], args.command_timeout).strip())
+        if self.page_size <= 0 or self.clock_ticks <= 0:
+            raise RuntimeError("getconf returned a nonpositive page size or clock tick rate")
 
     def android_stat(self, pid):
         stat = parse_proc_stat(run(self.adb + ["exec-out", "run-as", APP, "cat", f"/proc/{pid}/stat"], self.args.command_timeout))
         uid = parse_proc_uid(run(self.adb + ["exec-out", "run-as", APP, "cat", f"/proc/{pid}/status"], self.args.command_timeout))
         if uid != self.app_uid:
             raise RuntimeError(f"Android PID {pid} is not owned by {APP}")
+        if stat["pid"] != pid:
+            raise RuntimeError(f"Android PID {pid} stat identity does not match")
         return stat
+
+    def android_thread_stat(self, pid, tid):
+        owner = self.android_stat(pid)
+        base = f"/proc/{pid}/task/{tid}"
+        stat = parse_proc_stat(run(self.adb + ["exec-out", "run-as", APP, "cat", base + "/stat"], self.args.command_timeout))
+        status = run(self.adb + ["exec-out", "run-as", APP, "cat", base + "/status"], self.args.command_timeout)
+        tgid = re.search(r"^Tgid:\s*(\d+)\s*$", status, re.MULTILINE)
+        if stat["pid"] != tid or parse_proc_uid(status) != self.app_uid or not tgid or int(tgid[1]) != pid:
+            raise RuntimeError(f"Android TID {tid} does not belong to app PID {pid}")
+        if not identity_matches(owner, self.android_stat(pid)):
+            raise RuntimeError(f"Android thread owner PID {pid} changed during collection")
+        # Threads share the process address space; never sum their RSS as
+        # independently owned memory.
+        del stat["rssPages"]
+        return dict(stat, ownerPid=pid, ownerStarttime=owner["starttime"])
 
     def guest_stat(self, profile, pid):
         command = [sys.executable, str(self.root / "tools/emulator-linux.py"), "--adb", self.args.adb,
@@ -118,14 +140,23 @@ class Sampler:
         return parse_positive_health(run(command, self.args.command_timeout))
 
 
+def timed_stat(read):
+    started = time.monotonic()
+    sample = read()
+    return dict(sample, readStartedMonotonicSeconds=started,
+                readFinishedMonotonicSeconds=time.monotonic())
+
+
 def measured(sample, previous, key, page_size):
     current = dict(sample)
     current["cpuTicks"] = sample["utime"] + sample["stime"]
-    current["rssBytes"] = sample["rssPages"] * page_size
+    if "rssPages" in sample:
+        current["rssBytes"] = sample["rssPages"] * page_size
     prior = previous.get(key)
     if prior is not None:
         current["cpuDeltaTicks"] = current["cpuTicks"] - prior["cpuTicks"]
-        current["rssDeltaBytes"] = current["rssBytes"] - prior["rssBytes"]
+        if "rssBytes" in current:
+            current["rssDeltaBytes"] = current["rssBytes"] - prior["rssBytes"]
     previous[key] = current
     return current
 
@@ -142,6 +173,8 @@ def parse_args(argv):
     parser.add_argument("--command-timeout", type=float, default=20.0)
     parser.add_argument("--output", type=Path, default=Path("app/build/verification/session-resources.json"))
     parser.add_argument("--android-process", action="append", default=[], metavar="NAME=PID")
+    parser.add_argument("--android-thread", action="append", default=[], metavar="NAME=PID:TID",
+                        help="sample an app-owned thread, validating its containing process identity")
     parser.add_argument("--guest-process", action="append", default=[], metavar="PROFILE:NAME=PID")
     parser.add_argument("--health-profile", action="append", choices=PROFILES)
     args = parser.parse_args(argv)
@@ -164,6 +197,13 @@ def main(argv=None):
     if any(int(pid) <= 0 for _, pid in android) or len({name for name, _ in android}) != len(android):
         raise SystemExit("Android process labels must be unique and PIDs must be positive")
     guest = []
+    threads = []
+    for item in args.android_thread:
+        name, spec = parse_assignment(item)
+        pid, tid = parse_assignment(spec, ":")
+        if int(pid) <= 0 or int(tid) <= 0:
+            raise SystemExit("thread PIDs and TIDs must be positive")
+        threads.append((name, int(pid), int(tid)))
     for item in args.guest_process:
         profile, spec = parse_assignment(item, ":")
         if profile not in PROFILES:
@@ -172,7 +212,9 @@ def main(argv=None):
         if int(pid) <= 0:
             raise SystemExit("guest PIDs must be positive")
         guest.append((profile, name, int(pid)))
-    labels = [("android", name) for name, _ in android] + [(f"guest:{profile}", name) for profile, name, _ in guest]
+    labels = ([("android", name) for name, _ in android] +
+              [("android-thread", name) for name, _, _ in threads] +
+              [(f"guest:{profile}", name) for profile, name, _ in guest])
     if len(set(labels)) != len(labels):
         raise SystemExit("process labels must be unique within each source")
     health_profiles = args.health_profile or list(PROFILES)
@@ -188,14 +230,21 @@ def main(argv=None):
         observed = {"index": index, "monotonicSeconds": collection_started - started,
                     "processes": {}, "health": {}}
         for name, pid_text in android:
-            sample = sampler.android_stat(int(pid_text))
+            sample = timed_stat(lambda: sampler.android_stat(int(pid_text)))
             key = f"android:{name}"
             if key in identities and not identity_matches(identities[key], sample):
                 raise RuntimeError(f"PID identity changed for {key}")
             identities.setdefault(key, sample)
             observed["processes"][key] = measured(sample, previous, key, sampler.page_size)
+        for name, pid, tid in threads:
+            sample = timed_stat(lambda: sampler.android_thread_stat(pid, tid))
+            key = f"android-thread:{name}"
+            if key in identities and not identity_matches(identities[key], sample):
+                raise RuntimeError(f"thread or owner identity changed for {key}")
+            identities.setdefault(key, sample)
+            observed["processes"][key] = measured(sample, previous, key, sampler.page_size)
         for profile, name, pid in guest:
-            sample = sampler.guest_stat(profile, pid)
+            sample = timed_stat(lambda: sampler.guest_stat(profile, pid))
             key = f"guest:{profile}:{name}"
             if key in identities and not identity_matches(identities[key], sample):
                 raise RuntimeError(f"PID identity changed for {key}")
@@ -210,14 +259,16 @@ def main(argv=None):
     variation = {}
     for key in samples[0]["processes"]:
         values = [sample["processes"][key] for sample in samples]
-        variation[key] = {"cpuDeltaTicks": [item["cpuDeltaTicks"] for item in values[1:]],
-                          "rssBytesMin": min(item["rssBytes"] for item in values),
-                          "rssBytesMax": max(item["rssBytes"] for item in values)}
+        variation[key] = {"cpuDeltaTicks": [item["cpuDeltaTicks"] for item in values[1:]]}
+        if "rssBytes" in values[0]:
+            variation[key].update(rssBytesMin=min(item["rssBytes"] for item in values),
+                                  rssBytesMax=max(item["rssBytes"] for item in values))
     result = {"phase": args.phase, "serial": args.serial, "avd": sampler.avd,
               "avdGuard": args.expected_avd,
               "units": {"cpu": "proc clock ticks (utime+stime)", "rss": "bytes",
                         "elapsed": "monotonic seconds"},
-              "pageSize": sampler.page_size, "sampleIntervalSeconds": args.interval,
+              "pageSize": sampler.page_size, "clockTicksPerSecond": sampler.clock_ticks,
+              "sampleIntervalSeconds": args.interval,
               "samples": samples, "variation": variation, "identity": identities, "conditions": {
                   "healthRequiredEverySample": True, "batteryMeasured": False,
                   "operatorSelectedPhase": True, "sampleCount": args.samples,
@@ -225,7 +276,8 @@ def main(argv=None):
                   "intervalIsPauseSeconds": True,
                   "samplingCadenceIncludesObserverCost": True,
                   "observerCostRecorded": True,
-                  "identityRule": "pid plus proc starttime"}}
+                  "threadRssReported": False,
+                  "identityRule": "pid plus proc starttime; threads also validate owner pid and starttime"}}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"samples": len(samples), "phase": args.phase, "output": str(args.output)}))
