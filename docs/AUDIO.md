@@ -52,3 +52,22 @@ adb -s emulator-5562 shell am instrument -w -r -e audio true \
 Playback-head progress verifies the public Android pipeline. Speakers, physical
 device routing, ARM64 behavior, and a complete Linux audio service need separate
 verification.
+
+## PipeWire integration test
+
+`PipeWireAndroidOutputTest` requires `-e pipewireAudio true` and prepared Linux
+with the existing PipeWire/libpipewire 1:1.6.9-1, Python, pw-cli, and pw-link.
+Missing prerequisites fail an opted-in test. The test-only fixture creates one
+private foreground graph: the audiotestsrc default 440 Hz source, two explicit
+links, and a pipe-tunnel sink emitting S16LE stereo at 48 kHz into AndroidPcmOutput.
+Both private protocol sockets have explicit access; no global policy changes.
+
+The normal test checks actual node formats, running states and active links,
+complete FIFO-frame submission and advancing public playback head. The second
+test cancels the Android consumer while PipeWire is alive, then injects a fixture
+failure. Both require producer reaping, joined Android worker, released track and
+descriptors, and exact FIFO/run-directory removal. Evidence remains in the app's
+private `cache/pipewire-android-proof/<run>` directory. This extends transport
+verification, with the same audibility and integration limits above; it adds no
+application audio service, focus handling, package installation, or default-device
+policy. All public-delivery holds remain.
