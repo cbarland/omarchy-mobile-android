@@ -58,6 +58,7 @@ public class GraphicsSmokeTest {
             Files.write(home.resolve("verified-layers.json"), layers.getBytes(StandardCharsets.UTF_8));
             assertTrue(profile + " missing upstream surfaces: " + layers + "\n" + logs(home), layers.contains(expected));
             assertTrue(profile + " missing upstream wallpaper: " + layers, layers.contains("omarchy-background"));
+            verifyDbusActivationEnvironment(context, profile, properties);
             String monitors = ipc(context, profile, properties, "monitors");
             Files.write(home.resolve("verified-monitors.json"), monitors.getBytes(StandardCharsets.UTF_8));
             assertTrue(monitors, monitors.contains("width") && monitors.contains("height"));
@@ -104,6 +105,71 @@ public class GraphicsSmokeTest {
         return runGuest(context, profile, properties, guest);
     }
 
+    private static void verifyDbusActivationEnvironment(Context context, String profile, Properties properties) throws Exception {
+        Path root = context.getFilesDir().toPath().resolve("linux/rootfs");
+        String id = "dev.omamobile.envprobe." + profile + ".p" + java.util.UUID.randomUUID().toString().replace("-", "");
+        Path service = root.resolve("usr/share/dbus-1/services/" + id + ".service");
+        Path temporary = Files.createTempDirectory(root.resolve("tmp"), "omamobile-env-");
+        Path script = temporary.resolve("probe.py");
+        Path output = temporary.resolve("environment.json");
+        String guestTemporary = "/tmp/" + temporary.getFileName();
+        String source = """
+                import json, os, sys
+                from gi.repository import Gio, GLib
+                bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+                result = bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
+                              'org.freedesktop.DBus', 'RequestName',
+                              GLib.Variant('(su)', (sys.argv[1], 4)),
+                              GLib.VariantType('(u)'), Gio.DBusCallFlags.NONE, 2000, None)
+                assert result.unpack()[0] == 1
+                with open(sys.argv[2] + '.tmp', 'x') as out:
+                    json.dump({key: os.environ.get(key) for key in (
+                        'OMARCHY_PATH', 'OMAMOBILE_SESSION_HOST', 'OMAMOBILE_PROFILE', 'PATH',
+                        'WAYLAND_DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE',
+                        'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR')}, out)
+                os.replace(sys.argv[2] + '.tmp', sys.argv[2])
+                loop = GLib.MainLoop()
+                GLib.timeout_add(2000, loop.quit)
+                loop.run()
+                """;
+        boolean serviceCreated = false;
+        try {
+            Files.createDirectories(service.getParent());
+            Files.write(script, source.getBytes(StandardCharsets.UTF_8), java.nio.file.StandardOpenOption.CREATE_NEW);
+            Files.write(service, ("[D-BUS Service]\nName=" + id + "\nExec=/usr/bin/python3 "
+                    + guestTemporary + "/probe.py " + id + " " + guestTemporary + "/environment.json\n")
+                    .getBytes(StandardCharsets.UTF_8), java.nio.file.StandardOpenOption.CREATE_NEW);
+            serviceCreated = true;
+            String runtime = "/run/omamobile/" + (profile.equals("phone") ? "p" : "d");
+            String reload = runGuest(context, profile, properties, List.of("/usr/bin/gdbus", "call", "--session",
+                    "--dest", "org.freedesktop.DBus", "--object-path", "/org/freedesktop/DBus",
+                    "--method", "org.freedesktop.DBus.ReloadConfig"));
+            assertEquals(profile + " D-Bus ReloadConfig failed", "()", reload.trim());
+            String start = runGuest(context, profile, properties, List.of("/usr/bin/gdbus", "call", "--session",
+                    "--dest", "org.freedesktop.DBus", "--object-path", "/org/freedesktop/DBus",
+                    "--method", "org.freedesktop.DBus.StartServiceByName", id, "0"));
+            assertEquals(profile + " D-Bus activation did not start a new service", "(uint32 1,)", start.trim());
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (!Files.exists(output) && System.nanoTime() < deadline) Thread.sleep(100);
+            assertTrue(profile + " activated service did not write environment", Files.isRegularFile(output));
+            var env = new org.json.JSONObject(new String(Files.readAllBytes(output), StandardCharsets.UTF_8));
+            assertEquals(profile + " runtime", runtime, env.optString("XDG_RUNTIME_DIR", null));
+            assertEquals(properties.getProperty("WAYLAND_DISPLAY"), env.optString("WAYLAND_DISPLAY", null));
+            assertEquals(properties.getProperty("HYPRLAND_INSTANCE_SIGNATURE"), env.optString("HYPRLAND_INSTANCE_SIGNATURE", null));
+            assertEquals(profile, env.optString("OMAMOBILE_PROFILE", null));
+            assertEquals("android", env.optString("OMAMOBILE_SESSION_HOST", null));
+            assertEquals("/root/.local/share/omarchy", env.optString("OMARCHY_PATH", null));
+            String busAddress = env.optString("DBUS_SESSION_BUS_ADDRESS", "");
+            assertTrue(profile + " activated service used another bus: " + busAddress,
+                    busAddress.matches(java.util.regex.Pattern.quote("unix:path=" + runtime + "/bus")
+                            + "(?:,guid=[0-9a-f]{32})?"));
+            assertTrue(List.of(env.getString("PATH").split(":")).contains("/usr/lib/omamobile/session-bin"));
+        } finally {
+            if (serviceCreated) Files.deleteIfExists(service);
+            GuestPaths.deleteTree(temporary);
+        }
+    }
+
     private static String runGuest(Context context, String profile, Properties properties, List<String> guest) throws Exception {
         Path files = context.getFilesDir().toPath();
         String runtime = "/run/omamobile/" + (profile.equals("phone") ? "p" : "d");
@@ -114,6 +180,7 @@ public class GraphicsSmokeTest {
         ProcessBuilder builder = new ProcessBuilder(argv).directory(files.toFile()).redirectErrorStream(true);
         builder.environment().clear(); builder.environment().putAll(RuntimeSpec.environment(false));
         builder.environment().put("XDG_RUNTIME_DIR", runtime);
+        builder.environment().put("DBUS_SESSION_BUS_ADDRESS", "unix:path=" + runtime + "/bus");
         builder.environment().put("WAYLAND_DISPLAY", properties.getProperty("WAYLAND_DISPLAY"));
         builder.environment().put("HYPRLAND_INSTANCE_SIGNATURE", properties.getProperty("HYPRLAND_INSTANCE_SIGNATURE"));
         Process process = builder.start(); process.getOutputStream().close();

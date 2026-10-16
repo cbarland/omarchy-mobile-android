@@ -183,11 +183,14 @@ final class GraphicalSession {
         // A login shell may reset PATH in /etc/profile; restore the session's
         // bound client after profile loading, without editing user dotfiles.
         String script = "export PATH=/opt/omamobile/bin:$PATH; exec /root/.local/share/omamobile/start-shell " + profile;
+        var sessionEnv = environment();
+        sessionEnv.put("WAYLAND_DISPLAY", display);
+        sessionEnv.put("HYPRLAND_INSTANCE_SIGNATURE", signature);
         var busArgs = RuntimeSpec.command(new File(context.getApplicationInfo().nativeLibraryDir, "libtawcroot.so").toPath(),
                 root, binds(), List.of("/usr/bin/dbus-daemon", "--session", "--nofork", "--nopidfile", "--address=unix:path=" + guestRuntime() + "/bus"));
         ProcessBuilder bus = new ProcessBuilder(busArgs).directory(root.toFile()).redirectErrorStream(true)
                 .redirectOutput(home.resolve("dbus.log").toFile());
-        bus.environment().clear(); bus.environment().putAll(RuntimeSpec.environment(false));
+        bus.environment().clear(); bus.environment().putAll(sessionEnv);
         Process busProcess = bus.start();
         busProcess.getOutputStream().close();
         launched.add(busProcess);
@@ -201,9 +204,7 @@ final class GraphicalSession {
         ProcessBuilder builder = new ProcessBuilder(argv).directory(GuestPaths.resolve(root, "/root").toFile())
                 .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.appendTo(home.resolve("linux-shell.log").toFile()));
         builder.environment().clear();
-        builder.environment().putAll(environment());
-        builder.environment().put("WAYLAND_DISPLAY", display);
-        builder.environment().put("HYPRLAND_INSTANCE_SIGNATURE", signature);
+        builder.environment().putAll(sessionEnv);
         clients = builder.start();
         clients.getOutputStream().close();
         launched.add(clients);

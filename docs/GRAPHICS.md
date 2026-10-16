@@ -24,6 +24,14 @@ theme. A profile override selects different shell layouts without forking
 the shell or copying Linux installations. `DesktopService` owns the display
 lifecycle and a visible foreground notification.
 
+The private D-Bus daemon receives the same per-profile graphical environment
+as the initial shell. Services started through D-Bus activation therefore inherit
+the correct runtime, display, compositor signature and Omarchy path. A real Gio
+service fixture in `GraphicsSmokeTest` verifies both profiles: the old daemon
+environment omitted the runtime; the corrected APK passes the full graphical
+check in 10.500s. This establishes activation context, not complete portal,
+hardware or systemd compatibility.
+
 ## Display management helper prototype
 
 The adapter has display inventory and selection policy code, but it remains a
