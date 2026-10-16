@@ -215,7 +215,9 @@ public class GraphicsSmokeTest {
                 files.resolve("linux/rootfs"), List.of(new RuntimeSpec.Bind("/dev", "/dev", false),
                         new RuntimeSpec.Bind("/proc", "/proc", false)),
                 guest);
-        ProcessBuilder builder = new ProcessBuilder(argv).directory(files.toFile()).redirectErrorStream(true);
+        ProcessBuilder builder = new ProcessBuilder(argv)
+                .directory(GuestPaths.resolve(files.resolve("linux/rootfs"), "/root").toFile())
+                .redirectErrorStream(true);
         builder.environment().clear(); builder.environment().putAll(RuntimeSpec.environment(false));
         builder.environment().put("XDG_RUNTIME_DIR", runtime);
         builder.environment().put("DBUS_SESSION_BUS_ADDRESS", "unix:path=" + runtime + "/bus");
@@ -232,7 +234,8 @@ public class GraphicsSmokeTest {
             catch (IOException error) { process.destroyForcibly(); throw error; }
         } catch (IOException error) {
             Files.deleteIfExists(capture);
-            throw new IOException("Guest command could not start: profile=" + profile + " command=" + command, error);
+            throw new IOException("Guest command could not start: profile=" + profile + " command=" + command
+                    + diagnostics(context, profile, properties), error);
         }
         boolean completed = false;
         try {
@@ -241,14 +244,17 @@ public class GraphicsSmokeTest {
                 process.destroyForcibly();
                 process.waitFor(2, TimeUnit.SECONDS);
                 throw new IllegalStateException("Guest command timed out after 5s: profile=" + profile
-                        + " command=" + command + " outputTail=" + readTail(capture, maxOutput));
+                        + " command=" + command + " outputTail=" + readTail(capture, maxOutput)
+                        + diagnostics(context, profile, properties));
             }
             int exit = process.exitValue();
             if (exit != 0) throw new IllegalStateException("Guest command exited " + exit + ": profile="
-                    + " command=" + command + " outputTail=" + readTail(capture, maxOutput));
+                    + profile + " command=" + command + " outputTail=" + readTail(capture, maxOutput)
+                    + diagnostics(context, profile, properties));
             long size = Files.size(capture);
             if (size > maxOutput) throw new IllegalStateException("Guest command output exceeded " + maxOutput
-                    + " bytes: profile=" + profile + " command=" + command + " outputTail=" + readTail(capture, maxOutput));
+                    + " bytes: profile=" + profile + " command=" + command + " outputTail=" + readTail(capture, maxOutput)
+                    + diagnostics(context, profile, properties));
             return new String(Files.readAllBytes(capture), StandardCharsets.UTF_8);
         } finally {
             if (!completed && process.isAlive()) process.destroyForcibly();
@@ -277,6 +283,24 @@ public class GraphicsSmokeTest {
             if (offset != wanted) bytes = java.util.Arrays.copyOf(bytes, offset);
             return new String(bytes, StandardCharsets.UTF_8);
         }
+    }
+
+    private static String diagnostics(Context context, String profile, Properties properties) {
+        Path home = context.getFilesDir().toPath().resolve("graphics/" + profile);
+        StringBuilder value = new StringBuilder("\nGuest context: profile=").append(profile)
+                .append(" ready=true owner=").append(properties.getProperty("HYPRLAND_INSTANCE_SIGNATURE"))
+                .append(" pid=").append(properties.getProperty("PID"))
+                .append(" display=").append(properties.getProperty("ANDROID_DISPLAY_ID"))
+                .append(" wayland=").append(properties.getProperty("WAYLAND_DISPLAY"))
+                .append(" signature=").append(properties.getProperty("HYPRLAND_INSTANCE_SIGNATURE"));
+        for (String name : List.of("linux-shell.log", "dbus.log", "hyprland-native.log"))
+            value.append("\n").append(name).append(" tail:\n").append(safeTail(home.resolve(name), 4000));
+        return value.toString();
+    }
+
+    private static String safeTail(Path path, int limit) {
+        try { return readTail(path, limit); }
+        catch (IOException error) { return "<unavailable: " + error.getMessage() + ">"; }
     }
 
     private static final String RUNTIME_SYMLINK_PROBE = """
