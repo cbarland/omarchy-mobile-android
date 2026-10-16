@@ -1,5 +1,28 @@
 # Verification record
 
+## Cancellation while opening an archive provider
+
+Manual import and separate-copy recovery now register Android's
+`CancellationSignal` before entering provider IPC. Read-only asset descriptors
+preserve provider offsets and declared lengths. Stop snapshots its current
+worker/resources under the runtime lock, then cancels the provider and closes
+an opened stream independently, keeping remote cancellation off the UI thread.
+
+On the new empty API35 provider-test emulator, the final test APK against the
+previous full host APK fails after 10.239 seconds because the worker remains
+busy inside provider open. With the candidate full APK, both held-open and
+held-read tests pass in 0.208 seconds. They prove the provider is held before
+Stop, then observe worker idle, service exit, no activated rootfs or abandoned
+import staging, and preserved unrelated sentinel data. The held-read provider
+retains its writer until test cleanup, so EOF cannot explain that pass.
+
+The prepared emulator also passes five export/recovery/service checks in
+25.857 seconds, including a successful separate-copy recovery that preserves
+live data. The full graphical APK/test APK, 70 JVM checks and lint pass; one
+POSIX-only JVM fixture is skipped on Windows. Provider-open cancellation is
+cooperative: Android cannot compel arbitrary provider code to honor its signal.
+No prepared installation was replaced or reset.
+
 ## Guest command failure diagnostics
 
 The graphical instrumentation helper runs from the guest home and captures
