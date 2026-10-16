@@ -17,6 +17,17 @@ import threading
 import time
 
 SOCKET = "/run/omamobile/android.sock"
+DEVICE_STATE_KEYS = ("deviceLocked", "interactive", "keyguardLocked")
+
+
+def device_state(reply):
+    state = {}
+    for key in DEVICE_STATE_KEYS:
+        value = reply.get(key)
+        if type(value) is not bool:
+            raise RuntimeError("Android device state field is not boolean: " + key)
+        state[key] = value
+    return state
 
 
 class Portal:
@@ -58,9 +69,11 @@ def main():
     args = parser.parse_args()
     portal = Portal()
     if args.action == "device-state":
-        state = portal.request("device-state")[0]
-        print(json.dumps({key: state[key] for key in ("deviceLocked", "interactive", "keyguardLocked")}, sort_keys=True))
-        portal.close()
+        try:
+            state = device_state(portal.request("device-state")[0])
+            print(json.dumps(state, sort_keys=True))
+        finally:
+            portal.close()
         return
     if args.action in ("list", "sync"):
         apps = portal.request("list")[0]["apps"]
