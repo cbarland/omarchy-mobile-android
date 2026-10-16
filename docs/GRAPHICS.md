@@ -24,13 +24,6 @@ theme. A profile override selects different shell layouts without forking
 the shell or copying Linux installations. `DesktopService` owns the display
 lifecycle and a visible foreground notification.
 
-During Android resize or configuration changes, `SurfaceView` may briefly
-report a zero-sized surface. The host releases the native window for that
-interval and reapplies the next positive geometry, so stale compositor bounds
-are not used for input. A replacement surface must remain on the same Android
-display; a move to another display stops the old process so its display-removal
-listener and compositor lifetime cannot become detached from one another.
-
 ## Display management helper prototype
 
 The adapter has display inventory and selection policy code, but it remains a

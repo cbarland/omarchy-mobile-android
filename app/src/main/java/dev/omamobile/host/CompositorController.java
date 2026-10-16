@@ -70,35 +70,10 @@ final class CompositorController {
     void unobserve(Consumer<String> listener) { observers.remove(listener); }
     private void status(String value) { status = value; main.post(() -> observers.forEach(listener -> listener.accept(value))); }
 
-    static boolean validSurfaceSize(int width, int height) { return width > 0 && height > 0; }
-
     synchronized void attach(Object owner, Surface surface, int width, int height, int androidDisplayId) {
         if (stopping) return;
-        // Record the newest SurfaceView even when Android reports its
-        // transient zero-sized callback. An older surface may be destroyed
-        // after this callback and must not detach the replacement.
         surfaceOwner = owner;
-        if (!validSurfaceSize(width, height)) {
-            // Android can report a transient 0x0 surface while a hosted
-            // display is being resized or its configuration is changing.
-            // Release the native window until the next valid surface size;
-            // forwarding zero geometry makes the compositor keep stale input
-            // bounds or fail its resize path.
-            if (started && NativeCompositor.AVAILABLE) NativeCompositor.window(null, 0, 0);
-            return;
-        }
-        if (started) {
-            if (androidDisplayId != attachedDisplayId) {
-                // A replacement activity must not silently reuse a compositor
-                // whose removal listener is still watching the old display.
-                android.util.Log.i("OmamobileHyprland", "Surface moved from display "
-                        + attachedDisplayId + " to " + androidDisplayId + "; stopping owner");
-                stop();
-                return;
-            }
-            if (NativeCompositor.AVAILABLE) NativeCompositor.window(surface, width, height);
-            return;
-        }
+        if (started) { if (NativeCompositor.AVAILABLE) NativeCompositor.window(surface, width, height); return; }
         attachedDisplayId = androidDisplayId;
         started = true;
         thread = new Thread(() -> {
