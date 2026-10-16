@@ -25,26 +25,31 @@ import static org.junit.Assert.*;
 
 /** Real Linux producer and Android consumer, deliberately disconnected from application services. */
 public class PipeWireAndroidOutputTest {
+    private enum Finish { NORMAL, FAILURE, KILL }
     @Test public void pipeWireFramesReachAndroidPlaybackAndNormalStopReapsProducer() throws Exception {
-        run(false);
+        run(Finish.NORMAL);
     }
 
     @Test public void cancelledOutputAndInjectedFixtureFailureReleaseAllOwnedResources() throws Exception {
-        run(true);
+        run(Finish.FAILURE);
     }
 
-    private void run(boolean injectFailure) throws Exception {
+    @Test public void forcedHelperDeathKillsItsExactForegroundProducer() throws Exception {
+        run(Finish.KILL);
+    }
+    private void run(Finish finish) throws Exception {
         org.junit.Assume.assumeTrue("Explicit -e pipewireAudio true required",
                 "true".equals(InstrumentationRegistry.getArguments().getString("pipewireAudio")));
         var instrumentation = InstrumentationRegistry.getInstrumentation();
         Context context = instrumentation.getTargetContext();
         try (InstallationLease ignored = InstallationLease.acquire(
                 context.getFilesDir().toPath().resolve("linux"), InstallationLease.Mode.SHARED_USE)) {
-            runOwned(context, injectFailure);
+            runOwned(context, finish);
         }
     }
 
-    private void runOwned(Context context, boolean injectFailure) throws Exception {
+    private void runOwned(Context context, Finish finish) throws Exception {
+        boolean injectFailure = finish == Finish.FAILURE;
         var instrumentation = InstrumentationRegistry.getInstrumentation();
         Path root = context.getFilesDir().toPath().resolve("linux/rootfs");
         assertTrue("Prepared Linux is required; do not skip this opted-in test", Files.isDirectory(root));
@@ -88,12 +93,20 @@ public class PipeWireAndroidOutputTest {
             assertTrue("Public playback head did not advance", output.playbackHeadFrames() > initialHead + 12000);
             JSONObject observed = new JSONObject().put("bytesRead", output.bytesRead())
                     .put("framesSubmitted", output.framesSubmitted()).put("headBefore", initialHead)
-                    .put("headAfter", output.playbackHeadFrames()).put("injectedFailure", injectFailure);
+                    .put("headAfter", output.playbackHeadFrames()).put("injectedFailure", injectFailure)
+                    .put("forcedHelperKill", finish == Finish.KILL);
             if (injectFailure) {
                 output.close(); // Cancel the consumer while the real producer is still running.
                 assertReleased(output);
                 assertTrue(helper.isAlive());
             }
+            if (finish == Finish.KILL) {
+                killOwnedHelper(directory, helper);
+                assertTrue("Forced helper did not exit", helper.waitFor(8, TimeUnit.SECONDS));
+                assertNotEquals(0, helper.exitValue());
+                assertFalse("SIGKILL must bypass Python finally", Files.exists(directory.resolve("receipt.json")));
+                assertProducerGone(directory);
+            } else {
             helper.getOutputStream().write((injectFailure ? "fail\n" : "stop\n").getBytes(StandardCharsets.UTF_8));
             helper.getOutputStream().close();
             assertTrue("Fixture did not exit", helper.waitFor(8, TimeUnit.SECONDS));
@@ -102,6 +115,7 @@ public class PipeWireAndroidOutputTest {
             assertTrue(receipt.toString(), receipt.getBoolean("serverReaped"));
             assertEquals(0, receipt.getInt("serverReturnCode"));
             assertEquals(injectFailure, receipt.getBoolean("requestedFailure"));
+            }
             if (!injectFailure) {
                 deadline = SystemClock.elapsedRealtime() + 2000;
                 while (output.workerAlive() && SystemClock.elapsedRealtime() < deadline) Thread.sleep(10);
@@ -123,11 +137,12 @@ public class PipeWireAndroidOutputTest {
                     if (!helper.waitFor(10, TimeUnit.SECONDS)) {
                         helper.destroy();
                         if (!helper.waitFor(8, TimeUnit.SECONDS)) {
-                            helper.destroyForcibly(); helper.waitFor(2, TimeUnit.SECONDS);
+                            killOwnedHelper(directory, helper); helper.waitFor(2, TimeUnit.SECONDS);
                         }
                     }
                     assertFalse("Owned fixture survived cleanup", helper.isAlive());
                 }
+                if (Files.exists(directory.resolve("server.json"))) assertProducerGone(directory);
                 // Keep regular evidence in cache, remove only this test's exact private run tree.
                 try (var paths = Files.list(directory)) {
                     for (Path path : paths.collect(java.util.stream.Collectors.toList()))
@@ -145,6 +160,45 @@ public class PipeWireAndroidOutputTest {
                 Files.write(evidence.resolve("cleanup.json"), "{\"fifoRemoved\":true,\"runDirectoryRemoved\":true}".getBytes(StandardCharsets.UTF_8));
             }
         }
+    }
+
+    private static void killOwnedHelper(Path directory, Process helper) throws Exception {
+        JSONObject identity = new JSONObject(read(directory.resolve("helper.json")));
+        int pid = identity.getInt("pid");
+        String[] recorded = statFields(identity.getString("stat"));
+        String[] current = statFields(read(Path.of("/proc/" + pid + "/stat")));
+        assertTrue("Owned helper already exited", helper.isAlive());
+        assertEquals("Helper identity changed", recorded[19], current[19]);
+        assertEquals("Helper is not its private session leader", Integer.toString(pid), current[2]);
+        assertEquals(Integer.toString(pid), current[3]);
+        Os.kill(pid, OsConstants.SIGKILL);
+    }
+
+    private static String[] statFields(String stat) {
+        return stat.substring(stat.lastIndexOf(')') + 1).trim().split("\\s+");
+    }
+
+    private static void assertProducerGone(Path directory) throws Exception {
+        JSONObject identity = new JSONObject(read(directory.resolve("server.json")));
+        int pid = identity.getInt("pid");
+        String originalStart = statFields(identity.getString("stat"))[19];
+        JSONArray states = new JSONArray();
+        long deadline = SystemClock.elapsedRealtime() + 5000;
+        while (true) {
+            try {
+                String current = read(Path.of("/proc/" + pid + "/stat"));
+                String[] fields = statFields(current);
+                if (!fields[19].equals(originalStart)) break; // PID was reused, original identity is gone.
+                states.put(fields[0]);
+            } catch (java.nio.file.NoSuchFileException gone) { break; }
+            if (SystemClock.elapsedRealtime() >= deadline)
+                fail("Producer identity survived cleanup pid=" + pid + " start=" + originalStart + " states=" + states);
+            Thread.sleep(20);
+        }
+        JSONObject gone = new JSONObject().put("pid", pid).put("starttime", originalStart)
+                .put("originalIdentityAbsent", true).put("observedStatesBeforeAbsence", states);
+        if (!Files.exists(directory.resolve("producer-gone.json")))
+            Files.write(directory.resolve("producer-gone.json"), gone.toString(2).getBytes(StandardCharsets.UTF_8));
     }
 
     private static void assertRunningGraph(Path directory) throws Exception {

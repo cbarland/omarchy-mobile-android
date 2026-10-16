@@ -1,7 +1,8 @@
 """Test-only private graph; no persistent service or policy installation."""
-import json, os, select, signal, subprocess, sys, time
+import ctypes, json, os, select, signal, subprocess, sys, time
 from pathlib import Path
 R = Path(sys.argv[1])
+(R / 'helper.json').write_text(json.dumps({'pid': os.getpid(), 'stat': Path('/proc/self/stat').read_text()}))
 config = """context.properties = {
  core.daemon = true core.name = oa support.dbus = false loop.rt-prio = 0
  mem.allow-mlock = false default.clock.rate = 48000
@@ -43,6 +44,20 @@ for key in ('PIPEWIRE_CONFIG_DIR', 'PIPEWIRE_CONFIG_NAME', 'PIPEWIRE_CONFIG_PREF
 env.update(XDG_RUNTIME_DIR=str(R), PIPEWIRE_RUNTIME_DIR=str(R), PIPEWIRE_REMOTE='oa', PIPEWIRE_DEBUG='3')
 receipt = {'error': None, 'commands': [], 'serverReaped': False, 'requestedFailure': False}
 server = None
+# This fixture has no Python threads. Arm only its one foreground server child;
+# fork clears PDEATHSIG, while the runtime's --exec-child does not arm it itself.
+libc = ctypes.CDLL(None, use_errno=True)
+libc.prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
+libc.prctl.restype = ctypes.c_int
+parent_pid = os.getpid()
+
+def bind_server_to_parent():
+    if libc.prctl(1, signal.SIGKILL, 0, 0, 0) != 0:  # PR_SET_PDEATHSIG
+        os.write(2, ('PR_SET_PDEATHSIG failed errno=' + str(ctypes.get_errno()) + '\n').encode())
+        os._exit(125)
+    # Parent may have died before arming; after this check the kernel owns the race.
+    if os.getppid() != parent_pid:
+        os._exit(125)
 
 def command(label, argv):
     p = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=3)
@@ -62,7 +77,8 @@ try:
     command('version', ['/usr/bin/pipewire', '--version'])
     with (R / 'pipewire.log').open('wb') as log:
         server = subprocess.Popen(['/usr/bin/pipewire', '-c', str(R / 'pipewire.conf')],
-                                  env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+                                  env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                  preexec_fn=bind_server_to_parent)
     receipt['serverPid'] = server.pid
     (R / 'server.json').write_text(json.dumps({'pid': server.pid, 'stat': Path('/proc/' + str(server.pid) + '/stat').read_text()}))
     end = time.monotonic() + 4

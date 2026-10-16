@@ -71,3 +71,14 @@ private `cache/pipewire-android-proof/<run>` directory. This extends transport
 verification, with the same audibility and integration limits above; it adds no
 application audio service, focus handling, package installation, or default-device
 policy. All public-delivery holds remain.
+
+The complete owned run holds the shared installation lease through cleanup.
+The single-threaded Python fixture binds its foreground server with
+`PR_SET_PDEATHSIG(SIGKILL)` before exec and checks its parent again after arming;
+an arming failure fails startup. A third test uses public `Os.kill(SIGKILL)` on
+the verified helper identity after the graph is running. It requires the exact
+producer PID/start identity to disappear before FIFO removal and lease release.
+Normal and controlled-failure cases assert Python reaped the server; the forced
+case bypasses Python finally and proves parent-death termination and observed
+process absence, with orphan reaping left to Android. This fixture-specific
+binding does not establish ownership for a future application audio service.
