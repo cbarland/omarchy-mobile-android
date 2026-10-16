@@ -13,13 +13,22 @@ final class SessionRuntime {
 
     private SessionRuntime() { }
 
-    static Path prepare(Path files, Path root, String profile) throws IOException {
-        if (!profile.equals("phone") && !profile.equals("desktop"))
-            throw new IllegalArgumentException("Unknown graphical profile: " + profile);
+    /** Prepare the one checked host alias shared by the graphical profiles and portal. */
+    static Path prepareHostAlias(Path files, Path root) throws IOException {
+        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS))
+            throw new IOException("Linux rootfs is not installed: " + root);
         Path guestRoot = GuestPaths.resolve(root, "/run/omamobile");
         Files.createDirectories(guestRoot);
         Path hostAlias = files.resolve(HOST_ALIAS);
         ensureAlias(hostAlias, guestRoot);
+        return hostAlias;
+    }
+
+    static Path prepare(Path files, Path root, String profile) throws IOException {
+        if (!profile.equals("phone") && !profile.equals("desktop"))
+            throw new IllegalArgumentException("Unknown graphical profile: " + profile);
+        Path hostAlias = prepareHostAlias(files, root);
+        Path guestRoot = GuestPaths.resolve(root, "/run/omamobile");
         Path runtime = guestRoot.resolve(profile.equals("phone") ? "p" : "d");
         if (Files.exists(runtime, LinkOption.NOFOLLOW_LINKS)) {
             if (Files.isSymbolicLink(runtime))
