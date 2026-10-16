@@ -231,5 +231,6 @@ The graphical runtime is physically created at the guest paths
 exclusive short alias, `files/s`, pointing at that directory. Native broker
 paths use the alias while guest processes use `/run/omamobile`; this keeps
 Unix-domain socket paths short while making absolute links such as
-Quickshell's `by-pid` records resolve inside the same runtime tree. Existing `files/r` data is left untouched as private
-legacy state and is never retargeted or migrated.
+Quickshell's `by-pid` records resolve inside the same runtime tree. Existing
+`files/r` data is left untouched as private legacy state and is never retargeted
+or migrated. Android-owned bind semantics are unchanged.
