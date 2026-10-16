@@ -41,14 +41,21 @@ public class InstallationLeaseTest {
                 + InstallationLeaseTest.class.getProtectionDomain().getCodeSource().getLocation().getPath();
         Process process = new ProcessBuilder(javaBinary(), "-cp", classes,
                 Holder.class.getName(), linux.toString(), mode).redirectErrorStream(true).start();
-        if (process.getInputStream().read() != 'R') throw new AssertionError("lease holder did not start");
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (process.getInputStream().available() == 0 && process.isAlive()
+                && System.nanoTime() < deadline) Thread.sleep(10);
+        if (process.getInputStream().available() == 0 || process.getInputStream().read() != 'R') {
+            process.destroyForcibly();
+            throw new AssertionError("lease holder did not start");
+        }
         return process;
     }
 
     private static String javaBinary() { return Path.of(System.getProperty("java.home"), "bin", "java").toString(); }
     private static void stop(Process process) throws Exception {
         try (PrintWriter writer = new PrintWriter(new OutputStreamWriter(process.getOutputStream()))) { writer.println("stop"); }
-        assertTrue(process.waitFor(5, TimeUnit.SECONDS));
+        if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly();
+        assertTrue(!process.isAlive());
     }
 
     public static final class Holder {
