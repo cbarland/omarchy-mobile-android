@@ -9,6 +9,7 @@ import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,6 +21,41 @@ import static org.junit.Assert.*;
 /** Opt-in end-to-end check against a prepared Linux installation and two Android displays. */
 @RunWith(AndroidJUnit4.class)
 public class GraphicsSmokeTest {
+    @Test public void guestCommandDiagnosticsAreBoundedAndActionable() throws Exception {
+        Assume.assumeTrue("Explicit -e diagnostics true required",
+                "true".equals(InstrumentationRegistry.getArguments().getString("diagnostics")));
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        Path ready = context.getFilesDir().toPath().resolve("graphics/desktop/ready.properties");
+        assertTrue("Desktop graphics session is required", Files.isRegularFile(ready));
+        Properties properties = new Properties();
+        try (var in = Files.newInputStream(ready)) { properties.load(in); }
+        assertEquals("ok", runGuest(context, "desktop", properties,
+                List.of("/bin/sh", "-c", "printf ok")));
+        try {
+            runGuest(context, "desktop", properties, List.of("/bin/sh", "-c", "printf nonzero; exit 7"));
+            fail("Nonzero guest command unexpectedly succeeded");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("profile=desktop"));
+            assertTrue(expected.getMessage().contains("exited 7"));
+            assertTrue(expected.getMessage().contains("nonzero"));
+        }
+        try {
+            runGuest(context, "desktop", properties, List.of("/usr/bin/python3", "-c", "import time; time.sleep(6)"));
+            fail("Timed guest command unexpectedly succeeded");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("timed out after 5s"));
+            assertTrue(expected.getMessage().contains("profile=desktop"));
+        }
+        try {
+            runGuest(context, "desktop", properties,
+                    List.of("/usr/bin/python3", "-c", "print('x' * 200000)"));
+            fail("Oversized guest output unexpectedly succeeded");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("output exceeded 65536 bytes"));
+            assertTrue(expected.getMessage().contains("outputTail="));
+        }
+    }
+
     @Test public void upstreamShellsMapOnBothNativeHyprlandSessions() throws Exception {
         Assume.assumeTrue("Explicit -e graphics true required", "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
         var instrumentation = InstrumentationRegistry.getInstrumentation();
@@ -45,18 +81,25 @@ public class GraphicsSmokeTest {
             if (profile.equals("phone")) assertEquals("0", properties.getProperty("ANDROID_DISPLAY_ID"));
             else assertNotEquals("0", properties.getProperty("ANDROID_DISPLAY_ID"));
             String layers = "";
+            String startupFailure = "";
             String expected = profile.equals("phone") ? "omamobile-home" : "omarchy-bar";
             while (System.nanoTime() < deadline) {
                 // Another integration test may already have started these
                 // compositors. Also tolerate a ready file from an older PID
                 // while the replacement session is starting.
                 try (var in = Files.newInputStream(ready)) { properties.load(in); }
-                layers = ipc(context, profile, properties, "layers");
-                if (layers.contains(expected) && layers.contains("omarchy-background")) break;
+                try {
+                    layers = ipc(context, profile, properties, "layers");
+                    if (layers.contains(expected) && layers.contains("omarchy-background")) break;
+                } catch (IllegalStateException starting) {
+                    // A stale ready file can name the previous session until
+                    // the service replaces it. Keep the existing startup bound.
+                    startupFailure = starting.getMessage();
+                }
                 Thread.sleep(500);
             }
             Files.write(home.resolve("verified-layers.json"), layers.getBytes(StandardCharsets.UTF_8));
-            assertTrue(profile + " missing upstream surfaces: " + layers + "\n" + logs(home), layers.contains(expected));
+            assertTrue(profile + " missing upstream surfaces: " + layers + "\n" + startupFailure + "\n" + logs(home), layers.contains(expected));
             assertTrue(profile + " missing upstream wallpaper: " + layers, layers.contains("omarchy-background"));
             verifyDbusActivationEnvironment(context, profile, properties);
             String monitors = ipc(context, profile, properties, "monitors");
@@ -179,15 +222,90 @@ public class GraphicsSmokeTest {
                 files.resolve("linux/rootfs"), List.of(new RuntimeSpec.Bind("/dev", "/dev", false),
                         new RuntimeSpec.Bind("/proc", "/proc", false)),
                 guest);
-        ProcessBuilder builder = new ProcessBuilder(argv).directory(files.toFile()).redirectErrorStream(true);
+        ProcessBuilder builder = new ProcessBuilder(argv)
+                .directory(GuestPaths.resolve(files.resolve("linux/rootfs"), "/root").toFile())
+                .redirectErrorStream(true);
         builder.environment().clear(); builder.environment().putAll(RuntimeSpec.environment(false));
         builder.environment().put("XDG_RUNTIME_DIR", runtime);
         builder.environment().put("DBUS_SESSION_BUS_ADDRESS", "unix:path=" + runtime + "/bus");
         builder.environment().put("WAYLAND_DISPLAY", properties.getProperty("WAYLAND_DISPLAY"));
         builder.environment().put("HYPRLAND_INSTANCE_SIGNATURE", properties.getProperty("HYPRLAND_INSTANCE_SIGNATURE"));
-        Process process = builder.start(); process.getOutputStream().close();
-        if (!process.waitFor(5, TimeUnit.SECONDS)) { process.destroyForcibly(); return "Hyprland IPC timed out"; }
-        return new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        final String command = guest.toString();
+        final int maxOutput = 64 * 1024;
+        Path capture = Files.createTempFile(files, ".guest-ipc-", ".log");
+        Process process;
+        try {
+            builder.redirectOutput(capture.toFile());
+            process = builder.start();
+            try { process.getOutputStream().close(); }
+            catch (IOException error) { process.destroyForcibly(); throw error; }
+        } catch (IOException error) {
+            Files.deleteIfExists(capture);
+            throw new IOException("Guest command could not start: profile=" + profile + " command=" + command
+                    + diagnostics(context, profile, properties), error);
+        }
+        boolean completed = false;
+        try {
+            completed = process.waitFor(5, TimeUnit.SECONDS);
+            if (!completed) {
+                process.destroyForcibly();
+                process.waitFor(2, TimeUnit.SECONDS);
+                throw new IllegalStateException("Guest command timed out after 5s: profile=" + profile
+                        + " command=" + command + " outputTail=" + readTail(capture, maxOutput)
+                        + diagnostics(context, profile, properties));
+            }
+            int exit = process.exitValue();
+            if (exit != 0) throw new IllegalStateException("Guest command exited " + exit + ": profile="
+                    + profile + " command=" + command + " outputTail=" + readTail(capture, maxOutput)
+                    + diagnostics(context, profile, properties));
+            long size = Files.size(capture);
+            if (size > maxOutput) throw new IllegalStateException("Guest command output exceeded " + maxOutput
+                    + " bytes: profile=" + profile + " command=" + command + " outputTail=" + readTail(capture, maxOutput)
+                    + diagnostics(context, profile, properties));
+            return new String(Files.readAllBytes(capture), StandardCharsets.UTF_8);
+        } finally {
+            if (!completed && process.isAlive()) process.destroyForcibly();
+            Files.deleteIfExists(capture);
+        }
+    }
+
+    private static String readTail(Path path, int limit) throws IOException {
+        if (!Files.exists(path)) return "<no capture>";
+        long size = Files.size(path);
+        int wanted = (int) Math.min(size, limit);
+        try (var input = Files.newInputStream(path)) {
+            long skip = size - wanted;
+            while (skip > 0) {
+                long skipped = input.skip(skip);
+                if (skipped <= 0) break;
+                skip -= skipped;
+            }
+            byte[] bytes = new byte[wanted];
+            int offset = 0;
+            while (offset < wanted) {
+                int count = input.read(bytes, offset, wanted - offset);
+                if (count < 0) break;
+                offset += count;
+            }
+            if (offset != wanted) bytes = java.util.Arrays.copyOf(bytes, offset);
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
+    }
+
+    private static String diagnostics(Context context, String profile, Properties properties) {
+        Path home = context.getFilesDir().toPath().resolve("graphics/" + profile);
+        StringBuilder value = new StringBuilder("\nGuest context: profile=").append(profile)
+                .append(" requestedDisplay=").append(properties.getProperty("ANDROID_DISPLAY_ID"))
+                .append(" requestedWayland=").append(properties.getProperty("WAYLAND_DISPLAY"))
+                .append(" requestedSignature=").append(properties.getProperty("HYPRLAND_INSTANCE_SIGNATURE"));
+        for (String name : List.of("ready.properties", "linux-shell.log", "dbus.log", "hyprland-native.log"))
+            value.append("\n").append(name).append(" tail:\n").append(safeTail(home.resolve(name), 4000));
+        return value.toString();
+    }
+
+    private static String safeTail(Path path, int limit) {
+        try { return readTail(path, limit); }
+        catch (IOException error) { return "<unavailable: " + error.getMessage() + ">"; }
     }
 
     private static final String RUNTIME_SYMLINK_PROBE = """
