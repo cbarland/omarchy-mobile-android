@@ -42,6 +42,10 @@ public class HomeActivityTest {
         Assume.assumeFalse("Fallback route requires an unprepared host",
                 HostRuntime.get(context).installed());
         assertHomeComponentIsDiscoverable(context);
+        // A preexisting setup screen could make a no-op HOME route pass.
+        for (var task : context.getSystemService(ActivityManager.class).getAppTasks())
+            task.finishAndRemoveTask();
+        awaitNoHostActivity(instrumentation);
         startHome(context);
         Activity main = awaitMainActivity(instrumentation);
         awaitTopResumed(context, MainActivity.class);
@@ -91,6 +95,23 @@ public class HomeActivityTest {
     private static void startHome(Context context) {
         context.startActivity(new Intent(context, HomeActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP));
+    }
+
+    private static void awaitNoHostActivity(android.app.Instrumentation instrumentation) {
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        while (SystemClock.uptimeMillis() < deadline) {
+            AtomicReference<Boolean> present = new AtomicReference<>(false);
+            instrumentation.runOnMainSync(() -> {
+                for (Stage stage : Stage.values()) {
+                    if (stage == Stage.PRE_ON_CREATE || stage == Stage.DESTROYED) continue;
+                    for (var activity : ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(stage))
+                        if (activity instanceof MainActivity || activity instanceof HomeActivity) present.set(true);
+                }
+            });
+            if (!present.get()) return;
+            SystemClock.sleep(50);
+        }
+        fail("Fallback test requires prior host activities to be destroyed");
     }
 
     private static void assertHomeComponentIsDiscoverable(Context context) {
