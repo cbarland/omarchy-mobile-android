@@ -8,7 +8,7 @@ core validation APK; it cannot provide a working Omarchy desktop by itself.
 ## Toolchain
 
 The source currently selects JDK 17, Android Gradle Plugin 9.3.1, Gradle 9.5.0,
-compile/target SDK 35, minimum Android API 29, NDK `30.0.14904198`, and Android SDK
+compile SDK 37, target SDK 35, minimum Android API 29, NDK `30.0.14904198`, and Android SDK
 CMake `4.1.2`. The NDK package identifies itself as r30-beta1. The Gradle wrapper
 pins its distribution checksum. Keep these versions consistent when proposing
 toolchain changes.
@@ -18,7 +18,7 @@ Android Studio's SDK Manager. From the SDK's command-line-tools `bin` directory:
 
 ```sh
 sdkmanager --install --channel=3 \
-  "platforms;android-35" "build-tools;36.0.0" \
+  "platforms;android-37" "build-tools;36.0.0" \
   "ndk;30.0.14904198" "cmake;4.1.2"
 sdkmanager --licenses
 ```
@@ -27,7 +27,9 @@ The channel option includes preview packages; it does not change the requested
 version. If an exact package is unavailable, report that failure rather than
 silently switching versions. Google's [SDK Manager reference](https://developer.android.com/tools/sdkmanager)
 documents package paths, channels, and license acceptance. These exact platform,
-NDK, and CMake packages were present in Google's SDK catalog on 2026-10-15.
+NDK, and CMake packages were present in Google's SDK catalog on 2026-10-15. The
+`platforms;android-37` package is required by the resolved `zstd-jni:1.5.7-23`
+Android archive; target 35 and minimum API 29 remain the app compatibility policy.
 
 ## Core APK from a clean checkout
 
