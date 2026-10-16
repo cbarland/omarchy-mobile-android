@@ -1,5 +1,17 @@
 # Android applications in Hyprland
 
+## Optional Android HOME entry
+
+The APK declares an optional Android HOME activity. Android only uses it after
+the user explicitly selects Omarchy Mobile as the launcher; installation does
+not change the current default launcher. The transient HOME activity checks
+that the prepared Linux shell and native Hyprland backend are available. When
+they are ready, it starts or reuses `DesktopService`, opens the existing phone
+owner on Android display 0, and finishes immediately. The phone compositor's
+single-task activity and its foreground notification remain the reachable host
+controls. When setup or the native payload is unavailable, HOME routes to the
+ordinary installation and command controls in `MainActivity`.
+
 This adapter is optional. Linux shells, widgets and plugins work without it.
 An unmodified Android base is retained. The user separately starts official
 [Shizuku](https://shizuku.rikka.app/guide/setup/) in ADB mode and authorizes
