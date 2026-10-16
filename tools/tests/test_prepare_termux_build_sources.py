@@ -6,6 +6,7 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 from importlib.machinery import SourceFileLoader
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -150,6 +151,26 @@ class SourceBundleTest(unittest.TestCase):
             archive.addfile(info, io.BytesIO(data))
         with self.assertRaises(ValueError):
             MODULE.verify_tar(target, [], b"{}\n")
+
+    def test_publication_failure_rolls_back_only_our_outputs(self):
+        output = self.root / "bundle"
+        protected = self.root / ".bundle.tar.gz.existing.tmp"
+        protected.write_bytes(b"keep")
+        original_move = MODULE.shutil.move
+        calls = []
+
+        def fail_second_move(source, destination):
+            calls.append((source, destination))
+            if len(calls) == 2:
+                raise OSError("simulated archive publication failure")
+            return original_move(source, destination)
+
+        with mock.patch.object(MODULE.shutil, "move", side_effect=fail_second_move):
+            with self.assertRaises(OSError):
+                MODULE.prepare(self.evidence, self.repo, output, self.provenance_manifest)
+        self.assertFalse(output.exists())
+        self.assertFalse(output.with_suffix(".tar.gz").exists())
+        self.assertEqual(protected.read_bytes(), b"keep")
 
 
 if __name__ == "__main__":

@@ -4,13 +4,14 @@ import argparse
 import gzip
 import hashlib
 import json
+import os
 from pathlib import Path, PurePosixPath
 import shutil
 import stat
 import tarfile
 import tempfile
 import re
-import importlib.util
+import sys
 
 CHUNK = 1024 * 1024
 EXPECTED_PACKAGES = {"freetype", "fribidi", "glib", "libcairo", "libiconv", "pango"}
@@ -94,10 +95,13 @@ def selected_provenance(evidence, repo_root):
 def source_inputs(evidence, repo_root):
     lock_path = repo_root / "tools/native/source-inputs.lock.json"
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
-    spec = importlib.util.spec_from_file_location("source_input_validator", repo_root / "tools/native/prepare_source_inputs.py")
-    validator = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(validator)
-    validator.validate(lock)
+    validator_dir = str(repo_root / "tools/native")
+    sys.path.insert(0, validator_dir)
+    try:
+        from prepare_source_inputs import validate
+    finally:
+        sys.path.pop(0)
+    validate(lock)
     archives = evidence / "archives"
     validate_regular_tree(archives)
     selected = []
@@ -300,12 +304,15 @@ def prepare(evidence, repo_root, output, provenance_manifest=None):
     lock, inputs = source_inputs(evidence, repo_root)
     validate_commit_records(evidence, manifest, lock)
     if provenance_manifest is None:
-        provenance_manifest = repo_root / "tools/native/termux-provenance-manifest.json"
+        fail("a reviewed provenance manifest is required")
     official = selected_official_files(evidence, manifest, lock, provenance_manifest)
     package_metadata = package_records(manifest, lock, inputs, official)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=".termux-source-bundle-", dir=output.parent))
-    temporary_tar = output.parent / ("." + archive_output.name + ".tmp")
+    tar_fd, tar_name = tempfile.mkstemp(prefix="." + archive_output.name + ".", suffix=".tmp", dir=output.parent)
+    os.close(tar_fd)
+    temporary_tar = Path(tar_name)
+    published_output = False
     try:
         trees = temporary / "build-trees"
         for entry in manifest["archives"]:
@@ -348,11 +355,14 @@ def prepare(evidence, repo_root, output, provenance_manifest=None):
         write_deterministic_tar(temporary, temporary_tar)
         verify_tar(temporary_tar, records, (temporary / "manifest.json").read_bytes())
         shutil.move(str(temporary), str(output))
+        published_output = True
         shutil.move(str(temporary_tar), str(archive_output))
     except Exception:
         shutil.rmtree(temporary, ignore_errors=True)
         temporary_tar.unlink(missing_ok=True)
-        if output.exists() and output.is_dir() and not (output / "manifest.json").exists():
+        if published_output:
+            shutil.rmtree(output, ignore_errors=True)
+        elif output.exists() and output.is_dir() and not (output / "manifest.json").exists():
             shutil.rmtree(output, ignore_errors=True)
         raise
 
