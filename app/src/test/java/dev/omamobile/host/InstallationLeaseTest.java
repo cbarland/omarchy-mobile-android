@@ -46,6 +46,19 @@ public class InstallationLeaseTest {
         try (InstallationLease ignored = InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL)) { assertNotNull(ignored); }
     }
 
+    @Test public void failedChannelOpenDoesNotPoisonCanonicalOwner() throws Exception {
+        Path linux = Files.createTempDirectory("lease-");
+        Files.createDirectory(linux.resolve(".installation-lease"));
+        assertThrows(java.io.IOException.class, () -> InstallationLease.acquire(linux, InstallationLease.Mode.SHARED_USE));
+        Files.delete(linux.resolve(".installation-lease"));
+        InstallationLease lease = InstallationLease.acquire(linux, InstallationLease.Mode.SHARED_USE);
+        lease.close();
+        lease.close();
+        try (InstallationLease replacement = InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL)) {
+            assertNotNull(replacement);
+        }
+    }
+
     private static Process holder(Path linux, String mode) throws Exception {
         Process process = launch(linux, mode);
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);

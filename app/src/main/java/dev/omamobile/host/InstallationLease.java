@@ -33,9 +33,10 @@ final class InstallationLease implements AutoCloseable {
         Path ownerKey = linux.toRealPath();
         Object owner = new Object();
         if (OWNERS.putIfAbsent(ownerKey, owner) != null) throw new IOException("Linux installation is busy");
-        FileChannel channel = FileChannel.open(ownerKey.resolve(".installation-lease"),
-                StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+        FileChannel channel = null;
         try {
+            channel = FileChannel.open(ownerKey.resolve(".installation-lease"),
+                    StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
             FileLock lock;
             try {
                 lock = channel.tryLock(0, Long.MAX_VALUE, mode == Mode.SHARED_USE);
@@ -45,7 +46,7 @@ final class InstallationLease implements AutoCloseable {
             if (lock == null) throw new IOException("Linux installation is busy");
             return new InstallationLease(channel, lock, ownerKey, owner);
         } catch (IOException | RuntimeException error) {
-            try { channel.close(); } catch (IOException ignored) { }
+            if (channel != null) try { channel.close(); } catch (IOException ignored) { }
             OWNERS.remove(ownerKey, owner);
             throw error;
         }
@@ -53,8 +54,10 @@ final class InstallationLease implements AutoCloseable {
 
     @Override public void close() throws IOException {
         if (!closed.compareAndSet(false, true)) return;
-        OWNERS.remove(ownerKey, owner);
         try { lock.close(); }
-        finally { channel.close(); }
+        finally {
+            try { channel.close(); }
+            finally { OWNERS.remove(ownerKey, owner); }
+        }
     }
 }
