@@ -19,7 +19,6 @@ RECIPE_FILES = ("build_freetype.py", "prepare_source_inputs.py")
 ABIS = {"x86_64": "x86_64-linux-android", "arm64-v8a": "aarch64-linux-android"}
 DEPENDENCIES = ("libz.so.1", "libbz2.so.1.0", "libpng16.so", "libbrotlidec.so")
 ANDROID_SYSTEM = {"libc.so", "libm.so", "libdl.so"}
-INHERITED_BUILD_FLAGS = ("CFLAGS", "CXXFLAGS", "CPPFLAGS", "LDFLAGS", "CPATH", "LIBRARY_PATH", "PKG_CONFIG_SYSROOT_DIR")
 
 
 def sha256(path):
@@ -30,21 +29,38 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def dependency_inputs(prefix):
-    """Fingerprint headers/pkg-config data and the exact linker aliases used."""
+def dependency_inputs(prefix, pkg_config=None):
+    """Fingerprint the bounded in-prefix dependency closure used by CMake.
+
+    The attacked premise is that a nominal prefix plus inherited environment
+    describes CMake's inputs. It does not: symlinked headers and pkg-config
+    overrides can redirect resolution. The closure and clean environment below
+    make those routes explicit and reject escapes.
+    """
     files = {}
     for root_name in ("include", "lib/pkgconfig"):
         root = prefix / root_name
         if not root.is_dir():
             raise ValueError("Missing dependency input tree: " + str(root))
+        for current, directories, _ in os.walk(root, followlinks=False):
+            if any((Path(current) / name).is_symlink() for name in directories):
+                raise ValueError("Dependency input directory symlink is not supported: " + str(root))
         for path in sorted(root.rglob("*")):
             if path.is_dir():
                 continue
             relative = path.relative_to(prefix).as_posix()
+            resolved = path.resolve(strict=True)
+            try:
+                resolved.relative_to(prefix.resolve())
+            except ValueError as error:
+                raise ValueError("Dependency input symlink escapes prefix: " + str(path)) from error
+            if resolved.is_dir():
+                raise ValueError("Dependency input directory symlink is not supported: " + str(path))
             if path.is_symlink():
-                files[relative] = {"kind": "symlink", "target": os.readlink(path)}
+                files[relative] = {"kind": "symlink", "target": resolved.relative_to(prefix).as_posix(),
+                                   "sha256": sha256(resolved)}
             elif path.is_file():
-                files[relative] = {"kind": "file", "sha256": sha256(path)}
+                files[relative] = {"kind": "file", "sha256": sha256(resolved)}
             else:
                 raise ValueError("Unsupported dependency input: " + str(path))
     aliases = {}
@@ -56,16 +72,17 @@ def dependency_inputs(prefix):
         aliases[soname] = {"path": (Path("lib") / stem).as_posix(),
                            "target": os.readlink(alias) if alias.is_symlink() else None,
                            "sha256": sha256(alias.resolve())}
-    encoded = json.dumps({"files": files, "aliases": aliases}, sort_keys=True).encode()
+    pkg_config = Path(pkg_config or shutil.which("pkg-config") or "").resolve()
+    if not pkg_config.is_file():
+        raise ValueError("A fixed pkg-config executable is required")
+    pkg = {"path": str(pkg_config), "sha256": sha256(pkg_config)}
+    encoded = json.dumps({"files": files, "aliases": aliases, "pkgConfig": pkg}, sort_keys=True).encode()
     return {"files": files, "aliases": aliases,
-            "sha256": hashlib.sha256(encoded).hexdigest()}
+            "pkgConfig": pkg, "sha256": hashlib.sha256(encoded).hexdigest()}
 
 
-def sanitized_environment(dependencies):
-    present = [name for name in INHERITED_BUILD_FLAGS if os.environ.get(name)]
-    if present:
-        raise ValueError("Inherited build flags would invalidate the cache: " + ", ".join(present))
-    env = os.environ.copy()
+def sanitized_environment(dependencies, pkg_config):
+    env = {"PATH": str(pkg_config.parent), "PKG_CONFIG": str(pkg_config)}
     env["PKG_CONFIG_LIBDIR"] = str(dependencies / "lib/pkgconfig")
     env["PKG_CONFIG_PATH"] = env["PKG_CONFIG_LIBDIR"]
     return env
@@ -197,8 +214,11 @@ def build(output, abi, ndk, cmake="cmake", source_cache=None, dependencies=None,
     missing = [name for name in DEPENDENCIES if not (dependencies / "lib" / name).is_file()]
     if missing:
         raise ValueError("Missing verified FreeType dependency libraries: " + ", ".join(missing))
-    inputs = dependency_inputs(dependencies)
-    env = sanitized_environment(dependencies)
+    pkg_config = Path(shutil.which("pkg-config") or "").resolve()
+    inputs = dependency_inputs(dependencies, pkg_config)
+    if str(pkg_config) != inputs["pkgConfig"]["path"]:
+        raise ValueError("pkg-config identity changed during build")
+    env = sanitized_environment(dependencies, pkg_config)
     if os.path.lexists(output):
         validate_output(output, abi, ndk, cmake, dependencies, project)
         return output
@@ -251,7 +271,7 @@ def build(output, abi, ndk, cmake="cmake", source_cache=None, dependencies=None,
                   "dependencyPrefix": str(dependencies), "commands": commands,
                   "librarySha256": sha256(library), "materials": materials,
                   "dependencyInputs": inputs,
-                  "buildEnvironment": {"rejectedInheritedFlags": list(INHERITED_BUILD_FLAGS)}}
+                  "buildEnvironment": {"path": env["PATH"], "pkgConfig": env["PKG_CONFIG"]}}
         (temporary / "build.json").write_text(json.dumps(record, indent=2) + "\n")
         validate_output(temporary, abi, ndk, cmake, dependencies, project)
         temporary.rename(output)
@@ -264,7 +284,8 @@ def validate_output(directory, abi, ndk, cmake, dependencies, project=ROOT):
     record = validate_materials(directory, abi, project)
     if record["toolchain"] != toolchain(ndk, cmake, project): raise ValueError("Owned FreeType toolchain changed")
     if record["dependencyPrefix"] != str(Path(dependencies).resolve()): raise ValueError("Dependency prefix changed")
-    if record["dependencyInputs"] != dependency_inputs(Path(dependencies).resolve()):
+    current_pkg_config = Path(shutil.which("pkg-config") or "").resolve()
+    if record["dependencyInputs"] != dependency_inputs(Path(dependencies).resolve(), current_pkg_config):
         raise ValueError("Dependency headers, pkg-config files, or linker aliases changed")
     library = checked_file(directory, "libfreetype.so", record["librarySha256"])
     header = library.read_bytes()[:20]

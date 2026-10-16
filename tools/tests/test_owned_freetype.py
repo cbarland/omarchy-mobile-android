@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 import sys
@@ -22,6 +23,11 @@ class OwnedFreeTypeValidationTest(unittest.TestCase):
         for name, content in aliases.items():
             (prefix / "lib" / name).write_bytes(content)
         return prefix
+
+    def pkg_config(self, prefix):
+        path = prefix.parent / "pkg-config"
+        path.write_bytes(b"pkg-config")
+        return path
 
     def test_elf_check_accepts_android_system_libm_and_libdl(self):
         elf = """Machine: Advanced Micro Devices X86-64
@@ -86,16 +92,16 @@ class OwnedFreeTypeValidationTest(unittest.TestCase):
     def test_dependency_header_change_changes_fingerprint(self):
         with tempfile.TemporaryDirectory() as root:
             prefix = self.make_prefix(Path(root))
-            before = freetype.dependency_inputs(prefix)
+            before = freetype.dependency_inputs(prefix, self.pkg_config(prefix))
             (prefix / "include/freetype.h").write_bytes(b"changed")
-            self.assertNotEqual(before, freetype.dependency_inputs(prefix))
+            self.assertNotEqual(before, freetype.dependency_inputs(prefix, self.pkg_config(prefix)))
 
     def test_dependency_alias_change_changes_fingerprint(self):
         with tempfile.TemporaryDirectory() as root:
             prefix = self.make_prefix(Path(root))
-            before = freetype.dependency_inputs(prefix)
+            before = freetype.dependency_inputs(prefix, self.pkg_config(prefix))
             (prefix / "lib/libz.so").write_bytes(b"different-target")
-            self.assertNotEqual(before, freetype.dependency_inputs(prefix))
+            self.assertNotEqual(before, freetype.dependency_inputs(prefix, self.pkg_config(prefix)))
 
     def test_missing_dependency_hash_key_is_rejected(self):
         with tempfile.TemporaryDirectory() as root:
@@ -125,9 +131,33 @@ class OwnedFreeTypeValidationTest(unittest.TestCase):
     def test_inherited_build_flags_are_rejected(self):
         with tempfile.TemporaryDirectory() as root:
             prefix = self.make_prefix(Path(root))
-            with patch.dict(freetype.os.environ, {"CFLAGS": "-O0"}, clear=False):
-                with self.assertRaises(ValueError):
-                    freetype.sanitized_environment(prefix)
+            pkg_config = Path(root) / "pkgconf"
+            pkg_config.write_bytes(b"pkgconf")
+            env = freetype.sanitized_environment(prefix, pkg_config)
+            with patch.dict(freetype.os.environ, {"C_INCLUDE_PATH": "/tmp/escape", "PKG_CONFIG": "/tmp/override"}, clear=False):
+                self.assertNotIn("C_INCLUDE_PATH", env)
+                self.assertNotIn("PKG_CONFIG_PATH_OVERRIDE", env)
+                self.assertEqual(env["PKG_CONFIG"], str(pkg_config))
+
+    @unittest.skipUnless(os.name == "posix", "symlink adversarial tests require POSIX test host")
+    def test_external_file_symlink_is_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            prefix = self.make_prefix(Path(root))
+            outside = Path(root) / "outside.h"
+            outside.write_bytes(b"outside")
+            os.symlink(outside, prefix / "include/external.h")
+            with self.assertRaises(ValueError):
+                freetype.dependency_inputs(prefix)
+
+    @unittest.skipUnless(os.name == "posix", "symlink adversarial tests require POSIX test host")
+    def test_directory_symlink_is_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            prefix = self.make_prefix(Path(root))
+            outside = Path(root) / "outside"
+            outside.mkdir()
+            os.symlink(outside, prefix / "include/external-dir")
+            with self.assertRaises(ValueError):
+                freetype.dependency_inputs(prefix)
 
 
 if __name__ == "__main__":
