@@ -81,6 +81,36 @@ def compare_phase(phase, surface, events, taps):
     return {"surface": surface, "taps": taps, "events": observed, "scale": scale}
 
 
+def wait_phase_viewport(phase, surface_reader, allocation_reader, timeout=10):
+    """Poll SurfaceFlinger and GTK together before allowing any input."""
+    scale = float(phase["monitor"]["scale"])
+    if phase["monitor"]["transform"] != 0:
+        raise RuntimeError(f"Unsupported non-zero Hyprland transform: {phase['monitor']['transform']}")
+    if not math.isfinite(scale) or scale <= 0:
+        raise RuntimeError(f"Invalid Hyprland scale: {scale}")
+    expected_frame = tuple(phase["mode"][:2])
+    expected_allocation = (round(expected_frame[0] / scale), round(expected_frame[1] / scale))
+    deadline = time.monotonic() + timeout
+    last_error = "no viewport sample"
+    while time.monotonic() < deadline:
+        try:
+            surface = surface_reader()
+            frame = surface["frame"]
+            crop = surface["crop"]
+            if frame[2:] != (0 + expected_frame[0], 0 + expected_frame[1]):
+                raise RuntimeError(f"Surface frame {frame} does not match phase {expected_frame}")
+            if crop != (0.0, 0.0, float(expected_frame[0]), float(expected_frame[1])):
+                raise RuntimeError(f"Surface crop {crop} does not match phase {expected_frame}")
+            allocation = allocation_reader()
+            if not allocation or (allocation["width"], allocation["height"]) != expected_allocation:
+                raise RuntimeError(f"GTK allocation {allocation} does not match {expected_allocation}")
+            return surface, allocation
+        except (RuntimeError, KeyError, TypeError, ValueError) as error:
+            last_error = str(error)
+            time.sleep(.1)
+    raise RuntimeError(f"Surface/GTK viewport did not converge: {last_error}")
+
+
 class Fixture:
     def __init__(self, adb, serial):
         self.adb = adb
@@ -157,20 +187,11 @@ class Fixture:
 
 
 def probe_phase(adb, serial, root, phase, fixture):
-    surface = surface_geometry(GEOMETRY.run(adb + ["shell", "dumpsys", "SurfaceFlinger", "--layers"]))
-    expected_allocation = (round(surface["frame"][2] / float(phase["monitor"]["scale"])),
-                           round(surface["frame"][3] / float(phase["monitor"]["scale"])))
-    deadline = time.monotonic() + 10
-    current = None
-    while time.monotonic() < deadline:
-        current = fixture.read()
-        allocation = current.get("allocation") if current else None
-        if allocation and (allocation["width"], allocation["height"]) == expected_allocation:
-            break
-        time.sleep(.1)
-    if not current or not current.get("allocation") or (current["allocation"]["width"], current["allocation"]["height"]) != expected_allocation:
-        raise RuntimeError(f"Fixture allocation did not converge to output/scale {expected_allocation}: {current}")
-    allocation = current["allocation"]
+    surface, allocation = wait_phase_viewport(
+        phase,
+        lambda: surface_geometry(GEOMETRY.run(adb + ["shell", "dumpsys", "SurfaceFlinger", "--layers"])),
+        lambda: (fixture.read() or {}).get("allocation"),
+    )
     before_count = len(current.get("events", []))
     taps = [(round(phase["mode"][0] * .25), round(phase["mode"][1] * .25)),
             (round(phase["mode"][0] * .75), round(phase["mode"][1] * .75))]

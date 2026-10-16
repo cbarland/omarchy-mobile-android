@@ -72,6 +72,21 @@ class PointerGeometryTests(unittest.TestCase):
             M.compare_phase(phase, surface, [{"cell": 0, "x": 480, "y": 270}],
                             [(480, 270), (1440, 810)])
 
+    def test_surface_and_gtk_poll_until_both_converge(self):
+        phase = {"mode": (1920, 1080, 160), "monitor": {"scale": 1, "transform": 0}}
+        old = {"frame": (0, 0, 1280, 720), "crop": (0.0, 0.0, 1280.0, 720.0)}
+        new = {"frame": (0, 0, 1920, 1080), "crop": (0.0, 0.0, 1920.0, 1080.0)}
+        surfaces = iter([old, new, new])
+        allocations = iter([{"width": 1280, "height": 720}, {"width": 1920, "height": 1080}])
+        self.assertEqual(M.wait_phase_viewport(phase, lambda: next(surfaces), lambda: next(allocations), timeout=1)[0], new)
+
+    def test_viewport_never_converging_fails_closed(self):
+        phase = {"mode": (1920, 1080, 160), "monitor": {"scale": 1, "transform": 0}}
+        stale = {"frame": (0, 0, 1280, 720), "crop": (0.0, 0.0, 1280.0, 720.0)}
+        with self.assertRaisesRegex(RuntimeError, "did not converge"):
+            M.wait_phase_viewport(phase, lambda: stale,
+                                  lambda: {"width": 1280, "height": 720}, timeout=.01)
+
 
 if __name__ == "__main__":
     unittest.main()
