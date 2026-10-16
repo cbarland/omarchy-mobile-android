@@ -14,6 +14,7 @@ import java.util.Date;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Arrays;
 
 import org.bouncycastle.bcpg.HashAlgorithmTags;
 import org.bouncycastle.bcpg.PublicKeyAlgorithmTags;
@@ -22,7 +23,10 @@ import org.bouncycastle.openpgp.PGPKeyRingGenerator;
 import org.bouncycastle.openpgp.PGPSignature;
 import org.bouncycastle.openpgp.PGPSignatureGenerator;
 import org.bouncycastle.openpgp.PGPPublicKeyRing;
+import org.bouncycastle.openpgp.PGPUtil;
+import org.bouncycastle.openpgp.bc.BcPGPObjectFactory;
 import org.bouncycastle.openpgp.operator.bc.BcPGPContentSignerBuilder;
+import org.bouncycastle.bcpg.ArmoredOutputStream;
 import org.bouncycastle.openpgp.operator.jcajce.JcaPGPKeyPair;
 import org.bouncycastle.openpgp.operator.jcajce.JcaPGPDigestCalculatorProviderBuilder;
 import org.junit.Test;
@@ -159,28 +163,91 @@ public final class BootstrapSignatureTest {
         }
     }
 
+    @Test
+    public void shippedKeysHaveTheExactOfficialPrimaryFingerprints() throws Exception {
+        assertEquals("68B3537F39A313B3E574D06777193F152BDBE6A6",
+                shippedPrimaryFingerprint("src/main/res/raw/archlinuxarm_signing_key.asc"));
+        assertEquals("3E80CA1A8B89F69CBA57D98A76A5EF9054449A5C",
+                shippedPrimaryFingerprint("src/main/res/raw/arch_signing_key.asc"));
+    }
+
+    @Test
+    public void armoredSignatureIsRejected() throws Exception {
+        Fixture fixture = fixture("armored".getBytes(), HashAlgorithmTags.SHA256, PGPSignature.BINARY_DOCUMENT);
+        ByteArrayOutputStream armored = new ByteArrayOutputStream();
+        try (ArmoredOutputStream output = new ArmoredOutputStream(armored)) {
+            output.write(fixture.signature);
+        }
+        assertThrows(IOException.class, () -> verifyFixture(fixture, armored.toByteArray()));
+    }
+
+    @Test
+    public void weakDigestAndCanonicalTextAreRejected() throws Exception {
+        Fixture weak = fixture("weak".getBytes(), HashAlgorithmTags.SHA1, PGPSignature.BINARY_DOCUMENT);
+        assertThrows(IOException.class, () -> verifyFixture(weak, weak.signature));
+        Fixture text = fixture("text".getBytes(), HashAlgorithmTags.SHA256, PGPSignature.CANONICAL_TEXT);
+        assertThrows(IOException.class, () -> verifyFixture(text, text.signature));
+    }
+
+    @Test
+    public void concatenatedSignaturesAndTrailingBytesAreRejected() throws Exception {
+        Fixture fixture = fixture("concat".getBytes(), HashAlgorithmTags.SHA256, PGPSignature.BINARY_DOCUMENT);
+        byte[] concatenated = new byte[fixture.signature.length * 2];
+        System.arraycopy(fixture.signature, 0, concatenated, 0, fixture.signature.length);
+        System.arraycopy(fixture.signature, 0, concatenated, fixture.signature.length, fixture.signature.length);
+        assertThrows(IOException.class, () -> verifyFixture(fixture, concatenated));
+        byte[] trailing = Arrays.copyOf(fixture.signature, fixture.signature.length + 3);
+        trailing[trailing.length - 1] = 0x7f;
+        assertThrows(IOException.class, () -> verifyFixture(fixture, trailing));
+    }
+
+    private static void verifyFixture(Fixture fixture, byte[] signature) throws Exception {
+        Path artifact = Files.createTempFile("bootstrap", ".tar.gz");
+        Files.write(artifact, fixture.payload);
+        try {
+            BootstrapSignature.verify(artifact, new ByteArrayInputStream(signature),
+                    new ByteArrayInputStream(fixture.publicKey), fixture.fingerprint);
+        } finally {
+            Files.deleteIfExists(artifact);
+        }
+    }
+
     private static Fixture fixture(byte[] payload) throws Exception {
+        return fixture(payload, HashAlgorithmTags.SHA256, PGPSignature.BINARY_DOCUMENT);
+    }
+
+    private static Fixture fixture(byte[] payload, int digest, int signatureType) throws Exception {
         KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
         generator.initialize(2048);
         KeyPair pair = generator.generateKeyPair();
         PGPKeyPair pgp = new JcaPGPKeyPair(PublicKeyAlgorithmTags.RSA_SIGN, pair, new Date(0));
         BcPGPContentSignerBuilder signer = new BcPGPContentSignerBuilder(
-                PublicKeyAlgorithmTags.RSA_SIGN, HashAlgorithmTags.SHA256);
+                PublicKeyAlgorithmTags.RSA_SIGN, digest);
         PGPKeyRingGenerator ringGenerator = new PGPKeyRingGenerator(
                 PGPSignature.POSITIVE_CERTIFICATION, pgp, "test@example.invalid",
-                new JcaPGPDigestCalculatorProviderBuilder().build().get(HashAlgorithmTags.SHA256),
+                new JcaPGPDigestCalculatorProviderBuilder().build().get(digest),
                 null, null, signer, null);
         PGPPublicKeyRing ring = ringGenerator.generatePublicKeyRing();
         ByteArrayOutputStream keyOut = new ByteArrayOutputStream();
         ring.encode(keyOut);
 
         PGPSignatureGenerator signatureGenerator = new PGPSignatureGenerator(signer);
-        signatureGenerator.init(PGPSignature.BINARY_DOCUMENT, pgp.getPrivateKey());
+        signatureGenerator.init(signatureType, pgp.getPrivateKey());
         signatureGenerator.update(payload);
         ByteArrayOutputStream signatureOut = new ByteArrayOutputStream();
         signatureGenerator.generate().encode(signatureOut);
         return new Fixture(payload, signatureOut.toByteArray(), keyOut.toByteArray(),
                 fingerprint(ring.getPublicKey().getFingerprint()));
+    }
+
+    private static String shippedPrimaryFingerprint(String path) throws Exception {
+        byte[] encoded = Files.readAllBytes(Path.of(path));
+        BcPGPObjectFactory factory = new BcPGPObjectFactory(
+                PGPUtil.getDecoderStream(new ByteArrayInputStream(encoded)));
+        Object object = factory.nextObject();
+        if (!(object instanceof PGPPublicKeyRing)) throw new IOException("missing public key ring");
+        byte[] fingerprint = ((PGPPublicKeyRing) object).getPublicKey().getFingerprint();
+        return fingerprint(fingerprint);
     }
 
     private static String fingerprint(byte[] bytes) {

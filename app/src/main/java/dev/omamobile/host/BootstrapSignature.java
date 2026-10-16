@@ -108,6 +108,10 @@ public final class BootstrapSignature {
     }
 
     private static PGPSignature parseSignature(byte[] bytes) throws IOException {
+        String header = new String(bytes, 0, Math.min(bytes.length, 64), java.nio.charset.StandardCharsets.US_ASCII);
+        if (header.startsWith("-----BEGIN PGP SIGNATURE-----")) {
+            throw new IOException("ASCII-armored detached signatures are not accepted");
+        }
         BcPGPObjectFactory factory = new BcPGPObjectFactory(
                     PGPUtil.getDecoderStream(new ByteArrayInputStream(bytes)));
         Object object = factory.nextObject();
