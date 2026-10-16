@@ -9,8 +9,8 @@ publisher signature before extraction and passed a fresh emulator installation
 through both graphical shells. Automatic ARM64 installation is unverified.
 The [source-input snapshot](SOURCE-INPUTS.md) now includes 38 hash-checked
 archives, recipes, patches and notice inputs for seven audited dependencies.
-Merged #33/#34/#38 add owned Graphite build evidence, a private Termux
-source-bundle tool, and candidate-APK byte verification. Owned Graphite source
+The owned Graphite builder, Termux source-bundle tool and candidate-APK
+verification provide build evidence and artifact integrity checks. Owned Graphite source
 bundle delivery and relinking materials remain held, and all seven
 corresponding-source/relink holds still block graphical APK publication.
 
@@ -67,9 +67,9 @@ corresponding-source/relink holds still block graphical APK publication.
   `corresponding-sources.json` can record these inputs once they exist; the JSON
   result names the missing fields. A reference URL to the binary package or a
   generic license text does not supply them.
-- The private `tools/native/prepare_termux_build_sources.py` source-bundle tool
+  The `tools/native/prepare_termux_build_sources.py` source-bundle tool
   packages the reviewed Termux build evidence using the command documented in
-  [SOURCE-BUNDLE.md](SOURCE-BUNDLE.md). It is retained as release preparation;
+  [SOURCE-BUNDLE.md](SOURCE-BUNDLE.md). Its output is private release preparation;
   it does not itself satisfy corresponding-source or relinking delivery.
 - **Separate integrity from publisher authentication.** A recorded SHA-256
   identifies bytes; it does not authenticate the bootstrap publisher. Before
