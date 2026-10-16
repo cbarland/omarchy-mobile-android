@@ -9,17 +9,48 @@ import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import java.io.File;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.Assert.*;
 
 /** Opt-in end-to-end check against a prepared Linux installation and two Android displays. */
 @RunWith(AndroidJUnit4.class)
 public class GraphicsSmokeTest {
+    @Test public void guestCommandDiagnosticsAreBoundedAndActionable() throws Exception {
+        Assume.assumeTrue("Explicit -e diagnostics true required",
+                "true".equals(InstrumentationRegistry.getArguments().getString("diagnostics")));
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        Path ready = context.getFilesDir().toPath().resolve("graphics/desktop/ready.properties");
+        assertTrue("Desktop graphics session is required", Files.isRegularFile(ready));
+        Properties properties = new Properties();
+        try (var in = Files.newInputStream(ready)) { properties.load(in); }
+        assertEquals("ok", runGuest(context, "desktop", properties,
+                List.of("/bin/sh", "-c", "printf ok")));
+        try {
+            runGuest(context, "desktop", properties, List.of("/bin/sh", "-c", "printf nonzero; exit 7"));
+            fail("Nonzero guest command unexpectedly succeeded");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("profile=desktop"));
+            assertTrue(expected.getMessage().contains("exited 7"));
+            assertTrue(expected.getMessage().contains("nonzero"));
+        }
+        try {
+            runGuest(context, "desktop", properties, List.of("/usr/bin/python3", "-c", "import time; time.sleep(6)"));
+            fail("Timed guest command unexpectedly succeeded");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("timed out after 5s"));
+            assertTrue(expected.getMessage().contains("profile=desktop"));
+        }
+    }
+
     @Test public void upstreamShellsMapOnBothNativeHyprlandSessions() throws Exception {
         Assume.assumeTrue("Explicit -e graphics true required", "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
         var instrumentation = InstrumentationRegistry.getInstrumentation();
@@ -185,9 +216,75 @@ public class GraphicsSmokeTest {
         builder.environment().put("DBUS_SESSION_BUS_ADDRESS", "unix:path=" + runtime + "/bus");
         builder.environment().put("WAYLAND_DISPLAY", properties.getProperty("WAYLAND_DISPLAY"));
         builder.environment().put("HYPRLAND_INSTANCE_SIGNATURE", properties.getProperty("HYPRLAND_INSTANCE_SIGNATURE"));
-        Process process = builder.start(); process.getOutputStream().close();
-        if (!process.waitFor(5, TimeUnit.SECONDS)) { process.destroyForcibly(); return "Hyprland IPC timed out"; }
-        return new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        final String command = guest.toString();
+        Process process;
+        try {
+            process = builder.start();
+            process.getOutputStream().close();
+        } catch (IOException error) {
+            throw new IOException("Guest command could not start: profile=" + profile + " command=" + command, error);
+        }
+        OutputTail output = new OutputTail(64 * 1024);
+        AtomicReference<IOException> readFailure = new AtomicReference<>();
+        Thread reader = new Thread(() -> drain(process.getInputStream(), output, readFailure), "guest-output-" + profile);
+        reader.setDaemon(true);
+        reader.start();
+        boolean completed = false;
+        try {
+            completed = process.waitFor(5, TimeUnit.SECONDS);
+            if (!completed) {
+                process.destroyForcibly();
+                process.waitFor(2, TimeUnit.SECONDS);
+                throw new IllegalStateException("Guest command timed out after 5s: profile=" + profile
+                        + " command=" + command + " outputTail=" + output.text());
+            }
+            reader.join(1000);
+            if (reader.isAlive()) {
+                process.destroyForcibly();
+                throw new IllegalStateException("Guest output did not drain after exit: profile=" + profile
+                        + " command=" + command + " outputTail=" + output.text());
+            }
+            IOException failure = readFailure.get();
+            if (failure != null) throw new IOException("Guest output read failed: profile=" + profile
+                    + " command=" + command + " outputTail=" + output.text(), failure);
+            int exit = process.exitValue();
+            if (exit != 0) throw new IllegalStateException("Guest command exited " + exit + ": profile="
+                    + profile + " command=" + command + " outputTail=" + output.text());
+            return output.text();
+        } finally {
+            if (!completed && process.isAlive()) process.destroyForcibly();
+            if (!completed) {
+                try { reader.join(1000); }
+                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+            }
+        }
+    }
+
+    private static void drain(InputStream input, OutputTail output, AtomicReference<IOException> failure) {
+        byte[] buffer = new byte[4096];
+        try (InputStream stream = input) {
+            int count;
+            while ((count = stream.read(buffer)) != -1) output.append(buffer, 0, count);
+        } catch (IOException error) { failure.set(error); }
+    }
+
+    private static final class OutputTail {
+        private final int limit;
+        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        OutputTail(int limit) { this.limit = limit; }
+        synchronized void append(byte[] value, int offset, int length) {
+            if (length >= limit) {
+                bytes.reset(); bytes.write(value, offset + length - limit, limit); return;
+            }
+            byte[] old = bytes.toByteArray();
+            bytes.reset();
+            int keep = Math.min(old.length, limit - length);
+            bytes.write(old, old.length - keep, keep);
+            bytes.write(value, offset, length);
+        }
+        synchronized String text() {
+            return new String(bytes.toByteArray(), StandardCharsets.UTF_8);
+        }
     }
 
     private static final String RUNTIME_SYMLINK_PROBE = """
