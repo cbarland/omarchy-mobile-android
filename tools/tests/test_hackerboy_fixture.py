@@ -3,8 +3,10 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
+from unittest import mock
 from importlib.machinery import SourceFileLoader
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -12,6 +14,7 @@ MODULE = SourceFileLoader("verify_theme_download_persistence",
                           str(ROOT / "tools/linux/verify-theme-download-persistence")).load_module()
 
 
+@unittest.skipUnless(sys.platform == "linux", "the production harness requires Linux /proc")
 class HackerboyFixtureTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="hackerboy-fixture-")
@@ -102,6 +105,48 @@ class HackerboyFixtureTest(unittest.TestCase):
             partial = dict(state)
             partial.update(change)
             self.assertFalse(MODULE.public_install_complete(partial))
+
+    def test_restore_records_public_success_before_phase_transition(self):
+        home = self.root / "home"
+        work = self.root / "omamobile-theme-download-restore"
+        work.mkdir()
+        target = home / ".config/omarchy/themes/hackerboy"
+        target.mkdir(parents=True)
+        (target / "colors.toml").write_text("fixture\n", encoding="utf-8")
+        current = home / ".local/state/omarchy/current/theme"
+        current.mkdir(parents=True)
+        (current / "colors.toml").write_text("fixture\n", encoding="utf-8")
+        (current / "shell.toml").write_text("fixture\n", encoding="utf-8")
+        (home / ".local/state/omamobile").mkdir(parents=True)
+        sync_log = home / ".local/state/omamobile/theme-sync.log"
+        sync_log.write_text("", encoding="utf-8")
+        state = {"version": 1, "home": str(home), "fixture": work.name,
+                 "originalTheme": "tokyo-night", "snapshots": {"snapshot": None},
+                 "signatures": {"phone": "p", "desktop": "d"},
+                 "reopened": {"phone": "p2", "desktop": "d2"},
+                 "transport": "public-https-git", "themeName": "hackerboy",
+                 "publicHackerboy": True, "colorsSha256": "unused",
+                 "backgroundSha256": "unused", "phase": "installed"}
+        (work / "state.json").write_text(json.dumps(state), encoding="utf-8")
+
+        def fake_run(argv, *args, **kwargs):
+            if argv[:2] == ["omarchy-shell", "shell"]:
+                return "ok"
+            if argv[:2] == ["omarchy-shell", "background"]:
+                return ""
+            if argv and argv[0].endswith("sync-session-theme"):
+                sync_log.write_text("desktop ping acknowledged\ndesktop applyTheme acknowledged\n"
+                                    "desktop background setInstant acknowledged\n", encoding="utf-8")
+            return ""
+
+        with mock.patch.object(MODULE, "HOME", home), mock.patch.object(MODULE, "SNAPSHOTS", ("snapshot",)), \
+                mock.patch.object(MODULE, "SYNC_LOG", sync_log), mock.patch.object(MODULE, "profile", return_value="phone"), \
+                mock.patch.object(MODULE, "run", side_effect=fake_run), \
+                mock.patch.object(MODULE, "verify_hackerboy_checkout"):
+            MODULE.restore(work, state)
+        result = json.loads((work / "result.json").read_text())
+        self.assertTrue(result["publicHttpsVerified"])
+        self.assertEqual(json.loads((work / "state.json").read_text())["phase"], "restored")
 
 
 if __name__ == "__main__":

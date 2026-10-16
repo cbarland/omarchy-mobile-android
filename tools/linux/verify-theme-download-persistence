@@ -549,9 +549,9 @@ def restore(work, state):
         verify_hackerboy_checkout(target, git_environment(), work)
     if target.exists():
         shutil.rmtree(target)
+    public_complete = public_install_complete(state)
     state["phase"] = "restored"
     write_json(work / "state.json", state)
-    public_complete = public_install_complete(state)
     write_json(work / "result.json", {"transport": state["transport"], "publicHttpsVerified": public_complete,
                "bothOwnersReopened": set(state.get("reopened", {})) == {"phone", "desktop"},
                "renderedPaletteVerified": False, "originalThemeRestored": state["originalTheme"],
