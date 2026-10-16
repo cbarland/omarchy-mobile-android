@@ -24,7 +24,7 @@ parser.add_argument("--from-dependency", help="Resume a failed build at this dep
 parser.add_argument("--core-only", action="store_true", help="Rebuild compositor after all dependencies are installed")
 parser.add_argument("--termux-lock", type=Path, help="Override the committed per-ABI native dependency lock")
 parser.add_argument("--refresh-termux", action="store_true", help="Resolve new Termux versions in a fresh cache for manifest review")
-parser.add_argument("--source-cache", type=Path, help="Read-only source-input cache for the owned Graphite build")
+parser.add_argument("--source-cache", type=Path, help="Read-only source-input cache for the owned FreeType and Graphite builds")
 args = parser.parse_args()
 architecture = "aarch64" if args.abi == "arm64-v8a" else "x86_64"
 if sys.platform != "linux" or platform.machine().lower() not in ("x86_64", "amd64"):
@@ -100,13 +100,8 @@ env = os.environ.copy()
 env.update(ARLINUX_DIR=str(base), ANDROID_NDK_HOME=str(args.ndk), JOBS=env.get("JOBS", "4"), ARLINUX_ANDROID_API="29")
 env["PATH"] = str(args.cache / "venv/bin") + os.pathsep + env["PATH"]
 
-# Owned font libraries have explicit source-build origins; never replace bytes
-# behind the official Termux package lock. Stage selection requires both.
-freetype = [sys.executable, Path(__file__).with_name("build_freetype.py"), "--abi", args.abi,
-            "--directory", base, "--ndk", args.ndk, "--dependencies", prefix]
-if args.source_cache:
-    freetype += ["--source-cache", args.source_cache]
-run(freetype, env=env)
+# Graphite has an explicit source-build origin; never replace bytes behind the
+# official Termux package lock. Stage selection below requires this artifact.
 graphite = [sys.executable, Path(__file__).with_name("build_graphite.py"), "--abi", args.abi,
             "--directory", base, "--ndk", args.ndk]
 if args.source_cache:
@@ -149,6 +144,13 @@ if args.from_dependency:
     dependencies = dependencies[dependencies.index(args.from_dependency):]
 if not args.core_only:
     run([sys.executable, source / "android/build-deps.py", *dependencies], env=env)
+# FreeType fingerprints the complete dependency prefix. Keep this immediately
+# after all installs and generated pkg-config shims, before compositor work.
+freetype = [sys.executable, Path(__file__).with_name("build_freetype.py"), "--abi", args.abi,
+            "--directory", base, "--ndk", args.ndk, "--dependencies", prefix]
+if args.source_cache:
+    freetype += ["--source-cache", args.source_cache]
+run(freetype, env=env)
 from patch_port import apply, apply_renderer
 apply(source)
 apply_renderer(source)
