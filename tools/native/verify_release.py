@@ -67,30 +67,84 @@ def notice_files(path: Path) -> list[Path]:
             p.name.lower().startswith(("license", "licence", "copying", "copyright", "notice"))]
 
 
-def apk_native_errors(apk):
+def _apk_native_errors_archive(archive):
     errors, checked = [], 0
     required = ("libomamobile_hyprland.so", "libanhyprland.so", "libtawcroot.so", "libando.so")
+    names = archive.namelist()
+    for abi, machine in (("x86_64", 62), ("arm64-v8a", 183)):
+        for name in required:
+            entry = "lib/" + abi + "/" + name
+            if names.count(entry) != 1:
+                errors.append({"kind": "missing_or_duplicate_apk_native", "entry": entry})
+                continue
+            with archive.open(entry) as stream:
+                header = stream.read(20)
+            if (len(header) != 20 or header[:6] != b"\x7fELF\x02\x01"
+                    or int.from_bytes(header[18:20], "little") != machine
+                    or int.from_bytes(header[16:18], "little") not in
+                    ((3,) if name in ("libomamobile_hyprland.so", "libanhyprland.so") else (2, 3))):
+                errors.append({"kind": "invalid_apk_native_elf", "entry": entry})
+            else:
+                checked += 1
+    return errors, checked
+
+
+def apk_native_errors(apk):
     try:
         with zipfile.ZipFile(apk) as archive:
-            names = archive.namelist()
-            for abi, machine in (("x86_64", 62), ("arm64-v8a", 183)):
-                for name in required:
-                    entry = "lib/" + abi + "/" + name
-                    if names.count(entry) != 1:
-                        errors.append({"kind": "missing_or_duplicate_apk_native", "entry": entry})
-                        continue
-                    with archive.open(entry) as stream:
-                        header = stream.read(20)
-                    if (len(header) != 20 or header[:6] != b"\x7fELF\x02\x01"
-                            or int.from_bytes(header[18:20], "little") != machine
-                            or int.from_bytes(header[16:18], "little") not in
-                            ((3,) if name in ("libomamobile_hyprland.so", "libanhyprland.so") else (2, 3))):
-                        errors.append({"kind": "invalid_apk_native_elf", "entry": entry})
-                    else:
-                        checked += 1
+            return _apk_native_errors_archive(archive)
     except (OSError, ValueError, zipfile.BadZipFile, RuntimeError) as exc:
-        errors.append({"kind": "invalid_apk", "detail": str(exc)})
-    return errors, checked
+        return ([{"kind": "invalid_apk", "detail": str(exc)}], 0)
+
+
+def apk_payload_errors(project: Path, apk: Path):
+    """Bind every externally staged library and installer payload to APK bytes."""
+    errors, checked_payload = [], 0
+    checked_native = 0
+    main = project / "app/src/main"
+    try:
+        with zipfile.ZipFile(apk) as archive:
+            native_errors, checked_native = _apk_native_errors_archive(archive)
+            errors.extend(native_errors)
+            names = archive.namelist()
+            expected = []
+            for abi in ABIS:
+                manifest = json.loads((main / "assets/licenses/native" / abi / "libraries.json").read_text(encoding="utf-8"))
+                if not isinstance(manifest, dict) or not isinstance(manifest.get("libraries"), dict):
+                    raise ValueError("invalid libraries manifest shape")
+                for library, item in manifest["libraries"].items():
+                    if library == "libc++_shared.so":
+                        continue
+                    entry = "lib/" + abi + "/" + item["name_in_apk"]
+                    expected.append((entry, item.get("sha256_apk"), abi, library, None))
+            install = json.loads((main / "assets/install/install-manifest.json").read_text(encoding="utf-8"))
+            if not isinstance(install, dict) or not isinstance(install.get("files"), list):
+                raise ValueError("invalid installer manifest shape")
+            for item in install["files"]:
+                if not isinstance(item, dict):
+                    raise ValueError("invalid installer file entry shape")
+                expected.append(("assets/install/" + item["path"], item.get("sha256"), "installer", item["path"], item.get("bytes")))
+            for entry, expected_hash, abi, label, expected_bytes in expected:
+                if names.count(entry) != 1:
+                    errors.append({"kind": "missing_or_duplicate_apk_payload", "abi": abi, "entry": entry})
+                    continue
+                if not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+                    errors.append({"kind": "invalid_staged_payload_hash", "abi": abi, "entry": entry})
+                    continue
+                payload = archive.read(entry)
+                if expected_bytes is not None and len(payload) != expected_bytes:
+                    errors.append({"kind": "apk_payload_size_mismatch", "abi": abi, "entry": entry,
+                                   "expected": expected_bytes, "actual": len(payload)})
+                    continue
+                actual = hashlib.sha256(payload).hexdigest()
+                if actual != expected_hash:
+                    errors.append({"kind": "apk_payload_hash_mismatch", "abi": abi, "entry": entry,
+                                   "expected": expected_hash, "actual": actual})
+                else:
+                    checked_payload += 1
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, zipfile.BadZipFile, RuntimeError) as exc:
+        errors.append({"kind": "invalid_apk_payload_structure", "detail": str(exc)})
+    return errors, checked_native, checked_payload
 
 
 def audit(project: Path, apk=None) -> dict:
@@ -233,14 +287,16 @@ def audit(project: Path, apk=None) -> dict:
             source_gaps.append({"package": package, "version": version, "abis": sorted(set(abis)),
                                 "missingFields": absent})
     checked_apk = 0
+    checked_apk_payloads = 0
     if apk is not None:
-        apk_errors, checked_apk = apk_native_errors(apk)
+        apk_errors, checked_apk, checked_apk_payloads = apk_payload_errors(project, apk)
         errors.extend(apk_errors)
     passed = not errors and not missing
     return {"passed": passed, "readyForPublicBinaryRelease": passed and not source_gaps,
             "checkedLibraries": checked,
             "checkedInstallerFiles": checked_install,
             "checkedApkNativeEntries": checked_apk,
+            "checkedApkPayloads": checked_apk_payloads,
             "errors": errors, "missingLicenses": missing, "sourceMaterialGaps": source_gaps,
             "scope": "Mechanical staged files/hashes/pins/closure/notices and known corresponding-source mappings; not certification of license compliance or source completeness."}
 

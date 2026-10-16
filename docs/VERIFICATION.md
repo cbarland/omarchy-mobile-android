@@ -917,3 +917,11 @@ Final debug APK: SHA-256 `e5179769aef1f52899b9c6d126aefad37d3875b1483be60bd3c97b
 ## Historical unverified list before graphics work
 
 The original command-runtime APK did not verify graphics or interactive terminals. The graphics and physical-device milestones above supersede that status; full ecosystem and hardware/security/power checks remain open.
+## APK payload binding
+
+When `verify_release.py --apk` is used, every recorded external native library
+for both ABIs and all three installer payloads are read from the APK and
+compared with their staged manifest SHA-256 and byte metadata. Duplicate or
+missing ZIP entries and malformed payload manifests fail closed. Android
+platform libraries and AGP-supplied `libc++_shared.so` remain outside this
+staged ownership check.
