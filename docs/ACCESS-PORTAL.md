@@ -3,8 +3,10 @@
 The fresh shell payload stages Omarchy Mobile's MIT-licensed
 `omamobile-portal-access` backend and its D-Bus activation metadata from the
 pinned Mobile checkout (`953bcb3058347459cdf7faaa1e149f16e0f7cfa6`). The
-payload enables only `org.freedesktop.impl.portal.Access=omamobile;gtk`.
-FileChooser and all other portal interfaces remain on distro defaults.
+payload enables only `org.freedesktop.impl.portal.Access=omamobile` and sets
+`default=*` so each other interface follows the first installed implementation
+selected by the portal resolver. FileChooser, PipeWire, and every other
+interface remain unverified and unsupported by this payload.
 
 The signed Arch package setup installs the required `xdg-desktop-portal`,
 `python-dbus`, and Python GLib packages. An APK update does not rewrite an

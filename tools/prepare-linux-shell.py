@@ -111,6 +111,9 @@ with tarfile.open(a.output, "w:gz") as archive:
     desktop["disabledPlugins"] = disabled
     phone = json.loads(blob(package / "profile/shell.json")[0])
     phone["plugins"] = [{"id": x} for x in ["omamobile.home", "omamobile.launcher", "omamobile.switcher", "omamobile.quicksettings", "omamobile.access"]]
+    desktop_plugins = desktop.setdefault("plugins", [])
+    if not any(isinstance(plugin, dict) and plugin.get("id") == "omamobile.access" for plugin in desktop_plugins):
+        desktop_plugins.append({"id": "omamobile.access"})
     phone["idle"] = desktop["idle"]
     phone["disabledPlugins"] = disabled
     for profile, config in [("phone", phone), ("desktop", desktop)]:
@@ -133,10 +136,10 @@ with tarfile.open(a.output, "w:gz") as archive:
         put("root/.local/share/omamobile/" + name, (tools / "linux" / name).read_bytes(), 0o755)
     put("usr/bin/omamobile-android", (tools / "linux/omamobile-android").read_bytes(), 0o755)
     put("usr/share/xdg-desktop-portal/portals/omamobile.portal", blob(package / "portal/omamobile.portal")[0])
-    # Select only the Access backend. Keep file chooser and every other portal
-    # interface on the distro defaults; this payload makes no GNOME/FUSE claim.
+    # Select only the Access backend. Other interfaces are intentionally
+    # unverified; this payload makes no GNOME/FUSE/PipeWire claim.
     put("etc/xdg/xdg-desktop-portal/hyprland-portals.conf",
-        b"[preferred]\norg.freedesktop.impl.portal.Access=omamobile;gtk\n")
+        b"[preferred]\ndefault=*\norg.freedesktop.impl.portal.Access=omamobile\n")
     # Private user D-Bus activates this backend directly.  Keep only the
     # canonical Name/Exec contract; this rootless Android payload has no
     # systemd --user manager to consume SystemdService metadata.

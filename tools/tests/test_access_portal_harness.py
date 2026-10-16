@@ -31,7 +31,8 @@ class AccessPortalHarnessTest(unittest.TestCase):
         self.assertNotIn('--method "$iface.Answer"', HARNESS)
 
     def test_payload_selects_access_only(self):
-        self.assertIn("org.freedesktop.impl.portal.Access=omamobile;gtk", PREPARE)
+        self.assertIn("default=*", PREPARE)
+        self.assertIn("org.freedesktop.impl.portal.Access=omamobile", PREPARE)
         self.assertNotIn("org.freedesktop.impl.portal.FileChooser=gnome", PREPARE)
         self.assertNotIn("usr/lib/systemd/user/omamobile-portal-access.service", PREPARE)
         self.assertIn("Exec=/usr/bin/omamobile-portal-access", PREPARE)
