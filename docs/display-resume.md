@@ -12,9 +12,11 @@ resets, revokes grants, changes Shizuku state, or edits emulator data.
 python tools/verify-display-resume.py --serial emulator-5556
 ```
 
-The first observed run on 2026-10-15 reproduced a lifecycle defect: Android
-returned to `Awake`, but both `phone` and `desktop` Hyprland sockets rejected the
-`hyprctl -j monitors` probe (`Couldn't connect ... socket.sock. (4)`). Readiness
-files and owner metadata remained present, so those files are not sufficient
-session health evidence. The script reports this as failed and still restores the
-initial power state. No production fix is claimed by this audit.
+The audit requires an explicitly `Awake` and known-unlocked baseline. After wake
+it polls for up to 15 seconds and requires both sessions to expose positive
+monitor geometry, with the same owner PIDs, Hyprland signatures, Android display
+IDs, and monitor geometry as the baseline. A baseline with dead sockets is refused
+before sending sleep. An earlier manual attempt began without a recorded healthy
+baseline and found dead sockets after wake; that result is inconclusive and is not
+claimed as a reproduced defect. A later bounded run after restarting the prepared
+screens passed and restored `Awake`. No production fix is claimed by this audit.
