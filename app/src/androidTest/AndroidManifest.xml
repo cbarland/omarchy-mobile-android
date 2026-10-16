@@ -1,7 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <permission android:name="dev.omamobile.host.permission.TEST_BLOCKING_PROVIDER"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="dev.omamobile.host.permission.TEST_BLOCKING_PROVIDER" />
     <application>
         <provider android:name="dev.omamobile.host.BlockingArchiveProvider"
             android:authorities="dev.omamobile.host.test.blocking-archive"
-            android:exported="false" />
+            android:exported="true"
+            android:permission="dev.omamobile.host.permission.TEST_BLOCKING_PROVIDER" />
     </application>
 </manifest>

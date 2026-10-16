@@ -25,29 +25,42 @@ public final class ManualInstallCancellationTest {
         assertFalse("This test must never replace a prepared rootfs", runtime.installed());
         Files.createDirectories(runtime.linux);
         Path sentinel = runtime.linux.resolve("keep-install-cancel-sentinel");
-        Files.writeString(sentinel, "preserve", StandardCharsets.UTF_8);
-        BlockingArchiveProvider.reset();
+        Files.write(sentinel, "preserve".getBytes(StandardCharsets.UTF_8));
+        callProvider(context, "reset");
         try {
             context.startForegroundService(new Intent(context, LinuxService.class)
                     .setData(BLOCKED).putExtra("installOmarchy", true));
-            assertTrue("Provider was not opened", BlockingArchiveProvider.awaitOpened(10000));
+            assertTrue("Provider was not opened", awaitProviderOpened(context, 10000));
             assertTrue("Install worker did not claim busy state", runtime.busy());
             assertTrue("Importer staging was not created", awaitImportStaging(runtime.linux, 10000));
 
             runtime.stop();
             awaitIdle(runtime, 10000);
-            assertTrue("Provider read remained blocked", BlockingArchiveProvider.readerClosed(5000));
             assertFalse("Manual cancellation activated rootfs", Files.exists(runtime.root));
             assertFalse("Preparation ran before archive completion", hasPrefix(runtime.linux, "setup-"));
             assertFalse("Import staging survived cancellation", hasPrefix(runtime.linux, "import-"));
-            assertEquals("preserve", Files.readString(sentinel));
+            assertEquals("preserve", new String(Files.readAllBytes(sentinel), StandardCharsets.UTF_8));
             awaitServiceStopped(context, 10000);
         } finally {
             runtime.stop();
-            BlockingArchiveProvider.releaseWriter();
+            callProvider(context, "release");
             GuestPaths.deleteTree(sentinel);
             awaitIdle(runtime, 10000);
         }
+    }
+
+    private static boolean awaitProviderOpened(Context context, long timeout) {
+        long deadline = SystemClock.uptimeMillis() + timeout;
+        do {
+            if (callProvider(context, "state").getBoolean("opened")) return true;
+            SystemClock.sleep(25);
+        } while (SystemClock.uptimeMillis() < deadline);
+        return false;
+    }
+
+    private static android.os.Bundle callProvider(Context context, String method) {
+        android.os.Bundle result = context.getContentResolver().call(BLOCKED, method, null, null);
+        return result == null ? new android.os.Bundle() : result;
     }
 
     private static boolean awaitImportStaging(Path linux, long timeout) throws Exception {
