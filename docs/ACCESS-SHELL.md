@@ -22,3 +22,13 @@ installation needs the refreshed Linux shell payload applied before running
 its normal shell setup. Rerunning `setup-linux-shell` alone cannot add a
 missing helper. If the helper is absent, the environment hook cannot provide a
 synthetic unlocked result and the upstream call fails closed.
+
+On the disposable API35 emulator, the healthy upstream shell answered `ping`
+but its Linux `lock isLocked` target was unavailable. With the adapter staged,
+the real Android query mapped awake → asleep → awake to false → true → false,
+and ordinary shell `ping` still delegated successfully. Both display owners
+remained stable and were healthy after waking. A graphical instrumentation
+check also verified the hook inside a genuinely D-Bus-activated process on
+both profiles (one test, 10.138s). These checks required no Shizuku app grant.
+Secure credential-lock transitions and the complete Access portal UI remain
+separate verification tasks.
