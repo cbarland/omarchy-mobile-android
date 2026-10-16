@@ -1,7 +1,7 @@
 # Native source-input snapshot
 
-`tools/native/source-inputs.lock.json` records the seven native inputs currently
-needed by the graphical APK payload. Each package records its upstream archive
+`tools/native/source-inputs.lock.json` records source inputs for seven dependencies
+identified in the graphical APK audit. Each package records its upstream archive
 URL and SHA-256, the pinned Termux `build.sh` commit/blob, and every pinned
 Termux patch blob. The URLs and hashes are source attribution and input
 integrity evidence; they do not attest that a shipped binary was built from

@@ -64,7 +64,7 @@ class PrepareSourceInputsTest(unittest.TestCase):
             value["packages"][0]["patches"][0]["path"] = "packages/demo/C:/outside.patch"
             lock.write_text(json.dumps(value))
             with self.assertRaises(ValueError):
-                prepare_source_inputs.prepare(lock, root / "snapshot", lambda *_: self.fail("unsafe lock reached IO"))
+                prepare_source_inputs.prepare(lock, root / "snapshot", fetcher=lambda *_: self.fail("unsafe lock reached IO"))
 
     def test_conflicting_recipe_and_patch_rejected_before_io(self):
         with self.temp_root() as directory:
@@ -74,18 +74,22 @@ class PrepareSourceInputsTest(unittest.TestCase):
             value["packages"][0]["patches"][0]["path"] = "packages/demo/build.sh"
             lock.write_text(json.dumps(value))
             with self.assertRaises(ValueError):
-                prepare_source_inputs.prepare(lock, root / "snapshot", lambda *_: self.fail("conflict reached IO"))
+                prepare_source_inputs.prepare(lock, root / "snapshot", fetcher=lambda *_: self.fail("conflict reached IO"))
 
     def test_invalid_metadata_rejected_before_io(self):
         with self.temp_root() as directory:
             root = Path(directory)
             lock, _ = self.make_lock(root)
-            value = json.loads(lock.read_text())
-            value["packages"][0]["version"] = ""
-            value["packages"][0]["recipe"]["commit"] = "A" * 40
-            lock.write_text(json.dumps(value))
-            with self.assertRaises(ValueError):
-                prepare_source_inputs.prepare(lock, root / "snapshot", lambda *_: self.fail("metadata reached IO"))
+            original = lock.read_text()
+            for field in ("missing-version", "empty-version", "bad-commit"):
+                with self.subTest(field=field):
+                    value = json.loads(original)
+                    if field == "missing-version": del value["packages"][0]["version"]
+                    elif field == "empty-version": value["packages"][0]["version"] = ""
+                    else: value["packages"][0]["recipe"]["commit"] = "A" * 40
+                    lock.write_text(json.dumps(value))
+                    with self.assertRaises(ValueError):
+                        prepare_source_inputs.prepare(lock, root / "snapshot", fetcher=lambda *_: self.fail("metadata reached IO"))
 
     def test_corrupt_cache_fails_without_publication(self):
         with self.temp_root() as directory:
