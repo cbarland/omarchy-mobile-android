@@ -7,11 +7,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.junit.Test;
 import org.junit.Assume;
+import org.junit.Rule;
+import org.junit.rules.TemporaryFolder;
 import static org.junit.Assert.*;
 
 public class SessionRuntimeTest {
+    @Rule public TemporaryFolder temporary = new TemporaryFolder();
     @Test public void prepareIsIdempotentAndUsesPhysicalGuestPath() throws Exception {
-        Path files = Files.createTempDirectory("session-files-");
+        Path files = temporary.newFolder().toPath();
         Path root = files.resolve("root");
         Files.createDirectories(root);
         Path first = SessionRuntime.prepare(files, root, "phone");
@@ -23,7 +26,7 @@ public class SessionRuntimeTest {
     }
 
     @Test public void foreignAliasIsPreservedAndRejected() throws Exception {
-        Path files = Files.createTempDirectory("session-files-");
+        Path files = temporary.newFolder().toPath();
         Path root = files.resolve("root");
         Files.createDirectories(root);
         Path foreign = files.resolve("foreign");
@@ -35,14 +38,14 @@ public class SessionRuntimeTest {
     }
 
     @Test public void directoryAndWrongSymlinkAliasesArePreserved() throws Exception {
-        Path files = Files.createTempDirectory("session-files-");
+        Path files = temporary.newFolder().toPath();
         Path root = files.resolve("root");
         Files.createDirectories(root);
         Files.createDirectories(files.resolve("s"));
         assertThrows(java.io.IOException.class, () -> SessionRuntime.prepare(files, root, "phone"));
         assertTrue(Files.isDirectory(files.resolve("s")));
 
-        Path files2 = Files.createTempDirectory("session-files-");
+        Path files2 = temporary.newFolder().toPath();
         Path root2 = files2.resolve("root");
         Files.createDirectories(root2);
         Path foreign = files2.resolve("foreign");
@@ -53,7 +56,7 @@ public class SessionRuntimeTest {
     }
 
     @Test public void preexistingProfileSymlinkIsRejectedWithoutFollowingIt() throws Exception {
-        Path files = Files.createTempDirectory("session-files-");
+        Path files = temporary.newFolder().toPath();
         Path root = files.resolve("root");
         Files.createDirectories(root.resolve("run/omamobile"));
         Path profile = root.resolve("run/omamobile/p");
@@ -64,7 +67,7 @@ public class SessionRuntimeTest {
     }
 
     @Test public void concurrentProfilesShareOneExclusiveAlias() throws Exception {
-        Path files = Files.createTempDirectory("session-files-");
+        Path files = temporary.newFolder().toPath();
         Path root = files.resolve("root");
         Files.createDirectories(root);
         ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -83,7 +86,7 @@ public class SessionRuntimeTest {
 
     @Test public void prepareUsesGuestRunWhenRunResolvesToVarRun() throws Exception {
         Assume.assumeTrue("POSIX guest absolute-link semantics", java.io.File.separatorChar == '/');
-        Path files = Files.createTempDirectory("session-files-");
+        Path files = temporary.newFolder().toPath();
         Path root = files.resolve("root");
         Files.createDirectories(root.resolve("var/run"));
         Files.createSymbolicLink(root.resolve("run"), Path.of("/var/run"));

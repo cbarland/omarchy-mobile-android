@@ -114,6 +114,7 @@ public class GraphicsSmokeTest {
         ProcessBuilder builder = new ProcessBuilder(argv).directory(files.toFile()).redirectErrorStream(true);
         builder.environment().clear(); builder.environment().putAll(RuntimeSpec.environment(false));
         builder.environment().put("XDG_RUNTIME_DIR", runtime);
+        builder.environment().put("WAYLAND_DISPLAY", properties.getProperty("WAYLAND_DISPLAY"));
         builder.environment().put("HYPRLAND_INSTANCE_SIGNATURE", properties.getProperty("HYPRLAND_INSTANCE_SIGNATURE"));
         Process process = builder.start(); process.getOutputStream().close();
         if (!process.waitFor(5, TimeUnit.SECONDS)) { process.destroyForcibly(); return "Hyprland IPC timed out"; }
@@ -121,31 +122,39 @@ public class GraphicsSmokeTest {
     }
 
     private static final String RUNTIME_SYMLINK_PROBE = """
-            import os, pathlib, shutil
-            root = pathlib.Path(os.environ['XDG_RUNTIME_DIR']) / 'omamobile-runtime-probe'
-            shutil.rmtree(root, ignore_errors=True)
-            by_id = root / 'by-id' / 'fixture'
-            by_pid = root / 'by-pid'
-            by_id.mkdir(parents=True)
-            by_pid.mkdir()
-            lock = by_id / 'instance.lock'
-            lock.write_bytes(b'fixture')
-            absolute = by_pid / 'absolute'
-            relative = by_pid / 'relative'
-            os.symlink(str(by_id), absolute)
-            os.symlink('../by-id/fixture', relative)
-            try:
+            import os, pathlib, socket, tempfile
+            with tempfile.TemporaryDirectory(prefix='.omamobile-probe-', dir=os.environ['XDG_RUNTIME_DIR']) as directory:
+                root = pathlib.Path(directory)
+                by_id = root / 'by-id' / 'fixture'
+                by_pid = root / 'by-pid'
+                by_id.mkdir(parents=True)
+                by_pid.mkdir()
+                lock = by_id / 'instance.lock'
+                lock.write_bytes(b'fixture')
+                absolute = by_pid / 'absolute'
+                relative = by_pid / 'relative'
+                os.symlink(str(by_id), absolute)
+                os.symlink('../by-id/fixture', relative)
                 assert (absolute / 'instance.lock').read_bytes() == b'fixture'
                 assert (relative / 'instance.lock').read_bytes() == b'fixture'
+                assert (absolute / 'instance.lock').stat().st_ino == lock.stat().st_ino
                 assert os.readlink(absolute) == str(by_id)
-                fd = os.open(absolute / 'instance.lock', os.O_RDONLY)
-                try: assert os.fstat(fd).st_size == 7
-                finally: os.close(fd)
-                os.unlink(relative)
-                assert not relative.exists()
-                print('ok', end='')
-            finally:
-                shutil.rmtree(root, ignore_errors=True)
+                parent = os.open(by_pid, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    fd = os.open('absolute/instance.lock', os.O_RDONLY, dir_fd=parent)
+                    try: assert os.fstat(fd).st_size == 7
+                    finally: os.close(fd)
+                finally: os.close(parent)
+                (absolute / 'created').write_bytes(b'new')
+                assert (relative / 'created').read_bytes() == b'new'
+                (absolute / 'created').unlink()
+                assert not (by_id / 'created').exists()
+            for name in ('.socket.sock', '.socket2.sock'):
+                endpoint = pathlib.Path(os.environ['XDG_RUNTIME_DIR']) / 'hypr' / os.environ['HYPRLAND_INSTANCE_SIGNATURE'] / name
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+                    connection.settimeout(2)
+                    connection.connect(str(endpoint))
+            print('ok', end='')
             """;
 
     private static String logs(Path home) throws Exception {

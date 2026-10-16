@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.EnumSet;
 
-/** Owns the physical guest runtime and its short host-side bind alias. */
+/** Owns the physical guest runtime and its short host-side path alias. */
 final class SessionRuntime {
     static final String HOST_ALIAS = "s";
 
