@@ -2,7 +2,7 @@
 """Measure bounded Android/guest session resources for one operator-selected phase.
 
 This command samples already-running processes; it does not start, stop, or
-reset a session. The operator supplies the phase and process/count commands.
+reset a session. The operator supplies the phase and process identities.
 """
 import argparse
 import json
@@ -84,16 +84,6 @@ def run(command, timeout):
     return result.stdout
 
 
-def parse_count(text):
-    try:
-        count = int(text.strip())
-    except ValueError as error:
-        raise ValueError("process count command did not return an integer") from error
-    if count < 0:
-        raise ValueError("process count cannot be negative")
-    return count
-
-
 class Sampler:
     def __init__(self, args):
         self.args = args
@@ -121,14 +111,6 @@ class Sampler:
         if parse_proc_uid(run(uid_command, self.args.command_timeout)) != self.app_uid:
             raise RuntimeError(f"guest PID {pid} is not owned by the app UID")
         return stat
-
-    def android_count(self):
-        return parse_count(run(self.adb + ["shell", self.args.android_count_command], self.args.command_timeout))
-
-    def guest_count(self, profile, command):
-        command = [sys.executable, str(self.root / "tools/emulator-linux.py"), "--adb", self.args.adb,
-                   "--serial", self.args.serial, "session", profile, command]
-        return parse_count(run(command, self.args.command_timeout))
 
     def health(self, profile):
         command = [sys.executable, str(self.root / "tools/emulator-linux.py"), "--adb", self.args.adb,
@@ -161,10 +143,6 @@ def parse_args(argv):
     parser.add_argument("--output", type=Path, default=Path("app/build/verification/session-resources.json"))
     parser.add_argument("--android-process", action="append", default=[], metavar="NAME=PID")
     parser.add_argument("--guest-process", action="append", default=[], metavar="PROFILE:NAME=PID")
-    parser.add_argument("--android-count-command", required=True,
-                        help="Command returning the Android app process count")
-    parser.add_argument("--guest-count", action="append", default=[], metavar="PROFILE=COMMAND",
-                        help="Guest command returning a profile process count; repeat per profile")
     parser.add_argument("--health-profile", action="append", choices=PROFILES)
     args = parser.parse_args(argv)
     if not args.serial.startswith("emulator-"):
@@ -200,9 +178,6 @@ def main(argv=None):
     health_profiles = args.health_profile or list(PROFILES)
     if len(set(health_profiles)) != len(health_profiles):
         raise SystemExit("health profiles must be unique")
-    guest_counts = dict(parse_assignment(item) for item in args.guest_count)
-    if len(guest_counts) != len(args.guest_count) or set(guest_counts) != set(health_profiles):
-        raise SystemExit("supply exactly one --guest-count for every --health-profile")
     sampler = Sampler(args)
     samples = []
     identities = {}
@@ -211,7 +186,7 @@ def main(argv=None):
     for index in range(args.samples):
         collection_started = time.monotonic()
         observed = {"index": index, "monotonicSeconds": collection_started - started,
-                    "processes": {}, "counts": {}, "health": {}}
+                    "processes": {}, "health": {}}
         for name, pid_text in android:
             sample = sampler.android_stat(int(pid_text))
             key = f"android:{name}"
@@ -226,9 +201,6 @@ def main(argv=None):
                 raise RuntimeError(f"PID identity changed for {key}")
             identities.setdefault(key, sample)
             observed["processes"][key] = measured(sample, previous, key, sampler.page_size)
-        observed["counts"]["android"] = sampler.android_count()
-        for profile, command in guest_counts.items():
-            observed["counts"][f"guest:{profile}"] = sampler.guest_count(profile, command)
         for profile in health_profiles:
             observed["health"][profile] = sampler.health(profile)
         observed["collectionElapsedSeconds"] = time.monotonic() - collection_started
@@ -244,7 +216,7 @@ def main(argv=None):
     result = {"phase": args.phase, "serial": args.serial, "avd": sampler.avd,
               "avdGuard": args.expected_avd,
               "units": {"cpu": "proc clock ticks (utime+stime)", "rss": "bytes",
-                        "counts": "processes", "elapsed": "monotonic seconds"},
+                        "elapsed": "monotonic seconds"},
               "pageSize": sampler.page_size, "sampleIntervalSeconds": args.interval,
               "samples": samples, "variation": variation, "identity": identities, "conditions": {
                   "healthRequiredEverySample": True, "batteryMeasured": False,
@@ -253,9 +225,7 @@ def main(argv=None):
                   "intervalIsPauseSeconds": True,
                   "samplingCadenceIncludesObserverCost": True,
                   "observerCostRecorded": True,
-                  "identityRule": "pid plus proc starttime",
-                  "androidCountCommand": args.android_count_command,
-                  "guestCountCommands": guest_counts}}
+                  "identityRule": "pid plus proc starttime"}}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"samples": len(samples), "phase": args.phase, "output": str(args.output)}))

@@ -28,8 +28,6 @@ class MeasureSessionResourcesTest(unittest.TestCase):
             return {"pid": pid, "state": "S", "utime": 4, "stime": 1,
                     "starttime": 200, "rssPages": 2}
 
-        def android_count(self): return 1
-        def guest_count(self, profile, command): return 1
         def health(self, profile): return [{"width": 1080, "height": 2424}]
 
     def test_proc_stat_handles_parentheses_and_derives_deltas(self):
@@ -68,12 +66,24 @@ class MeasureSessionResourcesTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.parse_proc_stat("42 (short) S 1 2")
 
-    def test_count_parser_rejects_noncounts(self):
-        self.assertEqual(MODULE.parse_count(" 3\n"), 3)
-        for value in ("pid1 pid2", "-1", ""):
-            with self.subTest(value=value):
-                with self.assertRaises(ValueError):
-                    MODULE.parse_count(value)
+    def test_avd_mismatch_aborts_before_page_size_probe(self):
+        args = type("Args", (), {"adb": "adb", "serial": "emulator-5560",
+                                  "expected_avd": "Expected", "command_timeout": 1.0})()
+        with patch.object(MODULE, "run", return_value="Wrong\n") as command:
+            with self.assertRaises(RuntimeError):
+                MODULE.Sampler(args)
+        command.assert_called_once()
+
+    def test_guest_uid_mismatch_is_rejected(self):
+        sampler = MODULE.Sampler.__new__(MODULE.Sampler)
+        sampler.app_uid = 10209
+        sampler.root = ROOT
+        sampler.args = type("Args", (), {"adb": "adb", "serial": "emulator-5560",
+                                          "command_timeout": 1.0})()
+        stat = "20 (guest) S " + "0 " * 21
+        with patch.object(MODULE, "run", side_effect=[stat, "Uid:\t1000\n"]):
+            with self.assertRaises(RuntimeError):
+                sampler.guest_stat("phone", 20)
 
     def test_main_records_valid_bounded_workflow(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -81,7 +91,6 @@ class MeasureSessionResourcesTest(unittest.TestCase):
             argv = ["--serial", "emulator-5556", "--expected-avd", "Fixture",
                     "--phase", "visible-idle", "--samples", "2", "--interval", "0.01",
                     "--android-process", "app=10", "--guest-process", "phone:guest=20",
-                    "--android-count-command", "count", "--guest-count", "phone=count",
                     "--health-profile", "phone", "--output", str(output)]
             with patch.object(MODULE, "Sampler", self.FakeSampler), patch.object(MODULE.time, "sleep"):
                 MODULE.main(argv)
@@ -104,10 +113,23 @@ class MeasureSessionResourcesTest(unittest.TestCase):
             argv = ["--serial", "emulator-5556", "--expected-avd", "Fixture",
                     "--phase", "visible-idle", "--samples", "2", "--interval", "0.01",
                     "--android-process", "app=10", "--guest-process", "phone:guest=20",
-                    "--android-count-command", "count", "--guest-count", "phone=count",
                     "--health-profile", "phone", "--output", str(Path(directory) / "out.json")]
             with patch.object(MODULE, "Sampler", ReusedPidSampler), patch.object(MODULE.time, "sleep"):
                 with self.assertRaises(RuntimeError):
+                    MODULE.main(argv)
+
+    def test_main_rejects_nonpositive_health(self):
+        class BadHealthSampler(self.FakeSampler):
+            def health(self, profile):
+                return MODULE.parse_positive_health('[{"width":0,"height":2424}]')
+
+        with tempfile.TemporaryDirectory() as directory:
+            argv = ["--serial", "emulator-5556", "--expected-avd", "Fixture",
+                    "--phase", "visible-idle", "--samples", "2", "--interval", "0.01",
+                    "--android-process", "app=10", "--guest-process", "phone:guest=20",
+                    "--health-profile", "phone", "--output", str(Path(directory) / "out.json")]
+            with patch.object(MODULE, "Sampler", BadHealthSampler), patch.object(MODULE.time, "sleep"):
+                with self.assertRaises(ValueError):
                     MODULE.main(argv)
 
 
