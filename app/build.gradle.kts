@@ -46,6 +46,10 @@ dependencies {
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("org.apache.commons:commons-compress:1.28.0")
+    // OpenPGP detached-signature verification; 1.86 is the current release
+    // (Maven Central/Bouncy Castle release page, checked 2026-10-15).
+    implementation("org.bouncycastle:bcpg-jdk18on:1.86")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.86")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
