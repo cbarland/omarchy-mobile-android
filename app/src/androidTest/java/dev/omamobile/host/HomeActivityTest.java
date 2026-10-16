@@ -44,7 +44,19 @@ public class HomeActivityTest {
             assertHomeComponentIsDiscoverable(context);
             int initialPid = awaitPhonePid(context);
             String initialSignature = readySignature(context);
-            startHome(context); awaitPhoneTask(context);
+            assertPhoneTaskAndNoHomeTask(context);
+            bringHostControlsToFront(context, instrumentation);
+            var monitor = instrumentation.addMonitor(HomeActivity.class.getName(), null, false);
+            Activity home;
+            try {
+                startHome(context);
+                home = instrumentation.waitForMonitorWithTimeout(monitor, 5000);
+            } finally {
+                instrumentation.removeMonitor(monitor);
+            }
+            assertNotNull("Explicit HOME request must launch the bridge", home);
+            awaitFinished(instrumentation, home);
+            awaitPhoneTask(context);
             assertEquals(initialPid, awaitPhonePid(context));
             assertEquals(initialSignature, readySignature(context));
             startHome(context); awaitPhoneTask(context);
@@ -84,13 +96,49 @@ public class HomeActivityTest {
                 Intent base = info == null ? null : info.baseIntent;
                 if (base == null || base.getComponent() == null) continue;
                 String name = base.getComponent().getClassName();
-                phone |= PhoneActivity.class.getName().equals(name);
+                phone |= PhoneActivity.class.getName().equals(name)
+                        && info.topActivity != null
+                        && PhoneActivity.class.getName().equals(info.topActivity.getClassName());
                 home |= HomeActivity.class.getName().equals(name);
             }
             if (phone && !home) return;
             SystemClock.sleep(50);
         }
         fail("Phone task did not become the foreground app task after HOME routing");
+    }
+
+    private static void bringHostControlsToFront(Context context,
+            android.app.Instrumentation instrumentation) {
+        context.startActivity(new Intent(context, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), android.app.ActivityOptions.makeBasic()
+                        .setLaunchDisplayId(Display.DEFAULT_DISPLAY).toBundle());
+        awaitMainActivity(instrumentation);
+    }
+
+    private static void assertPhoneTaskAndNoHomeTask(Context context) {
+        boolean phone = false;
+        boolean home = false;
+        for (ActivityManager.AppTask task : context.getSystemService(ActivityManager.class).getAppTasks()) {
+            ActivityManager.RecentTaskInfo info = task.getTaskInfo();
+            Intent base = info == null ? null : info.baseIntent;
+            if (base == null || base.getComponent() == null) continue;
+            String name = base.getComponent().getClassName();
+            phone |= PhoneActivity.class.getName().equals(name);
+            home |= HomeActivity.class.getName().equals(name);
+        }
+        assertTrue("Prepared test requires an existing phone task", phone);
+        assertFalse("HOME bridge must not already own a task", home);
+    }
+
+    private static void awaitFinished(android.app.Instrumentation instrumentation, Activity activity) {
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        while (SystemClock.uptimeMillis() < deadline) {
+            AtomicReference<Boolean> finished = new AtomicReference<>(false);
+            instrumentation.runOnMainSync(() -> finished.set(activity.isFinishing() || activity.isDestroyed()));
+            if (finished.get()) return;
+            SystemClock.sleep(50);
+        }
+        fail("HOME bridge activity did not finish after routing");
     }
 
     private static Activity awaitMainActivity(android.app.Instrumentation instrumentation) {

@@ -32,16 +32,27 @@ public final class HomeActivity extends Activity {
                 startActivity(phone, ActivityOptions.makeBasic()
                         .setLaunchDisplayId(Display.DEFAULT_DISPLAY).toBundle());
             } else {
-                Intent setup = new Intent(this, MainActivity.class)
-                        .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                startActivity(setup, ActivityOptions.makeBasic()
-                        .setLaunchDisplayId(Display.DEFAULT_DISPLAY).toBundle());
+                launchSetup();
             }
         } catch (RuntimeException error) {
             Log.e("OmamobileHome", "Cannot route HOME request", error);
+            try {
+                // A stale graphics/service state must still leave the user with
+                // the host controls when the prepared route cannot launch.
+                launchSetup();
+            } catch (RuntimeException recoveryError) {
+                Log.e("OmamobileHome", "Cannot open host controls after HOME failure", recoveryError);
+            }
         } finally {
             // The bridge is transient; MainActivity/PhoneActivity owns recovery controls.
             finish();
         }
+    }
+
+    private void launchSetup() {
+        Intent setup = new Intent(this, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        startActivity(setup, ActivityOptions.makeBasic()
+                .setLaunchDisplayId(Display.DEFAULT_DISPLAY).toBundle());
     }
 }
