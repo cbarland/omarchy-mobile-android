@@ -12,6 +12,17 @@ import build_freetype as freetype
 
 
 class OwnedFreeTypeValidationTest(unittest.TestCase):
+    def make_prefix(self, root):
+        prefix = root / "prefix"
+        (prefix / "include").mkdir(parents=True)
+        (prefix / "lib/pkgconfig").mkdir(parents=True)
+        (prefix / "include/freetype.h").write_bytes(b"header")
+        (prefix / "lib/pkgconfig/freetype2.pc").write_bytes(b"pc")
+        aliases = {"libz.so": b"z", "libbz2.so": b"bz2", "libpng16.so": b"png", "libbrotlidec.so": b"brotli"}
+        for name, content in aliases.items():
+            (prefix / "lib" / name).write_bytes(content)
+        return prefix
+
     def test_elf_check_accepts_android_system_libm_and_libdl(self):
         elf = """Machine: Advanced Micro Devices X86-64
  (SONAME) Library soname: [libfreetype.so]
@@ -53,11 +64,16 @@ class OwnedFreeTypeValidationTest(unittest.TestCase):
             archive.write_bytes(b"archive")
             spec = {"recipes": {"build_freetype.py": hashlib.sha256(b"recipe").hexdigest(),
                                 "prepare_source_inputs.py": hashlib.sha256(b"prepare").hexdigest()},
+                    "referenceRecipe": {"sha256": hashlib.sha256(b"reference").hexdigest()},
                     "patches": []}
+            reference = directory / "recipes/termux-reference-build.sh"
+            reference.write_bytes(b"reference")
             record = {"format": 1, "kind": "project-built", "abi": "x86_64", "specification": spec,
                       "toolchain": {"files": {"tool": "hash"}}, "dependencies": list(freetype.DEPENDENCIES),
                       "materials": {"notices/copyright": hashlib.sha256(b"notice").hexdigest()},
-                      "dependencyHashes": {}, "librarySha256": hashlib.sha256(library.read_bytes()).hexdigest()}
+                      "dependencyHashes": {name: {} for name in freetype.DEPENDENCIES},
+                      "dependencyInputs": {"sha256": "fingerprint"},
+                      "librarySha256": hashlib.sha256(library.read_bytes()).hexdigest()}
             (directory / "build.json").write_text(json.dumps(record))
             with patch.object(freetype, "specification", return_value=spec):
                 freetype.validate_materials(directory, "x86_64")
@@ -66,6 +82,52 @@ class OwnedFreeTypeValidationTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     freetype.validate_materials(directory, "x86_64")
                 self.assertEqual(original, library.read_bytes())
+
+    def test_dependency_header_change_changes_fingerprint(self):
+        with tempfile.TemporaryDirectory() as root:
+            prefix = self.make_prefix(Path(root))
+            before = freetype.dependency_inputs(prefix)
+            (prefix / "include/freetype.h").write_bytes(b"changed")
+            self.assertNotEqual(before, freetype.dependency_inputs(prefix))
+
+    def test_dependency_alias_change_changes_fingerprint(self):
+        with tempfile.TemporaryDirectory() as root:
+            prefix = self.make_prefix(Path(root))
+            before = freetype.dependency_inputs(prefix)
+            (prefix / "lib/libz.so").write_bytes(b"different-target")
+            self.assertNotEqual(before, freetype.dependency_inputs(prefix))
+
+    def test_missing_dependency_hash_key_is_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            (directory / "build.json").write_text(json.dumps({"format": 1, "kind": "project-built", "abi": "x86_64",
+                "specification": {"recipes": {}, "referenceRecipe": {"sha256": "unused"}}, "dependencies": list(freetype.DEPENDENCIES), "dependencyHashes": {},
+                "materials": {}, "toolchain": {"files": {}}}))
+            with patch.object(freetype, "specification", return_value={}):
+                with self.assertRaises(ValueError):
+                    freetype.validate_materials(directory, "x86_64")
+
+    def test_reference_recipe_change_is_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            (directory / "recipes").mkdir()
+            path = directory / "recipes/termux-reference-build.sh"
+            path.write_bytes(b"reference")
+            spec = {"recipes": {}, "referenceRecipe": {"sha256": hashlib.sha256(b"changed").hexdigest()}}
+            record = {"format": 1, "kind": "project-built", "abi": "x86_64", "specification": spec,
+                      "dependencies": list(freetype.DEPENDENCIES), "dependencyHashes": {name: {} for name in freetype.DEPENDENCIES},
+                      "dependencyInputs": {"sha256": "fingerprint"}, "materials": {}, "toolchain": {"files": {}}}
+            (directory / "build.json").write_text(json.dumps(record))
+            with patch.object(freetype, "specification", return_value=spec):
+                with self.assertRaises(ValueError):
+                    freetype.validate_materials(directory, "x86_64")
+
+    def test_inherited_build_flags_are_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            prefix = self.make_prefix(Path(root))
+            with patch.dict(freetype.os.environ, {"CFLAGS": "-O0"}, clear=False):
+                with self.assertRaises(ValueError):
+                    freetype.sanitized_environment(prefix)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ RECIPE_FILES = ("build_freetype.py", "prepare_source_inputs.py")
 ABIS = {"x86_64": "x86_64-linux-android", "arm64-v8a": "aarch64-linux-android"}
 DEPENDENCIES = ("libz.so.1", "libbz2.so.1.0", "libpng16.so", "libbrotlidec.so")
 ANDROID_SYSTEM = {"libc.so", "libm.so", "libdl.so"}
+INHERITED_BUILD_FLAGS = ("CFLAGS", "CXXFLAGS", "CPPFLAGS", "LDFLAGS", "CPATH", "LIBRARY_PATH", "PKG_CONFIG_SYSROOT_DIR")
 
 
 def sha256(path):
@@ -27,6 +28,47 @@ def sha256(path):
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def dependency_inputs(prefix):
+    """Fingerprint headers/pkg-config data and the exact linker aliases used."""
+    files = {}
+    for root_name in ("include", "lib/pkgconfig"):
+        root = prefix / root_name
+        if not root.is_dir():
+            raise ValueError("Missing dependency input tree: " + str(root))
+        for path in sorted(root.rglob("*")):
+            if path.is_dir():
+                continue
+            relative = path.relative_to(prefix).as_posix()
+            if path.is_symlink():
+                files[relative] = {"kind": "symlink", "target": os.readlink(path)}
+            elif path.is_file():
+                files[relative] = {"kind": "file", "sha256": sha256(path)}
+            else:
+                raise ValueError("Unsupported dependency input: " + str(path))
+    aliases = {}
+    for soname in DEPENDENCIES:
+        stem = soname.split(".so", 1)[0] + ".so"
+        alias = prefix / "lib" / stem
+        if not alias.is_file():
+            raise ValueError("Missing linker alias for " + soname)
+        aliases[soname] = {"path": (Path("lib") / stem).as_posix(),
+                           "target": os.readlink(alias) if alias.is_symlink() else None,
+                           "sha256": sha256(alias.resolve())}
+    encoded = json.dumps({"files": files, "aliases": aliases}, sort_keys=True).encode()
+    return {"files": files, "aliases": aliases,
+            "sha256": hashlib.sha256(encoded).hexdigest()}
+
+
+def sanitized_environment(dependencies):
+    present = [name for name in INHERITED_BUILD_FLAGS if os.environ.get(name)]
+    if present:
+        raise ValueError("Inherited build flags would invalidate the cache: " + ", ".join(present))
+    env = os.environ.copy()
+    env["PKG_CONFIG_LIBDIR"] = str(dependencies / "lib/pkgconfig")
+    env["PKG_CONFIG_PATH"] = env["PKG_CONFIG_LIBDIR"]
+    return env
 
 
 def specification(project=ROOT):
@@ -74,6 +116,8 @@ def validate_materials(directory, abi, project=ROOT):
         raise ValueError("Stale or wrong-ABI owned FreeType output; use a fresh native cache")
     for name, expected in record["specification"]["recipes"].items():
         checked_file(directory, "recipes/" + name, expected)
+    reference = record["specification"]["referenceRecipe"]
+    checked_file(directory, "recipes/termux-reference-build.sh", reference["sha256"])
     for relative, expected in record["materials"].items():
         parts = PurePosixPath(relative).parts
         if (not parts or parts[0] not in {"notices", "recipes", "logs"}
@@ -81,8 +125,10 @@ def validate_materials(directory, abi, project=ROOT):
                 or any(p in {"..", ".", ""} for p in relative.split("/"))):
             raise ValueError("Invalid FreeType material path")
         checked_file(directory, relative, expected)
-    if set(record["dependencies"]) != set(DEPENDENCIES):
+    if set(record["dependencies"]) != set(DEPENDENCIES) or set(record.get("dependencyHashes", {})) != set(DEPENDENCIES):
         raise ValueError("Owned FreeType dependency closure differs from the reviewed contract")
+    if not record.get("dependencyInputs", {}).get("sha256"):
+        raise ValueError("Owned FreeType dependency input fingerprint is missing")
     if not record["toolchain"].get("files") or not record["materials"]:
         raise ValueError("Owned FreeType build evidence is incomplete")
     return record
@@ -151,6 +197,8 @@ def build(output, abi, ndk, cmake="cmake", source_cache=None, dependencies=None,
     missing = [name for name in DEPENDENCIES if not (dependencies / "lib" / name).is_file()]
     if missing:
         raise ValueError("Missing verified FreeType dependency libraries: " + ", ".join(missing))
+    inputs = dependency_inputs(dependencies)
+    env = sanitized_environment(dependencies)
     if os.path.lexists(output):
         validate_output(output, abi, ndk, cmake, dependencies, project)
         return output
@@ -178,7 +226,6 @@ def build(output, abi, ndk, cmake="cmake", source_cache=None, dependencies=None,
         cmake_bin = cmake_executable(cmake)
         binaries = ndk / "toolchains/llvm/prebuilt/linux-x86_64/bin"
         build_dir, install_dir = temporary / "build", temporary / "install"
-        env = os.environ.copy(); env["PKG_CONFIG_LIBDIR"] = str(dependencies / "lib/pkgconfig"); env["PKG_CONFIG_PATH"] = env["PKG_CONFIG_LIBDIR"]
         run([cmake_bin, "--version"], "cmake-version.txt", env)
         run(["ninja", "--version"], "ninja-version.txt", env)
         run([cmake_bin, "-S", source, "-B", build_dir, "-G", "Ninja",
@@ -196,13 +243,15 @@ def build(output, abi, ndk, cmake="cmake", source_cache=None, dependencies=None,
         shutil.copyfile(install_dir / "lib/libfreetype.so", library)
         elf = readelf(binaries / "llvm-readelf", library); check_elf(elf, abi)
         (temporary / "logs/elf.txt").write_text(elf)
-        dependency_hashes = {name: sha256(dependencies / "lib" / name) for name in DEPENDENCIES}
+        dependency_hashes = inputs["aliases"]
         materials = {str(path.relative_to(temporary)).replace("\\", "/"): sha256(path)
                      for folder in ("recipes", "notices", "logs") for path in (temporary / folder).rglob("*") if path.is_file()}
         record = {"format": 1, "kind": "project-built", "abi": abi, "specification": spec,
                   "toolchain": compiler, "dependencies": list(DEPENDENCIES), "dependencyHashes": dependency_hashes,
                   "dependencyPrefix": str(dependencies), "commands": commands,
-                  "librarySha256": sha256(library), "materials": materials}
+                  "librarySha256": sha256(library), "materials": materials,
+                  "dependencyInputs": inputs,
+                  "buildEnvironment": {"rejectedInheritedFlags": list(INHERITED_BUILD_FLAGS)}}
         (temporary / "build.json").write_text(json.dumps(record, indent=2) + "\n")
         validate_output(temporary, abi, ndk, cmake, dependencies, project)
         temporary.rename(output)
@@ -215,8 +264,8 @@ def validate_output(directory, abi, ndk, cmake, dependencies, project=ROOT):
     record = validate_materials(directory, abi, project)
     if record["toolchain"] != toolchain(ndk, cmake, project): raise ValueError("Owned FreeType toolchain changed")
     if record["dependencyPrefix"] != str(Path(dependencies).resolve()): raise ValueError("Dependency prefix changed")
-    for name, expected in record["dependencyHashes"].items():
-        if sha256(Path(dependencies) / "lib" / name) != expected: raise ValueError("Dependency changed: " + name)
+    if record["dependencyInputs"] != dependency_inputs(Path(dependencies).resolve()):
+        raise ValueError("Dependency headers, pkg-config files, or linker aliases changed")
     library = checked_file(directory, "libfreetype.so", record["librarySha256"])
     header = library.read_bytes()[:20]
     if header[:6] != b"\x7fELF\x02\x01" or int.from_bytes(header[18:20], "little") != (62 if abi == "x86_64" else 183):
