@@ -56,6 +56,8 @@ public class AndroidAppPortalTest {
         }
     }
     @Test public void deviceStateMatchesAndroidApisAndLinuxCli() throws Exception {
+        org.junit.Assume.assumeTrue("Explicit -e graphics true and prepared Linux required",
+                "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         JSONObject host;
         try (LocalSocket socket = connect()) {
@@ -70,30 +72,11 @@ public class AndroidAppPortalTest {
         assertEquals(keyguard.isDeviceLocked(), host.getBoolean("deviceLocked"));
         assertEquals(power.isInteractive(), host.getBoolean("interactive"));
 
-        org.junit.Assume.assumeTrue("Prepared graphics session required for Linux CLI path",
-                "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
         var root = context.getFilesDir().toPath().resolve("linux/rootfs");
-        var argv = RuntimeSpec.command(new File(context.getApplicationInfo().nativeLibraryDir, "libtawcroot.so").toPath(),
-                root, List.of(new RuntimeSpec.Bind("/dev", "/dev", false),
-                        new RuntimeSpec.Bind("/proc", "/proc", false)),
-                List.of("/usr/bin/omamobile-android", "device-state"));
-        var captured = Files.createTempFile(context.getCacheDir().toPath(), "device-state-", ".json");
-        Process process = null;
-        try {
-            process = new ProcessBuilder(argv).directory(root.toFile()).redirectErrorStream(true)
-                    .redirectOutput(captured.toFile()).start();
-            process.getOutputStream().close();
-            assertTrue("Linux device-state client timed out", process.waitFor(10, TimeUnit.SECONDS));
-            String output = new String(Files.readAllBytes(captured), StandardCharsets.UTF_8).trim();
-            assertEquals(output, 0, process.exitValue());
-            JSONObject cli = new JSONObject(output);
-            assertEquals(host.getBoolean("keyguardLocked"), cli.getBoolean("keyguardLocked"));
-            assertEquals(host.getBoolean("deviceLocked"), cli.getBoolean("deviceLocked"));
-            assertEquals(host.getBoolean("interactive"), cli.getBoolean("interactive"));
-        } finally {
-            if (process != null) process.destroyForcibly();
-            Files.deleteIfExists(captured);
-        }
+        JSONObject cli = new JSONObject(runLinuxClient(context, root, "device-state", "device-state-"));
+        assertEquals(host.getBoolean("keyguardLocked"), cli.getBoolean("keyguardLocked"));
+        assertEquals(host.getBoolean("deviceLocked"), cli.getBoolean("deviceLocked"));
+        assertEquals(host.getBoolean("interactive"), cli.getBoolean("interactive"));
     }
     @Test public void linuxClientReachesTheSamePortal() throws Exception {
         org.junit.Assume.assumeTrue("Explicit -e graphics true and prepared Linux required",
@@ -106,24 +89,28 @@ public class AndroidAppPortalTest {
             hostApps = reply.getJSONArray("apps");
         }
         var root = context.getFilesDir().toPath().resolve("linux/rootfs");
+        var guestApps = new org.json.JSONArray(runLinuxClient(context, root, "list", "portal-list-"));
+        assertTrue("Expected discoverable Android applications", guestApps.length() > 0);
+        assertEquals(packages(hostApps), packages(guestApps));
+    }
+    private static String runLinuxClient(Context context, java.nio.file.Path root, String action, String prefix) throws Exception {
         var argv = RuntimeSpec.command(new File(context.getApplicationInfo().nativeLibraryDir, "libtawcroot.so").toPath(),
                 root, List.of(new RuntimeSpec.Bind("/dev", "/dev", false),
                         new RuntimeSpec.Bind("/proc", "/proc", false)),
-                List.of("/usr/bin/omamobile-android", "list"));
-        var captured = Files.createTempFile(context.getCacheDir().toPath(), "portal-list-", ".json");
-        ProcessBuilder builder = new ProcessBuilder(argv).directory(root.toFile()).redirectErrorStream(true)
-                .redirectOutput(captured.toFile());
-        builder.environment().clear(); builder.environment().putAll(RuntimeSpec.environment(false));
+                List.of("/usr/bin/omamobile-android", action));
+        var captured = Files.createTempFile(context.getCacheDir().toPath(), prefix, ".json");
         Process process = null;
         try {
+            var builder = new ProcessBuilder(argv).directory(root.toFile()).redirectErrorStream(true)
+                    .redirectOutput(captured.toFile());
+            builder.environment().clear();
+            builder.environment().putAll(RuntimeSpec.environment(false));
             process = builder.start();
             process.getOutputStream().close();
             assertTrue("Linux portal client timed out", process.waitFor(10, TimeUnit.SECONDS));
-            String output = new String(Files.readAllBytes(captured), StandardCharsets.UTF_8);
+            String output = new String(Files.readAllBytes(captured), StandardCharsets.UTF_8).trim();
             assertEquals(output, 0, process.exitValue());
-            var guestApps = new org.json.JSONArray(output);
-            assertTrue("Expected discoverable Android applications", guestApps.length() > 0);
-            assertEquals(packages(hostApps), packages(guestApps));
+            return output;
         } finally {
             if (process != null) process.destroyForcibly();
             Files.deleteIfExists(captured);
