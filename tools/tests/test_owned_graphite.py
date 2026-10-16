@@ -10,12 +10,24 @@ import tarfile
 import tempfile
 import unittest
 import zipfile
+import struct
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/native"))
 import build_graphite as graphite
 import verify_release
+
+
+def valid_elf(machine, elf_type=3):
+    header = struct.Struct('<16sHHIQQQIHHHHHH')
+    phdr = struct.Struct('<IIQQQQQQ')
+    data = bytearray(0x600)
+    ident = b'\x7fELF' + bytes([2, 1, 1]) + bytes(9)
+    data[:header.size] = header.pack(ident, elf_type, machine, 1, 0, header.size, 0, 0,
+                                     header.size, phdr.size, 1, 0, 0, 0)
+    data[header.size:header.size + phdr.size] = phdr.pack(1, 5, 0, 0x400000, 0, 0x500, 0x500, 0x1000)
+    return bytes(data)
 
 
 class OwnedGraphiteTest(unittest.TestCase):
@@ -38,7 +50,7 @@ class OwnedGraphiteTest(unittest.TestCase):
         (self.output / "recipes/termux-reference-build.sh").write_bytes(b"reference")
         (self.output / "patches/src-CMakeLists.txt.patch").write_bytes(b"patch")
         (self.output / "notices/LICENSE").write_bytes(b"notice")
-        elf = bytearray(20); elf[:6] = b"\x7fELF\x02\x01"; elf[18:20] = (62).to_bytes(2, "little")
+        elf = valid_elf(62)
         (self.output / "libgraphite2.so").write_bytes(elf)
         (self.output / "upstream.tar.gz").write_bytes(b"archive")
         self.compiler = {"files": {"compiler": "hash"}}
@@ -176,8 +188,7 @@ class OwnedGraphiteTest(unittest.TestCase):
                     for name in required:
                         entry = "lib/" + abi + "/" + name
                         if entry == missing: continue
-                        elf = bytearray(20); elf[:6] = b"\x7fELF\x02\x01"; elf[16:18] = (3).to_bytes(2, "little")
-                        elf[18:20] = (62 if entry == wrong else machine).to_bytes(2, "little")
+                        elf = valid_elf(62 if entry == wrong else machine)
                         archive.writestr(entry, elf)
         write(); self.assertEqual(verify_release.apk_native_errors(apk), ([], 8))
         write(missing="lib/x86_64/libomamobile_hyprland.so")
