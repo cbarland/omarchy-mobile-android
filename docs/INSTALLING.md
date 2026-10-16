@@ -165,20 +165,16 @@ user may install the official signed Arch package from the terminal:
 pacman -S --needed firefox
 ```
 
-This is an optional package choice; the installer does not install Firefox or
-select a global HTTP handler. Before installation, the disposable API35
-x86_64 emulator had no generic HTTP/HTML handler. After the package transaction
-installed Firefox and its dependency closure (six packages), Firefox rendered
-a deterministic local HTTP 200 fixture as a native Wayland client with a
-matching title, using an explicit temporary profile and
-`MOZ_ENABLE_WAYLAND=1`. The normal browser/content/GPU sandbox remained
-enabled; no sandbox-disabling flags or privilege changes were used.
+The installer does not install Firefox or select a default browser. On the
+API35 x86_64 emulator, Firefox displayed a local test page as a native Wayland
+window using `MOZ_ENABLE_WAYLAND=1`. No sandbox-disabling flags or settings
+were changed, and no privilege changes were used. This is a launch/rendering
+check, not an audit of Firefox's sandbox feature availability.
 
 This result is established for the tested x86_64 emulator only. ARM Firefox
 execution, GPU behavior on other devices, and other browsers remain
 unverified. Whether the upstream `omamobile-launch` URL path selects Firefox
-is also unverified; use the normal package and user-choice path until that is
-tested.
+is also unverified.
 
 ## Validation status
 
