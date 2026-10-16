@@ -259,7 +259,27 @@ def load(work):
     state = json.loads((work / "state.json").read_text())
     require(state["version"] == 1 and state["home"] == str(HOME) and state["fixture"] == work.name,
             "Fixture identity mismatch")
+    public = state.get("publicHackerboy", False)
+    require(type(public) is bool, "Fixture public flag is malformed")
+    state["publicHackerboy"] = public
+    state["themeName"] = state.get("themeName", "hackerboy" if public else work.name)
+    require(state["themeName"] == ("hackerboy" if public else work.name),
+            "Fixture theme target is not owned by this run")
     return state
+
+
+def theme_target(state):
+    expected = "hackerboy" if state["publicHackerboy"] else state["fixture"]
+    require(state["themeName"] == expected, "Fixture theme target is not owned by this run")
+    target = HOME / ".config/omarchy/themes" / expected
+    assert_real_ancestors(target)
+    return target
+
+
+def public_install_complete(state):
+    return (state["publicHackerboy"] and state.get("phase") == "installed"
+            and set(state.get("signatures", {})) == {"phone", "desktop"}
+            and set(state.get("reopened", {})) == {"phone", "desktop"})
 
 
 def png():
@@ -296,7 +316,11 @@ def verify_hackerboy_checkout(target, env, work):
     for path, (_, digest) in HACKERBOY_TREE.items():
         entry = target / path
         require(entry.is_file() and not entry.is_symlink(), "Hackerboy file is not a regular file: " + path)
+        working_mode = "100755" if entry.stat().st_mode & 0o111 else "100644"
+        require(working_mode == HACKERBOY_TREE[path][0], "Hackerboy working-tree mode changed: " + path)
         require(sha(entry) == digest, "Hackerboy file hash changed: " + path)
+    require(not any(entry.is_symlink() for entry in target.rglob("*") if ".git" not in entry.parts),
+            "Hackerboy checkout contains a symlink")
     files = {entry.relative_to(target).as_posix() for entry in target.rglob("*")
              if entry.is_file() and ".git" not in entry.parts}
     require(files == set(HACKERBOY_TREE), "Hackerboy checkout has unexpected working-tree files")
@@ -319,8 +343,7 @@ def install(work, state, untrusted_cert=False):
             "Untrusted certificate probe requires HTTPS transport")
     preconditions()
     require(state["phase"] == "prepared", "Install can run only once after prepare")
-    target = HOME / ".config/omarchy/themes" / state["themeName"]
-    assert_real_ancestors(target)
+    target = theme_target(state)
     require(not target.exists(), "Unique fixture theme already exists")
     source = work / "source"
     if state["publicHackerboy"]:
@@ -520,8 +543,7 @@ def restore(work, state):
         require(peer + " " + acknowledgment + " acknowledged" in restored_log, "Restore peer did not acknowledge " + acknowledgment)
     for relative in SNAPSHOTS:
         require(inventory(HOME / relative) == state["snapshots"][relative], "Restored data changed after peer sync: " + relative)
-    target = HOME / ".config/omarchy/themes" / state["themeName"]
-    assert_real_ancestors(target)
+    target = theme_target(state)
     if state["publicHackerboy"]:
         require(target.exists() and not target.is_symlink(), "Public Hackerboy checkout disappeared before cleanup")
         verify_hackerboy_checkout(target, git_environment(), work)
@@ -529,9 +551,7 @@ def restore(work, state):
         shutil.rmtree(target)
     state["phase"] = "restored"
     write_json(work / "state.json", state)
-    public_complete = (state["publicHackerboy"] and
-                       set(state.get("signatures", {})) == {"phone", "desktop"} and
-                       set(state.get("reopened", {})) == {"phone", "desktop"})
+    public_complete = public_install_complete(state)
     write_json(work / "result.json", {"transport": state["transport"], "publicHttpsVerified": public_complete,
                "bothOwnersReopened": set(state.get("reopened", {})) == {"phone", "desktop"},
                "renderedPaletteVerified": False, "originalThemeRestored": state["originalTheme"],
