@@ -17,6 +17,7 @@ class MeasureSessionResourcesTest(unittest.TestCase):
         def __init__(self, args):
             self.avd = args.expected_avd
             self.page_size = 4096
+            self.clock_ticks = 100
             self.android_calls = 0
 
         def android_stat(self, pid):
@@ -29,6 +30,10 @@ class MeasureSessionResourcesTest(unittest.TestCase):
                     "starttime": 200, "rssPages": 2}
 
         def health(self, profile): return [{"width": 1080, "height": 2424}]
+
+        def android_thread_stat(self, pid, tid):
+            return {"pid": tid, "state": "S", "utime": self.android_calls * 2,
+                    "stime": 3, "starttime": 300, "ownerPid": pid, "ownerStarttime": 100}
 
     def test_proc_stat_handles_parentheses_and_derives_deltas(self):
         fields = ["S"] + ["0"] * 21
@@ -53,6 +58,47 @@ class MeasureSessionResourcesTest(unittest.TestCase):
         self.assertTrue(MODULE.identity_matches(before, {"pid": 12, "starttime": 100}))
         self.assertFalse(MODULE.identity_matches(before, {"pid": 12, "starttime": 101}))
         self.assertFalse(MODULE.identity_matches(before, {"pid": 13, "starttime": 100}))
+
+    def test_thread_owner_reuse_is_rejected(self):
+        before = {"pid": 22, "starttime": 300, "ownerPid": 12, "ownerStarttime": 100}
+        self.assertTrue(MODULE.identity_matches(before, dict(before)))
+        self.assertFalse(MODULE.identity_matches(before, dict(before, ownerStarttime=101)))
+        self.assertFalse(MODULE.identity_matches(before, dict(before, ownerPid=13)))
+
+    def test_thread_membership_checked_and_shared_rss_omitted(self):
+        sampler = MODULE.Sampler.__new__(MODULE.Sampler)
+        sampler.adb = ["adb", "-s", "emulator-5556"]
+        sampler.args = type("Args", (), {"command_timeout": 1.0})()
+        sampler.app_uid = 10209
+        owner = {"pid": 12, "starttime": 100}
+        fields = ["S"] + ["0"] * 21
+        fields[11], fields[12], fields[19], fields[21] = "17", "5", "300", "4"
+        stat = "22 (native-hyprland) " + " ".join(fields)
+        for status, accepted in (("Uid:\t10209\nTgid:\t12\n", True),
+                                  ("Uid:\t10209\nTgid:\t13\n", False),
+                                  ("Uid:\t1000\nTgid:\t12\n", False)):
+            with self.subTest(status=status), patch.object(sampler, "android_stat", return_value=owner), \
+                    patch.object(MODULE, "run", side_effect=[stat, status]):
+                if accepted:
+                    sample = sampler.android_thread_stat(12, 22)
+                    self.assertEqual(sample["ownerStarttime"], 100)
+                    self.assertEqual(sample["utime"] + sample["stime"], 22)
+                    self.assertNotIn("rssPages", sample)
+                else:
+                    with self.assertRaises(RuntimeError):
+                        sampler.android_thread_stat(12, 22)
+
+    def test_thread_read_rejects_owner_replacement_during_collection(self):
+        sampler = MODULE.Sampler.__new__(MODULE.Sampler)
+        sampler.adb = ["adb"]
+        sampler.args = type("Args", (), {"command_timeout": 1.0})()
+        sampler.app_uid = 10209
+        stat = "22 (worker) S " + "0 " * 21
+        with patch.object(sampler, "android_stat", side_effect=[{"pid": 12, "starttime": 100},
+                                                               {"pid": 12, "starttime": 101}]), \
+                patch.object(MODULE, "run", side_effect=[stat, "Uid:\t10209\nTgid:\t12\n"]):
+            with self.assertRaisesRegex(RuntimeError, "changed during collection"):
+                sampler.android_thread_stat(12, 22)
 
     def test_health_requires_positive_monitor_records(self):
         self.assertEqual(MODULE.parse_positive_health('[{"width":1080,"height":2424}]'),
@@ -91,6 +137,7 @@ class MeasureSessionResourcesTest(unittest.TestCase):
             argv = ["--serial", "emulator-5556", "--expected-avd", "Fixture",
                     "--phase", "visible-idle", "--samples", "2", "--interval", "0.01",
                     "--android-process", "app=10", "--guest-process", "phone:guest=20",
+                    "--android-thread", "renderer=10:11",
                     "--health-profile", "phone", "--output", str(output)]
             with patch.object(MODULE, "Sampler", self.FakeSampler), patch.object(MODULE.time, "sleep"):
                 MODULE.main(argv)
@@ -100,6 +147,12 @@ class MeasureSessionResourcesTest(unittest.TestCase):
             self.assertGreaterEqual(result["samples"][1]["collectionElapsedSeconds"], 0)
             self.assertEqual(result["variation"]["android:app"]["cpuDeltaTicks"], [1])
             self.assertEqual(result["conditions"]["healthProfiles"], ["phone"])
+            self.assertEqual(result["clockTicksPerSecond"], 100)
+            thread = result["samples"][1]["processes"]["android-thread:renderer"]
+            self.assertEqual(thread["cpuDeltaTicks"], 2)
+            self.assertNotIn("rssBytes", thread)
+            self.assertNotIn("rssBytesMin", result["variation"]["android-thread:renderer"])
+            self.assertGreaterEqual(thread["readFinishedMonotonicSeconds"], thread["readStartedMonotonicSeconds"])
 
     def test_main_rejects_identity_change(self):
         class ReusedPidSampler(self.FakeSampler):
