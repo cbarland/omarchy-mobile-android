@@ -59,6 +59,12 @@ performance and power measurements, wider ARM64 installation testing, authentica
 image downloading and data export/recovery are useful contribution areas.
 Work-profile and Wallet compatibility have not been established for this host.
 
+The read-only Android battery API is available; see [Android battery state](docs/ANDROID-BATTERY-STATE.md).
+Real PipeWire-to-Android transport has passed opt-in emulator tests, but a normal shared audio
+owner, default device, volume, and focus integration is still pending; [AUDIO.md](docs/AUDIO.md)
+documents that foundation. These are service foundations, not claims of working default audio
+or battery-widget integration.
+
 ## Develop
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) and [the build guide](docs/BUILDING.md).
