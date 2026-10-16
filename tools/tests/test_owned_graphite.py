@@ -15,6 +15,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/native"))
 import build_graphite as graphite
+import build_freetype as freetype
 import verify_release
 
 
@@ -149,6 +150,10 @@ class OwnedGraphiteTest(unittest.TestCase):
         (prefix / "share/misc/magic.mgc").write_bytes(b"magic")
         (base / "termux-packages.json").write_text("[]")
         (base / "ndk-prefix/lib/libgraphite2.so").write_bytes(b"old official library")
+        (base / "owned/freetype").mkdir(parents=True)
+        (base / "owned/freetype/build.json").write_text("{}")
+        for folder in ("recipes", "notices", "logs"):
+            (base / "owned/freetype" / folder).mkdir()
         project = self.root / "stage"
         (project / "app/src/main/cpp").mkdir(parents=True)
         argv = ["stage_port.py", "--abi", "x86_64", "--cache", str(self.root / "cache"),
@@ -159,6 +164,7 @@ class OwnedGraphiteTest(unittest.TestCase):
                 return "(NEEDED) Shared library: [libgraphite2.so]\n"
             return ""
         with patch.object(sys, "argv", argv), patch.object(graphite, "validate_output", return_value=self.record), \
+                patch.object(freetype, "validate_output", return_value={}), \
                 patch("subprocess.check_output", side_effect=output), patch("subprocess.run"), \
                 contextlib.redirect_stdout(io.StringIO()):
             runpy.run_path(str(ROOT / "tools/native/stage_port.py"), run_name="__main__")

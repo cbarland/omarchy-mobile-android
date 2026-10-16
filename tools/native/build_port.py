@@ -100,8 +100,13 @@ env = os.environ.copy()
 env.update(ARLINUX_DIR=str(base), ANDROID_NDK_HOME=str(args.ndk), JOBS=env.get("JOBS", "4"), ARLINUX_ANDROID_API="29")
 env["PATH"] = str(args.cache / "venv/bin") + os.pathsep + env["PATH"]
 
-# Graphite has an explicit source-build origin; never replace bytes behind the
-# official Termux package lock. Stage selection below requires this artifact.
+# Owned font libraries have explicit source-build origins; never replace bytes
+# behind the official Termux package lock. Stage selection requires both.
+freetype = [sys.executable, Path(__file__).with_name("build_freetype.py"), "--abi", args.abi,
+            "--directory", base, "--ndk", args.ndk, "--dependencies", prefix]
+if args.source_cache:
+    freetype += ["--source-cache", args.source_cache]
+run(freetype, env=env)
 graphite = [sys.executable, Path(__file__).with_name("build_graphite.py"), "--abi", args.abi,
             "--directory", base, "--ndk", args.ndk]
 if args.source_cache:

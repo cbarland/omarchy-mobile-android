@@ -13,6 +13,7 @@ import re
 import zipfile
 from pathlib import Path
 from build_graphite import validate_materials, sha256
+from build_freetype import validate_materials as validate_freetype_materials, validate_output as validate_freetype_output
 
 ABIS = ("arm64-v8a", "x86_64")
 INSTALL_PINS = {
@@ -226,6 +227,22 @@ def audit(project: Path, apk=None) -> dict:
                         raise ValueError("Graphite source library differs from its build evidence")
                 except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
                     error("invalid_owned_graphite", abi=abi, detail=str(exc))
+            elif name == "libfreetype.so" and item.get("source", "").startswith("owned/freetype/"):
+                package, component, version = "freetype", "freetype", "2.15.0"
+                source_versions.setdefault((package, version), []).append(abi)
+                owned_source_versions.add((package, version))
+                proof = notices / "owned/freetype"
+                notice = proof / "notices"
+                try:
+                    origin = item.get("origin", {})
+                    if origin != {"kind": "project-built", "component": component, "version": version,
+                                  "buildManifestSha256": sha256(proof / "build.json")}:
+                        raise ValueError("FreeType requires its explicit owned-build origin")
+                    build = validate_freetype_materials(proof, abi)
+                    if build["librarySha256"] != item.get("sha256_source"):
+                        raise ValueError("FreeType source library differs from its build evidence")
+                except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+                    error("invalid_owned_freetype", abi=abi, detail=str(exc))
             elif name == "libanhyprland.so":
                 component, notice = "Hyprland", notices / "Hyprland-BSD-3-Clause.txt"
                 version = manifest.get("commit")
