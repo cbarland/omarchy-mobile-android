@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 import tarfile
 import tempfile
+import subprocess
+import sys
 import unittest
 from unittest import mock
 from importlib.machinery import SourceFileLoader
@@ -140,6 +142,16 @@ class SourceBundleTest(unittest.TestCase):
         (self.evidence / "termux-recipes/freetype/build.sh").write_text("tampered\n")
         with self.assertRaises(ValueError):
             MODULE.prepare(self.evidence, self.repo, self.root / "bundle", self.provenance_manifest)
+
+    def test_supplied_repository_python_is_not_executed(self):
+        (self.repo / "tools/native/prepare_source_inputs.py").write_text(
+            "raise AssertionError('caller-supplied Python was executed')\n")
+        result = subprocess.run([sys.executable, str(ROOT / "tools/native/prepare_termux_build_sources.py"),
+                                 "--evidence-root", str(self.evidence), "--repo-root", str(self.repo),
+                                 "--output", str(self.root / "bundle"),
+                                 "--provenance-manifest", str(self.provenance_manifest)],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_tar_duplicate_member_is_rejected(self):
         target = self.root / "bad.tar.gz"

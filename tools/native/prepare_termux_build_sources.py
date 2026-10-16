@@ -82,7 +82,7 @@ def selected_provenance(evidence, repo_root):
         "actual-input-blob-verification.json": evidence / "termux-full/actual-input-blob-verification.json",
         "input-blob-verification.json": evidence / "termux-full/input-blob-verification.json",
         "source-inputs.lock.json": repo_root / "tools/native/source-inputs.lock.json",
-        "prepare_source_inputs.py": repo_root / "tools/native/prepare_source_inputs.py",
+        "prepare_source_inputs.py": Path(__file__).with_name("prepare_source_inputs.py"),
     }
     for name, source in sources.items():
         if not source.exists() or source.is_symlink():
@@ -95,7 +95,7 @@ def selected_provenance(evidence, repo_root):
 def source_inputs(evidence, repo_root):
     lock_path = repo_root / "tools/native/source-inputs.lock.json"
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
-    validator_dir = str(repo_root / "tools/native")
+    validator_dir = str(Path(__file__).resolve().parent)
     sys.path.insert(0, validator_dir)
     try:
         from prepare_source_inputs import validate
