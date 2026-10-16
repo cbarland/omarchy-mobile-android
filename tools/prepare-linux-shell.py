@@ -125,11 +125,10 @@ with tarfile.open(a.output, "w:gz") as archive:
               ]}]}
     put("usr/share/omamobile/android/home.json", json.dumps(layout, indent=2) + "\n")
     tools = Path(__file__).parent
-    for name in ["setup-linux-shell", "start-shell", "omamobile-android", "omamobile-shell", "sync-session-theme"]:
+    for name in ["setup-linux-shell", "start-shell", "omamobile-android", "sync-session-theme"]:
         put("root/.local/share/omamobile/" + name, (tools / "linux" / name).read_bytes(), 0o755)
     put("usr/bin/omamobile-android", (tools / "linux/omamobile-android").read_bytes(), 0o755)
-    put("usr/bin/omamobile-shell", (tools / "linux/omamobile-shell").read_bytes(), 0o755)
     put("usr/lib/omamobile/session-bin/uwsm-app", (tools / "linux/session-exec").read_bytes(), 0o755)
     put("usr/share/omamobile/android/sources.json", json.dumps({"omarchy": OMARCHY, "omarchy-mobile": MOBILE, "omarchy-widgets": WIDGETS,
-        "adapter": "OMARCHY_SHELL_CONFIG override; Android-session-only uwsm-app argv adapter and shell status/reload wrapper without systemd scopes; additive theme-set.d hook applies theme IPC to the active peer profile; upstream application launch code unchanged; Linux-only setup and launch scripts"}, indent=2) + "\n")
+        "adapter": "OMARCHY_SHELL_CONFIG override; Android-session-only uwsm-app argv adapter without systemd scopes; additive theme-set.d hook applies theme IPC to the active peer profile; upstream application launch code unchanged; Linux-only setup and launch scripts"}, indent=2) + "\n")
 print(a.output, a.output.stat().st_size)

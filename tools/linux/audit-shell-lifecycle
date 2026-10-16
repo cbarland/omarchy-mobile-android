@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""Audit existing Omarchy shell commands without changing the runtime payload.
+
+Run inside an active hosted session for each profile:
+  audit-shell-lifecycle --profile phone
+  audit-shell-lifecycle --profile desktop
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+
+def run(argv, environment, timeout):
+    try:
+        result = subprocess.run(argv, env=environment, capture_output=True, text=True,
+                                timeout=timeout)
+        return {"argv": argv, "status": result.returncode,
+                "stdout": result.stdout.rstrip(), "stderr": result.stderr.rstrip()}
+    except subprocess.TimeoutExpired as error:
+        return {"argv": argv, "status": None, "timeout": timeout,
+                "stdout": (error.stdout or "").rstrip(), "stderr": (error.stderr or "").rstrip()}
+    except OSError as error:
+        return {"argv": argv, "status": None, "error": str(error), "stdout": "", "stderr": ""}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--profile", choices=("phone", "desktop"), required=True)
+    parser.add_argument("--timeout", type=float, default=3.0)
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
+    environment = os.environ.copy()
+    environment["OMAMOBILE_PROFILE"] = args.profile
+    checks = {}
+    checks["discovery"] = run(["quickshell", "list", "-a", "-j"], environment, args.timeout)
+    try:
+        parsed = json.loads(checks["discovery"]["stdout"])
+        checks["discovery"]["instances"] = len(parsed) if isinstance(parsed, list) else None
+    except (TypeError, ValueError):
+        checks["discovery"]["instances"] = None
+    checks["ping"] = run(["omarchy-shell", "shell", "ping"], environment, args.timeout)
+    checks["ping"]["ack"] = checks["ping"].get("status") == 0 and checks["ping"].get("stdout") == "ok"
+    checks["reload"] = run(["omarchy-shell", "shell", "reloadConfig"], environment, args.timeout)
+    checks["reload"]["ack"] = checks["reload"].get("status") == 0 and checks["reload"].get("stdout") == "ok"
+    checks["app_menu"] = run(["omarchy-shell", "shell", "summon", "omarchy.menu", '{"menu":"apps"}'], environment, args.timeout)
+    checks["app_menu"]["ack"] = checks["app_menu"].get("status") == 0 and checks["app_menu"].get("stdout") == "ok"
+    if checks["app_menu"]["ack"]:
+        checks["app_menu_hide"] = run(["omarchy-shell", "shell", "hide", "omarchy.menu"], environment, args.timeout)
+    report = {"profile": args.profile, "checks": checks,
+              "passed": all(checks[name].get("ack", False) for name in ("ping", "reload", "app_menu"))}
+    encoded = json.dumps(report, indent=2) + "\n"
+    if args.output:
+        args.output.write_text(encoded, encoding="utf-8")
+    print(encoded, end="")
+    return 0 if report["passed"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

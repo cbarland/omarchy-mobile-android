@@ -57,19 +57,21 @@ The pinned Omarchy Mobile documentation shows `quickshell list --all` as a
 diagnostic for selecting the nested shell's Wayland display, while the
 upstream Omarchy CLI sends normal operations through the shell's own IPC
 socket. On hosted Android sessions, the former can omit a live instance even
-when `omarchy-shell shell ping` succeeds. `omamobile-shell status` keeps these
-signals separate: discovery is diagnostic, and IPC ping is the readiness
-proof. `omamobile-shell reload` forwards `reloadConfig` and preserves its exit
-status. `omamobile-shell list` remains the raw Quickshell discovery command.
-The helper is Android-session-only and does not create a daemon or systemd
-scope.
+when `omarchy-shell shell ping` succeeds. The audit harness keeps these signals
+separate: discovery is diagnostic, and the existing IPC command's exact `ok`
+acknowledgement is the readiness proof. Run
+`tools/linux/audit-shell-lifecycle --profile phone` and again with
+`--profile desktop`; the harness invokes the existing
+`reloadConfig`, app-menu summon and hide commands for each profile, records
+their exit status, output and bounded timeout, and returns failure unless the
+expected acknowledgements are observed. It does not install a new CLI or
+create a daemon/systemd scope.
 
 The source reference is Omarchy Mobile commit
 `953bcb3058347459cdf7faaa1e149f16e0f7cfa6`,
 [`packages/omamobile-shell/plugins/README.md`](https://github.com/derekross/omarchy-mobile/blob/953bcb3058347459cdf7faaa1e149f16e0f7cfa6/packages/omamobile-shell/plugins/README.md#testing-in-the-desktop-harness),
-under its MIT license. The adapter does not copy upstream code; it preserves
-the documented CLI boundary and adds only the Android-session lifecycle
-wrapper.
+under its MIT license. The audit harness does not copy upstream code or claim
+that either profile supports every operation; it records the actual result.
 
 ## HTTPS theme transport check
 
