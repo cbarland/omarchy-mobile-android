@@ -305,7 +305,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--mechanical-only", action="store_true", help="Exit on file/hash/notice checks only; does not clear binary release holds")
-    parser.add_argument("--apk", type=Path, help="Also require both ABI native owners/runtimes in the actual APK")
+    parser.add_argument("--apk", type=Path, help="Also match staged external-library and installer bytes in the APK and check both ABI owner/runtime ELF entries")
     args = parser.parse_args()
     result = audit(args.project.resolve(), args.apk)
     print(json.dumps(result, indent=2))
