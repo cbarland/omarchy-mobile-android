@@ -63,16 +63,6 @@ def generated_launcher(package, content):
             lines[6] == b"")
 
 
-def regular_bytes(path):
-    """Read an adapter-owned candidate without accepting links or directories."""
-    try:
-        if not stat.S_ISREG(path.stat(follow_symlinks=False).st_mode):
-            return None
-        return path.read_bytes()
-    except FileNotFoundError:
-        return None
-
-
 def regular_snapshot(path):
     """Return identity and bytes for a regular non-link candidate."""
     try:
