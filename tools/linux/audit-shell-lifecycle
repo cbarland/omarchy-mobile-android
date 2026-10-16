@@ -13,15 +13,21 @@ import subprocess
 import sys
 
 
+def output_text(value):
+    if isinstance(value, bytes):
+        return value.decode(errors="replace").rstrip()
+    return (value or "").rstrip()
+
+
 def run(argv, environment, timeout):
     try:
         result = subprocess.run(argv, env=environment, capture_output=True, text=True,
                                 timeout=timeout)
         return {"argv": argv, "status": result.returncode,
-                "stdout": result.stdout.rstrip(), "stderr": result.stderr.rstrip()}
+                "stdout": output_text(result.stdout), "stderr": output_text(result.stderr)}
     except subprocess.TimeoutExpired as error:
         return {"argv": argv, "status": None, "timeout": timeout,
-                "stdout": (error.stdout or "").rstrip(), "stderr": (error.stderr or "").rstrip()}
+                "stdout": output_text(error.stdout), "stderr": output_text(error.stderr)}
     except OSError as error:
         return {"argv": argv, "status": None, "error": str(error), "stdout": "", "stderr": ""}
 
@@ -32,8 +38,15 @@ def main():
     parser.add_argument("--timeout", type=float, default=3.0)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    if not (args.timeout > 0 and args.timeout < float("inf")):
+        parser.error("--timeout must be finite and greater than zero")
     environment = os.environ.copy()
-    environment["OMAMOBILE_PROFILE"] = args.profile
+    actual_profile = environment.get("OMAMOBILE_PROFILE")
+    if actual_profile != args.profile:
+        report = {"profile": args.profile, "actual_profile": actual_profile,
+                  "passed": False, "error": "OMAMOBILE_PROFILE does not match --profile"}
+        print(json.dumps(report, indent=2) + "\n", end="")
+        return 2
     checks = {}
     checks["discovery"] = run(["quickshell", "list", "-a", "-j"], environment, args.timeout)
     try:
@@ -47,10 +60,11 @@ def main():
     checks["reload"]["ack"] = checks["reload"].get("status") == 0 and checks["reload"].get("stdout") == "ok"
     checks["app_menu"] = run(["omarchy-shell", "shell", "summon", "omarchy.menu", '{"menu":"apps"}'], environment, args.timeout)
     checks["app_menu"]["ack"] = checks["app_menu"].get("status") == 0 and checks["app_menu"].get("stdout") == "ok"
-    if checks["app_menu"]["ack"]:
-        checks["app_menu_hide"] = run(["omarchy-shell", "shell", "hide", "omarchy.menu"], environment, args.timeout)
+    checks["app_menu_hide"] = run(["omarchy-shell", "shell", "hide", "omarchy.menu"], environment, args.timeout)
+    checks["app_menu_hide"]["ack"] = checks["app_menu_hide"].get("status") == 0
     report = {"profile": args.profile, "checks": checks,
-              "passed": all(checks[name].get("ack", False) for name in ("ping", "reload", "app_menu"))}
+              "passed": all(checks[name].get("ack", False)
+                            for name in ("ping", "reload", "app_menu", "app_menu_hide"))}
     encoded = json.dumps(report, indent=2) + "\n"
     if args.output:
         args.output.write_text(encoded, encoding="utf-8")

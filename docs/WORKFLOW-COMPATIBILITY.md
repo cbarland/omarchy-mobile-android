@@ -73,6 +73,18 @@ The source reference is Omarchy Mobile commit
 under its MIT license. The audit harness does not copy upstream code or claim
 that either profile supports every operation; it records the actual result.
 
+### Observed live result (2026-10-15)
+
+On the prepared Linux host, both `phone` and `desktop` sessions returned
+`quickshell list -a -j` with status 0 and stdout `No running instances.`.
+Despite that diagnostic, `omarchy-shell shell ping` and
+`omarchy-shell shell reloadConfig` each returned the exact `ok` acknowledgement
+on both profiles. Summoning `omarchy.menu` with the apps menu argument also
+returned `ok`; hiding it returned status 0 with empty output. This is evidence
+that the current hosted shell commands work while Quickshell instance discovery
+is unavailable; it does not establish a discovery repair or visual menu
+rendering.
+
 ## HTTPS theme transport check
 
 The harness keeps its reviewed generated two-file data fixture and can exercise
