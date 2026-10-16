@@ -204,6 +204,7 @@ final class HostRuntime {
         changed();
         worker.execute(() -> {
             activeWorker = Thread.currentThread();
+            java.io.Closeable inputForCleanup = null;
             try {
                 checkSetupRunning();
                 if (image != null) {
@@ -212,7 +213,11 @@ final class HostRuntime {
                     }
                     var input = context.getContentResolver().openInputStream(image);
                     if (input == null) throw new IOException("Cannot read the selected archive");
+                    inputForCleanup = input;
+                    synchronized (this) { activeInput = input; }
                     try (input) {
+                        // Register before this check: stop() may race with provider open.
+                        checkSetupRunning();
                         importer().install(input, linux, machine(), this::appendLine, staging -> {
                             if (installOmarchy) prepareOmarchy(staging);
                         });
@@ -232,6 +237,9 @@ final class HostRuntime {
                 guest = null;
                 activeWorker = null;
                 recordingSetup = false;
+                synchronized (this) {
+                    if (inputForCleanup != null && activeInput == inputForCleanup) activeInput = null;
+                }
                 synchronized (this) { busy = false; }
                 changed();
                 main.post(done);

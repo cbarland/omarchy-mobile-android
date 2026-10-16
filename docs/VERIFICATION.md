@@ -17,6 +17,21 @@ passed with stable owners, signatures, display IDs and monitor geometry.
 Linux data and Shizuku grants were preserved. This short emulator cycle does
 not establish deep-idle, power-efficiency or physical-device coverage.
 
+### Stalled manual archive cancellation — 2026-10-16
+
+On a new empty disposable API35 emulator (`emulator-5560`), a test-only
+cross-process content provider holds an archive pipe open without producing
+bytes. The previous APK remains busy after Stop and fails the ten-second
+deadline. With manual streams registered for cancellation, the same test
+passes in 0.136s: the provider still holds its writer while the worker becomes
+idle, import staging disappears, no rootfs activates, the foreground service
+exits and unrelated sentinel data survives. Test cleanup then releases the
+writer. The graphical APK/test APK build, 68 JVM checks and lint pass; the
+blocking provider is absent from the production APK manifest.
+
+This covers cancellation of a stalled read after a provider has opened the
+archive. A provider that blocks inside its open call can still delay Stop.
+
 ### Guest-owned graphical runtime — 2026-10-15
 
 Before the change, a data-only fixture in the actual session runtime passed
