@@ -13,6 +13,15 @@ import static org.junit.Assert.*;
 
 public class SessionRuntimeTest {
     @Rule public TemporaryFolder temporary = new TemporaryFolder();
+    @Test public void hostAliasRequiresInstalledRootfsAndPointsAtGuestPath() throws Exception {
+        Path files = temporary.newFolder().toPath();
+        Path root = files.resolve("linux/rootfs");
+        assertThrows(java.io.IOException.class, () -> SessionRuntime.prepareHostAlias(files, root));
+        Files.createDirectories(root);
+        Path alias = SessionRuntime.prepareHostAlias(files, root);
+        assertEquals(GuestPaths.resolve(root, "/run/omamobile"), alias.toRealPath());
+    }
+
     @Test public void prepareIsIdempotentAndUsesPhysicalGuestPath() throws Exception {
         Path files = temporary.newFolder().toPath();
         Path root = files.resolve("root");

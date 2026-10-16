@@ -20,6 +20,7 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -52,9 +53,9 @@ final class AndroidAppPortal implements AutoCloseable {
     }
 
     void start() throws IOException {
-        File directory = new File(context.getFilesDir(), "r");
-        if (!directory.mkdirs() && !directory.isDirectory()) throw new IOException("Cannot create runtime directory");
-        path = new File(directory, "android.sock");
+        Path files = context.getFilesDir().toPath();
+        Path root = files.resolve("linux/rootfs");
+        path = SessionRuntime.prepareHostAlias(files, root).resolve("android.sock").toFile();
         if (path.exists() && !path.delete()) throw new IOException("Cannot clear old portal socket");
         binding = new LocalSocket();
         binding.bind(new LocalSocketAddress(path.toString(), LocalSocketAddress.Namespace.FILESYSTEM));
