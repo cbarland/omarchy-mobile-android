@@ -52,3 +52,33 @@ adb -s emulator-5562 shell am instrument -w -r -e audio true \
 Playback-head progress verifies the public Android pipeline. Speakers, physical
 device routing, ARM64 behavior, and a complete Linux audio service need separate
 verification.
+
+## PipeWire integration test
+
+`PipeWireAndroidOutputTest` requires `-e pipewireAudio true` and prepared Linux
+with the existing PipeWire/libpipewire 1:1.6.9-1, Python, pw-cli, and pw-link.
+Missing prerequisites fail an opted-in test. The test-only fixture creates one
+private foreground graph: the audiotestsrc default 440 Hz source, two explicit
+links, and a pipe-tunnel sink emitting S16LE stereo at 48 kHz into AndroidPcmOutput.
+Both private protocol sockets have explicit access; no global policy changes.
+
+The normal test checks actual node formats, running states and active links,
+complete FIFO-frame submission and advancing public playback head. The second
+test cancels the Android consumer while PipeWire is alive, then injects a fixture
+failure. Both require producer reaping, joined Android worker, released track and
+descriptors, and exact FIFO/run-directory removal. Evidence remains in the app's
+private `cache/pipewire-android-proof/<run>` directory. This extends transport
+verification, with the same audibility and integration limits above; it adds no
+application audio service, focus handling, package installation, or default-device
+policy. All public-delivery holds remain.
+
+The complete owned run holds the shared installation lease through cleanup.
+The single-threaded Python fixture binds its foreground server with
+`PR_SET_PDEATHSIG(SIGKILL)` before exec and checks its parent again after arming;
+an arming failure fails startup. A third test uses public `Os.kill(SIGKILL)` on
+the verified helper identity after the graph is running. It requires the exact
+producer PID/start identity to disappear before FIFO removal and lease release.
+Normal and controlled-failure cases assert Python reaped the server; the forced
+case bypasses Python finally and proves parent-death termination and observed
+process absence, with orphan reaping left to Android. This fixture-specific
+binding does not establish ownership for a future application audio service.
