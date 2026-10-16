@@ -1,5 +1,32 @@
 # Verification record
 
+## Direct IME composition contract — 2026-10-16
+
+On emulator `emulator-5556` (API 35, signed `wev` installed and the approved
+external presentation display attached), the focused phone-process test was
+run with:
+
+```text
+adb -s emulator-5556 shell am instrument -w -r \
+  -e graphics true -e imeComposition true \
+  -e class dev.omamobile.host.ImeCompositionTest \
+  dev.omamobile.host.test/dev.omamobile.host.PhoneProcessTestRunner
+```
+
+The old host failed at composing `xy` followed by `commitText("z")`, leaving
+the local draft. The candidate passed the same test, including exact
+ASCII/Unicode key-state streams, pending-draft flush, repeated finish,
+unsupported `replaceText` rejection, delete behavior, aliased text, and close
+cleanup. The implementation keeps only a local pending draft; it does not
+claim full IME history, selection, preedit protocol, or universal Unicode
+toolkit compatibility. Non-ASCII transport uses the pinned US-keyboard
+Ctrl+Shift+U route and remains client/toolkit dependent.
+
+The default `androidx.test.runner.AndroidJUnitRunner` remains registered for
+main-process tests, alongside the phone-process runner. After a normal
+graphics cleanup, the unchanged `EscapeImeTest` passed against both the old
+host and the candidate host through the default runner (65.116s and 63.947s).
+
 ## Owned Graphite build and runtime — 2026-10-16
 
 The first-party Graphite 1.3.15 recipe built both ABIs from locked source and
@@ -839,33 +866,6 @@ in the parent workspace, 29,307,172 bytes, SHA-256
 This is an emulator graphics build; its Linux image is prepared separately.
 
 ## Historical command-runtime milestone
-
-## Direct IME composition contract
-
-On emulator `emulator-5556` (API 35, signed `wev` installed and the approved
-external presentation display attached), the focused phone-process test was
-run with:
-
-```text
-adb -s emulator-5556 shell am instrument -w -r \
-  -e graphics true -e imeComposition true \
-  -e class dev.omamobile.host.ImeCompositionTest \
-  dev.omamobile.host.test/dev.omamobile.host.PhoneProcessTestRunner
-```
-
-The old host failed at composing `xy` followed by `commitText("z")`, leaving
-the local draft. The candidate passed the same test, including exact
-ASCII/Unicode key-state streams, pending-draft flush, repeated finish,
-unsupported `replaceText` rejection, delete behavior, aliased text, and close
-cleanup. The implementation keeps only a local pending draft; it does not
-claim full IME history, selection, preedit protocol, or universal Unicode
-toolkit compatibility. Non-ASCII transport uses the pinned US-keyboard
-Ctrl+Shift+U route and remains client/toolkit dependent.
-
-The default `androidx.test.runner.AndroidJUnitRunner` remains registered for
-main-process tests, alongside the phone-process runner. After a normal
-graphics cleanup, the unchanged `EscapeImeTest` passed against both the old
-host and the candidate host through the default runner (65.116s and 63.947s).
 
 The following records the earlier APK before the graphics integration.
 
