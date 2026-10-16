@@ -48,7 +48,7 @@ public class HomeActivityTest {
         awaitNoHostActivity(instrumentation);
         startHome(context);
         Activity main = awaitMainActivity(instrumentation);
-        awaitTopResumed(context, MainActivity.class);
+        awaitTopResumed(context, MainActivity.class, true);
         assertEquals(Display.DEFAULT_DISPLAY, main.getDisplay().getDisplayId());
         instrumentation.runOnMainSync(main::finish);
         assertFalse("Fallback must not start the phone owner", hasPhoneProcess(context));
@@ -157,14 +157,37 @@ public class HomeActivityTest {
     }
 
     private static void awaitTopResumed(Context context, Class<?> activityClass) throws Exception {
+        awaitTopResumed(context, activityClass, false);
+    }
+
+    private static void awaitTopResumed(Context context, Class<?> activityClass,
+            boolean declineNotifications) throws Exception {
         String component = context.getPackageName() + "/." + activityClass.getSimpleName();
         long deadline = SystemClock.uptimeMillis() + 5000;
         while (SystemClock.uptimeMillis() < deadline) {
             String dump = shell("dumpsys activity activities");
             if (topResumedOnDefaultDisplay(dump, component)) return;
+            if (declineNotifications) declineFirstRunNotificationPrompt(context);
             SystemClock.sleep(200);
         }
         fail("Display 0 did not focus " + component);
+    }
+
+    private static void declineFirstRunNotificationPrompt(Context context) {
+        var ui = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        var info = ui.getServiceInfo();
+        info.flags |= android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
+        ui.setServiceInfo(info);
+        var root = ui.getRootInActiveWindow();
+        if (root == null || !String.valueOf(root.getPackageName()).endsWith(".permissioncontroller")) return;
+        String label = context.getApplicationInfo().loadLabel(context.getPackageManager()).toString();
+        boolean ours = root.findAccessibilityNodeInfosByViewId("com.android.permissioncontroller:id/permission_message")
+                .stream().anyMatch(node -> String.valueOf(node.getText()).contains(label)
+                        && String.valueOf(node.getText()).contains("notifications?"));
+        if (!ours) return; // The gated English API35 fixture must never answer an unrelated permission.
+        for (var node : root.findAccessibilityNodeInfosByViewId("com.android.permissioncontroller:id/permission_deny_button"))
+            assertTrue("Decline the optional first-run notification request through its visible UI",
+                    node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK));
     }
 
     private static boolean topResumedOnDefaultDisplay(String dump, String component) {
