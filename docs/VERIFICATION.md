@@ -1,5 +1,35 @@
 # Verification record
 
+## Public HTTPS theme persistence — 2026-10-16
+
+On the merged `aaf3a1d` host in the disposable API35 x86_64 emulator, the opt-in
+fixed Hackerboy fixture used unchanged
+upstream `omarchy-theme-install` over public HTTPS. The remote and downloaded
+commit, all 14 canonical file hashes/modes, staged palette and selected
+background were checked. Both live shells acknowledged the update. After the
+normal Stop and Start controls, both new compositor signatures and mapped
+shell surfaces passed the persistence checks. Private, unedited captures of
+both displays before and after reopening showed the downloaded background,
+phone widgets and desktop bar. IPC checks alone do not establish appearance;
+the harness deliberately leaves `renderedPaletteVerified` false.
+
+Restore reapplied `tokyo-night`, verified the exact saved theme data and both
+shell acknowledgements, and removed only the harness-owned download. The final
+result reports public HTTPS verified and both owners reopened. Six focused
+Linux host tests pass. No theme scripts were executed and downloaded images
+are not redistributed. This checks one reviewed data-only theme, not arbitrary
+theme hooks or general ecosystem compatibility.
+
+The tested host APK contains both ABI JNI bridges, compositor ports, TAWC and
+Ando libraries: 146,967,976 bytes, SHA-256
+`2b688716bf580161330deb9b03c6a59962a8bd83d5af004e58763a24e170f273`.
+An earlier provider-test worktree build omitted the graphics bridge after
+manual native staging. Its cancellation and recovery results below remain
+valid for those paths, but its successful build did not establish graphics
+availability. The merged APK above was checked for the actual native entries
+and ran both real Hyprland sessions. Use the native staging tool, which
+refreshes AGP's target configuration, rather than manually copying inputs.
+
 ## Cancellation while opening an archive provider
 
 Manual import and separate-copy recovery now register Android's
@@ -18,7 +48,7 @@ retains its writer until test cleanup, so EOF cannot explain that pass.
 
 The prepared emulator also passes five export/recovery/service checks in
 25.857 seconds, including a successful separate-copy recovery that preserves
-live data. The full graphical APK/test APK, 70 JVM checks and lint pass; one
+live data. The host APK/test APK, 70 JVM checks and lint pass; one
 POSIX-only JVM fixture is skipped on Windows. Provider-open cancellation is
 cooperative: Android cannot compel arbitrary provider code to honor its signal.
 No prepared installation was replaced or reset.
