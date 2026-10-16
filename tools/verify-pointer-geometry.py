@@ -192,6 +192,7 @@ def probe_phase(adb, serial, root, phase, fixture):
         lambda: surface_geometry(GEOMETRY.run(adb + ["shell", "dumpsys", "SurfaceFlinger", "--layers"])),
         lambda: (fixture.read() or {}).get("allocation"),
     )
+    current = fixture.read() or {}
     before_count = len(current.get("events", []))
     taps = [(round(phase["mode"][0] * .25), round(phase["mode"][1] * .25)),
             (round(phase["mode"][0] * .75), round(phase["mode"][1] * .75))]
