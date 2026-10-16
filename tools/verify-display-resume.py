@@ -72,7 +72,7 @@ def session_health(root, adb, profile, deadline=None):
         healthy = (result.returncode == 0 and isinstance(monitors, list) and bool(monitors)
                    and all(isinstance(item, dict) and int(item.get("width", 0)) > 0
                            and int(item.get("height", 0)) > 0 for item in monitors))
-    except (json.JSONDecodeError, TypeError):
+    except (ValueError, TypeError):
         monitors = None
         healthy = False
     return {"healthy": healthy, "monitors": monitors,
@@ -156,12 +156,11 @@ def verify(adb, root):
     initial_power = baseline["power"]
     result = {"serial": adb[2], "avd": avd, "passed": False,
               "initialPower": initial_power, "baseline": baseline}
-    cycle_started = False
+    if not baseline_ready(baseline):
+        result["error"] = "Baseline must be awake, known unlocked, healthy, and have complete owners"
+        return result
     try:
-        if not baseline_ready(baseline):
-            raise RuntimeError("Baseline must be awake, known unlocked, healthy, and have complete owners")
         run(adb + ["shell", "input", "keyevent", "KEYCODE_SLEEP"])
-        cycle_started = True
         result["afterSleepPower"] = wait_power(adb, "Asleep")
         run(adb + ["shell", "input", "keyevent", "KEYCODE_WAKEUP"])
         wait_power(adb, "Awake")
@@ -176,14 +175,10 @@ def verify(adb, root):
         result["error"] = str(error)
     finally:
         try:
-            if not cycle_started:
-                return result
-            if initial_power == "Asleep":
-                run(adb + ["shell", "input", "keyevent", "KEYCODE_SLEEP"])
-                result["restoredPower"] = wait_power(adb, "Asleep")
-            else:
-                run(adb + ["shell", "input", "keyevent", "KEYCODE_WAKEUP"])
-                result["restoredPower"] = wait_power(adb, initial_power)
+            # The sleep request may have reached Android even when ADB failed
+            # to acknowledge it. Every attempted cycle must restore Awake.
+            run(adb + ["shell", "input", "keyevent", "KEYCODE_WAKEUP"])
+            result["restoredPower"] = wait_power(adb, "Awake")
         except (OSError, subprocess.SubprocessError, RuntimeError, ValueError) as error:
             result["cleanupError"] = str(error)
     result["passed"] = result["passed"] and result.get("restoredPower") == initial_power and "cleanupError" not in result
