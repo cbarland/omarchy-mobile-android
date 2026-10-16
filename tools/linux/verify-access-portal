@@ -1,0 +1,89 @@
+#!/bin/bash
+# Start a real AccessDialog request and wait for a human phone-sheet decision.
+# The harness never calls AccessSheet.Answer or the plugin's dismiss method.
+set -euo pipefail
+
+decision=${1:-}
+case "$decision" in allow|deny) ;; *) echo "usage: verify-access-portal allow|deny" >&2; exit 64 ;; esac
+for tool in gdbus omarchy-shell python3 timeout; do
+  command -v "$tool" >/dev/null || { echo "missing command: $tool" >&2; exit 69; }
+done
+
+name=org.freedesktop.impl.portal.desktop.omamobile
+iface=org.omamobile.AccessSheet
+path=/org/omamobile/AccessSheet
+request_iface=org.freedesktop.impl.portal.Request
+token=$(python3 -c 'import secrets; print(secrets.token_hex(12))')
+request_handle="/org/freedesktop/portal/desktop/request/1_1/$token"
+title="Allow $token?"
+body="Synthetic portal probe $token."
+tmp=$(mktemp -d)
+call_pid=
+request_id=
+request_sent=0
+cleanup() {
+  local status=$?
+  if [[ $request_sent == 1 ]]; then
+    timeout 2s gdbus call --session --dest "$name" --object-path "$request_handle" \
+      --method "$request_iface.Close" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$call_pid" ]]; then
+    kill "$call_pid" 2>/dev/null || true
+    wait "$call_pid" 2>/dev/null || true
+  fi
+  rm -rf "$tmp"
+  exit "$status"
+}
+trap cleanup EXIT
+
+before=$(timeout 2s omarchy-shell shell call omamobile.access snapshot '') || {
+  echo "cannot read omamobile.access snapshot" >&2; exit 69;
+}
+printf '%s' "$before" | python3 -c '
+import json, sys
+try:
+    value = json.load(sys.stdin)
+except ValueError:
+    raise SystemExit("Access plugin is not ready or enabled in this profile")
+if not isinstance(value, dict) or "current" not in value:
+    raise SystemExit("unsupported access snapshot schema")
+if value["current"] is not None:
+    raise SystemExit("an Access request is already pending")
+'
+
+request_sent=1
+timeout 20s gdbus call --session --dest "$name" \
+  --object-path /org/freedesktop/portal/desktop \
+  --method org.freedesktop.impl.portal.Access.AccessDialog \
+  "$request_handle" org.example.OmamobileProbe '' \
+  "$title" '' "$body" \
+  "{'icon': <'camera-web-symbolic'>}" >"$tmp/result" 2>"$tmp/call.err" &
+call_pid=$!
+
+deadline=$((SECONDS + 15))
+while (( SECONDS < deadline )); do
+  snapshot=$(timeout 2s omarchy-shell shell call omamobile.access snapshot '') || {
+    cat "$tmp/call.err" >&2; exit 1;
+  }
+  request_id=$(printf '%s' "$snapshot" | PROBE_TOKEN="$token" PROBE_TITLE="$title" PROBE_BODY="$body" python3 -c '
+import json, os, re, sys
+value = json.load(sys.stdin)
+current = value.get("current") if isinstance(value, dict) else None
+if isinstance(current, dict) and current.get("title") == os.environ["PROBE_TITLE"] \
+        and current.get("body") == os.environ["PROBE_BODY"] \
+        and current.get("appId") == "org.example.OmamobileProbe":
+    request_id = current.get("id")
+    if isinstance(request_id, str) and re.fullmatch(r"[0-9a-f]{8,64}", request_id):
+        print(request_id)
+' 2>/dev/null) || { cat "$tmp/call.err" >&2; exit 1; }
+  [[ -n "$request_id" ]] && break
+  kill -0 "$call_pid" 2>/dev/null || { cat "$tmp/call.err" >&2; exit 1; }
+  sleep .1
+done
+[[ -n "$request_id" ]] || { echo "synthetic request did not reach omamobile.access" >&2; exit 1; }
+
+printf 'request-id=%s expected=%s; tap the real phone sheet now\n' "$request_id" "$decision"
+wait "$call_pid" || { cat "$tmp/call.err" >&2; exit 1; }
+expected=$([[ "$decision" == allow ]] && echo 0 || echo 1)
+grep -q "uint32 $expected" "$tmp/result" || { cat "$tmp/result" >&2; exit 1; }
+cat "$tmp/result"

@@ -83,6 +83,15 @@ def main():
 
     before = payload("clean")
     assert before, "Preparation produced an empty payload"
+    required_portal = {
+        "usr/bin/omamobile-portal-access",
+        "usr/share/xdg-desktop-portal/portals/omamobile.portal",
+        "etc/xdg/xdg-desktop-portal/hyprland-portals.conf",
+        "usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.omamobile.service",
+        "usr/lib/systemd/user/omamobile-portal-access.service",
+        "root/.local/share/omamobile/verify-access-portal",
+    }
+    assert required_portal <= before, f"Access portal payload members missing: {required_portal - before}"
     # Invalid JSON makes accidental worktree reads fail loudly. License changes
     # cover both explicit put() calls and trees; widget bytes cover hash checks.
     dirty_paths = {
