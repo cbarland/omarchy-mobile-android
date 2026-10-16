@@ -13,6 +13,7 @@ import re
 import zipfile
 from pathlib import Path
 from build_graphite import validate_materials, sha256
+from elf_dependencies import read_elf64_dependencies_bytes
 
 ABIS = ("arm64-v8a", "x86_64")
 INSTALL_PINS = {
@@ -71,18 +72,38 @@ def _apk_native_errors_archive(archive):
     errors, checked = [], 0
     required = ("libomamobile_hyprland.so", "libanhyprland.so", "libtawcroot.so", "libando.so")
     names = archive.namelist()
+    packaged = {abi: {Path(name).name for name in names
+                      if name.startswith("lib/" + abi + "/") and name.endswith(".so")}
+                for abi in ABIS}
     for abi, machine in (("x86_64", 62), ("arm64-v8a", 183)):
+        for entry in sorted(name for name in names if name.startswith("lib/" + abi + "/") and name.endswith(".so")):
+            if names.count(entry) != 1:
+                errors.append({"kind": "duplicate_apk_native_entry", "abi": abi, "entry": entry})
+                continue
+            try:
+                with archive.open(entry) as stream:
+                    info = read_elf64_dependencies_bytes(stream.read(), supported_machines=(machine,))
+                if info.elf_type not in (2, 3):
+                    raise ValueError("unsupported ELF type")
+                for dependency in info.needed:
+                    if dependency not in SYSTEM and dependency not in packaged[abi]:
+                        errors.append({"kind": "missing_apk_native_dependency", "abi": abi,
+                                       "entry": entry, "dependency": dependency})
+            except (ValueError, OSError, KeyError, TypeError) as exc:
+                errors.append({"kind": "invalid_apk_native_elf", "abi": abi, "entry": entry,
+                               "detail": str(exc)})
         for name in required:
             entry = "lib/" + abi + "/" + name
             if names.count(entry) != 1:
                 errors.append({"kind": "missing_or_duplicate_apk_native", "entry": entry})
                 continue
-            with archive.open(entry) as stream:
-                header = stream.read(20)
-            if (len(header) != 20 or header[:6] != b"\x7fELF\x02\x01"
-                    or int.from_bytes(header[18:20], "little") != machine
-                    or int.from_bytes(header[16:18], "little") not in
-                    ((3,) if name in ("libomamobile_hyprland.so", "libanhyprland.so") else (2, 3))):
+            try:
+                with archive.open(entry) as stream:
+                    info = read_elf64_dependencies_bytes(stream.read(), supported_machines=(machine,))
+                valid_type = info.elf_type in ((3,) if name in ("libomamobile_hyprland.so", "libanhyprland.so") else (2, 3))
+            except (ValueError, OSError, KeyError, TypeError):
+                valid_type = False
+            if not valid_type:
                 errors.append({"kind": "invalid_apk_native_elf", "entry": entry})
             else:
                 checked += 1

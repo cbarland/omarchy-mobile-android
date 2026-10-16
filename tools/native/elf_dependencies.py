@@ -33,8 +33,12 @@ def _map_range(vaddr: int, length: int, loads: list[tuple[int, int, int, int]], 
     if length <= 0:
         raise ValueError("mapped range must not be empty")
     matches = []
+    range_end = vaddr + length
     for offset, seg_vaddr, filesz, _memsz in loads:
-        if seg_vaddr <= vaddr and vaddr - seg_vaddr <= filesz - length:
+        segment_end = seg_vaddr + filesz
+        if vaddr < segment_end and seg_vaddr < range_end:
+            if not (seg_vaddr <= vaddr and range_end <= segment_end):
+                raise ValueError("mapped range partially overlaps a PT_LOAD")
             mapped = offset + (vaddr - seg_vaddr)
             _span_end(mapped, length, file_size, "mapped range")
             matches.append(mapped)
@@ -43,9 +47,8 @@ def _map_range(vaddr: int, length: int, loads: list[tuple[int, int, int, int]], 
     return matches[0]
 
 
-def read_elf64_dependencies(path: str | Path, *, supported_machines=(62, 183),
-                             supported_types=(2, 3)) -> ELFDependencies:
-    data = Path(path).read_bytes()
+def read_elf64_dependencies_bytes(data: bytes, *, supported_machines=(62, 183),
+                                   supported_types=(2, 3)) -> ELFDependencies:
     size = len(data)
     if size < ELF_HEADER.size:
         raise ValueError("truncated ELF header")
@@ -120,3 +123,10 @@ def read_elf64_dependencies(path: str | Path, *, supported_machines=(62, 183),
             raise ValueError("DT_NEEDED name is not ASCII") from exc
         needed.append(name)
     return ELFDependencies(machine, elf_type, tuple(needed))
+
+
+def read_elf64_dependencies(path: str | Path, *, supported_machines=(62, 183),
+                             supported_types=(2, 3)) -> ELFDependencies:
+    return read_elf64_dependencies_bytes(Path(path).read_bytes(),
+                                          supported_machines=supported_machines,
+                                          supported_types=supported_types)

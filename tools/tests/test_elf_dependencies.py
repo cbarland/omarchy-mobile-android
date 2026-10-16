@@ -120,6 +120,15 @@ class ELFDependenciesTest(unittest.TestCase):
             2, 6, 0x700, 0x400700, 0, 0x80, 0x80, 8)
         self.check(data)
 
+    def test_partial_overlapping_load_is_rejected(self):
+        data = fixture()
+        data[EH.size + 2 * PH.size:EH.size + 3 * PH.size] = PH.pack(
+            1, 4, 0x430, 0x400430, 0, 0x20, 0x20, 0x1000)
+        data[:EH.size] = EH.pack(b'\x7fELF' + bytes([2, 1, 1]) + bytes(9),
+                                 3, 62, 1, 0, EH.size, 0, 0,
+                                 EH.size, PH.size, 3, 0, 0, 0)
+        self.check(data)
+
 
 if __name__ == '__main__':
     unittest.main()
