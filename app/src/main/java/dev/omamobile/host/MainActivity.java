@@ -20,7 +20,7 @@ public final class MainActivity extends Activity {
     private HostRuntime runtime;
     private TextView status, console;
     private EditText command;
-    private Button run, importImage, install, screens, stop;
+    private Button run, importImage, install, exportData, screens, stop;
     private CheckBox ando, androidDns;
     private DisplaySettings displaySettings;
     private android.app.AlertDialog credits;
@@ -63,6 +63,12 @@ public final class MainActivity extends Activity {
         stop.setOnClickListener(v -> runtime.stop());
         layout.addView(stop);
         layout.addView(text("First setup: choose a trusted Arch Linux ARM tar.gz (x86_64 on an emulator). Verify its upstream signature before importing. Setup installs signed Linux packages over the internet and can take several minutes and multiple GB of storage. Existing Linux data is never replaced.", 14));
+        exportData = new Button(this);
+        exportData.setText("Export Linux user data");
+        exportData.setOnClickListener(v -> startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .setType("application/gzip").addCategory(Intent.CATEGORY_OPENABLE)
+                .putExtra(Intent.EXTRA_TITLE, "omamobile-linux-data.tar.gz"), 13));
+        layout.addView(exportData);
         screens = new Button(this);
         screens.setText(R.string.start_screens);
         screens.setOnClickListener(v -> startForegroundService(new Intent(this, DesktopService.class)));
@@ -148,7 +154,10 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if ((request == 10 || request == 12) && result == RESULT_OK && data != null && data.getData() != null) {
+        if (request == 13 && result == RESULT_OK && data != null && data.getData() != null) {
+            startOperation(new Intent(this, LinuxService.class).setData(data.getData()).putExtra("exportData", true)
+                    .addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION));
+        } else if ((request == 10 || request == 12) && result == RESULT_OK && data != null && data.getData() != null) {
             startOperation(new Intent(this, LinuxService.class).setData(data.getData()).putExtra("installOmarchy", request == 12)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
         }
@@ -177,6 +186,7 @@ public final class MainActivity extends Activity {
         ando.setEnabled(!runtime.busy());
         androidDns.setEnabled(!runtime.busy());
         stop.setEnabled(runtime.busy());
+        exportData.setEnabled(runtime.installed() && !runtime.busy());
         displaySettings.refresh();
     }
 }

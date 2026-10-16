@@ -94,6 +94,16 @@ installation is not activated over an existing rootfs. An existing Linux
 installation is retained rather than merged with or silently replaced by another
 archive. Do not clear application storage to diagnose a small setup failure.
 
+After installation, **Export Linux user data** writes a gzip-compressed tar archive
+through Android's document picker. It contains only `/root` and `/home` (including
+their file modes and symlinks); package files, `/usr`, and Android-private metadata
+are excluded. The export walks live files at one point in time; stop graphical and
+Linux sessions first if you need a quiescent user-data copy. Keep the export with
+the archive fingerprint and verify the resulting file before moving it. A failed
+copy can leave an incomplete newly-created document in the selected provider; do
+not use that file. An in-app restore/replacement flow is not yet provided; do not
+select an export as a base Linux archive.
+
 ## 3. Start phone and desktop sessions
 
 After preparation completes, choose **Start Omarchy screens**. The phone uses
@@ -122,3 +132,20 @@ left no active setup processes or unpublished rootfs. Service completion/retry
 regressions also pass. See [VERIFICATION.md](VERIFICATION.md) for evidence scope.
 Fresh ARM64 installation is still unverified; previous manually prepared physical
 sessions do not establish this new installation path on a phone.
+
+
+### User-data export verification - 2026-10-15
+
+On disposable API35 emulator-5556, the three targeted LinuxDataExportTest
+checks passed again in 20.980 seconds after the abandoned-staging fix. They
+verify user-tree scope, fixture bytes/mode/symlink, unchanged installed data,
+cancellation/private-temp cleanup, persistent logs, rejected-service cleanup,
+and reclamation of an abandoned archive while retaining an unrelated sentinel.
+These in-process tests use file URIs and do not themselves prove SAF grants.
+
+A separate actual Export control -> Android Downloads picker -> Save flow
+completed through the document provider. Inspection of the resulting 98,904,258
+byte tar.gz found 1,256 regular files and 13 symlinks, all under root/ or home/;
+the foreground LinuxService had exited after completion. No archive or private
+Linux data is committed to the repository. Restore/replacement and authenticated
+image download remain open in issue #3.

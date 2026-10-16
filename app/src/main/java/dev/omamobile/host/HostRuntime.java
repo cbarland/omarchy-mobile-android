@@ -109,6 +109,51 @@ final class HostRuntime {
         return submit(command, image, ando, androidDns, false, done);
     }
 
+    synchronized boolean exportData(Uri destination, Runnable done) {
+        if (busy || destination == null || !installed()) return false;
+        try {
+            // A force-stop can bypass the worker's finally block. Reclaim only
+            // our exact private export names before admitting the next writer.
+            try (var children = Files.list(linux)) {
+                for (Path child : (Iterable<Path>) children::iterator) {
+                    if (child.getFileName().toString().matches("export-[0-9a-f-]{36}\\.tmp"))
+                        GuestPaths.deleteTree(child);
+                }
+            }
+        } catch (IOException error) {
+            appendLine("Cannot reclaim an abandoned export archive: " + error.getMessage());
+            return false;
+        }
+        busy = true; stopping = false; recordingSetup = true; changed();
+        worker.execute(() -> {
+            activeWorker = Thread.currentThread();
+            Path temporary = linux.resolve("export-" + java.util.UUID.randomUUID() + ".tmp");
+            try {
+                Files.createDirectories(linux);
+                try (var output = Files.newOutputStream(temporary, java.nio.file.StandardOpenOption.CREATE_NEW)) {
+                    appendLine("Exporting Linux user data (/root and /home) to a temporary archive…");
+                    importer().exportUserData(root, output, this::appendLine);
+                }
+                checkSetupRunning();
+                var output = context.getContentResolver().openOutputStream(destination);
+                if (output == null) throw new IOException("Cannot write the selected export destination");
+                try (output; var input = Files.newInputStream(temporary)) {
+                    byte[] buffer = new byte[64 * 1024]; int read;
+                    while ((read = input.read(buffer)) != -1) { checkSetupRunning(); output.write(buffer, 0, read); }
+                }
+                appendLine("Linux user data export completed.");
+            } catch (Exception e) {
+                appendLine(stopping ? "Operation cancelled." : "Error: " + (e.getMessage() == null ? e.toString() : e.getMessage()));
+            } finally {
+                try { GuestPaths.deleteTree(temporary); }
+                catch (IOException error) { android.util.Log.w("OmamobileLinux", "Cannot remove temporary export", error); }
+                Thread.interrupted(); activeWorker = null; recordingSetup = false; synchronized (this) { busy = false; }
+                changed(); main.post(done);
+            }
+        });
+        return true;
+    }
+
     synchronized boolean submit(String command, Uri image, boolean ando, boolean androidDns, boolean installOmarchy, Runnable done) {
         if (busy) return false;
         busy = true;

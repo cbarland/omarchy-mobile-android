@@ -22,7 +22,10 @@ public final class LinuxService extends Service {
         startForeground(1, new Notification.Builder(this, "linux").setContentTitle("Omarchy Mobile")
                 .setContentText("Linux operation in progress").setSmallIcon(android.R.drawable.stat_sys_download)
                 .setContentIntent(open).setOngoing(true).build());
-        boolean accepted = runtime.submit(intent.getStringExtra("command"), intent.getData(), intent.getBooleanExtra("ando", false),
+        boolean export = intent.getBooleanExtra("exportData", false);
+        boolean accepted = export ? runtime.exportData(intent.getData(), () -> {
+            if (!runtime.busy() && stopSelfResult(latestStartId)) stopForeground(STOP_FOREGROUND_REMOVE);
+        }) : runtime.submit(intent.getStringExtra("command"), intent.getData(), intent.getBooleanExtra("ando", false),
                 intent.getBooleanExtra("androidDns", false), intent.getBooleanExtra("installOmarchy", false), () -> {
             // An earlier worker's posted completion must not cancel a newly
             // accepted operation. Rejected duplicate starts still advance the
@@ -31,9 +34,13 @@ public final class LinuxService extends Service {
         });
         if (!accepted) {
             // Existing operation owns this foreground service until its completion callback.
+            if (export && !runtime.busy()) {
+                stopForeground(STOP_FOREGROUND_REMOVE);
+                stopSelfResult(latestStartId);
+            }
             return START_NOT_STICKY;
         }
-        if (intent.getBooleanExtra("installOmarchy", false)) {
+        if (intent.getBooleanExtra("installOmarchy", false) || export) {
             setupWakeLock = getSystemService(android.os.PowerManager.class).newWakeLock(
                     android.os.PowerManager.PARTIAL_WAKE_LOCK, "omamobile:setup");
             setupWakeLock.setReferenceCounted(false);
