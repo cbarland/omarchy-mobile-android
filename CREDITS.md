@@ -55,6 +55,19 @@ and signed packages. <a href="https://github.com/termux/termux-packages">Termux
 packages</a> supply many Android-native graphics dependencies, extracted without
 running package scripts. Their individual licenses remain applicable.</p>
 
+<p><a href="https://www.bouncycastle.org/">Bouncy Castle</a> 1.86 supplies the
+OpenPGP verification APIs used for the pinned bootstrap signatures. The resolved
+<code>bcpg-jdk18on</code>, <code>bcprov-jdk18on</code> and transitively resolved
+<code>bcutil-jdk18on</code> modules retain their MIT notices; the OpenPGP module's
+POM also records Apache-2.0 for applicable included components. The exact notices
+are in <code>app/src/main/assets/licenses/bouncycastle-*.txt</code>.</p>
+
+<p><a href="https://github.com/luben/zstd-jni">zstd-jni</a> 1.5.7-23 supplies
+the Android/JVM Zstandard binding used for the official x86_64 bootstrap. Its
+BSD-2-Clause notice and the bundled upstream Zstandard BSD-3-Clause notice are
+retained in <code>app/src/main/assets/licenses/zstd-jni.txt</code> and
+<code>app/src/main/assets/licenses/zstd.txt</code>.</p>
+
 <p><a href="https://github.com/SimonSchubert/omarchy-widgets">Omalauncher OWL
 widgets</a> supplies the MIT-licensed store used through Mobile's existing
 compatibility index (revision <code>b63886b75e02ccef1a8a11baeef2d6eff7a374af</code>).

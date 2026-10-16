@@ -24,26 +24,27 @@ public final class LinuxService extends Service {
                 .setContentIntent(open).setOngoing(true).build());
         boolean export = intent.getBooleanExtra("exportData", false);
         boolean recover = intent.getBooleanExtra("recoverData", false);
-        boolean accepted = export ? runtime.exportData(intent.getData(), () -> {
+        boolean download = intent.getBooleanExtra("downloadBootstrap", false);
+        Runnable done = () -> {
+            // A rejected duplicate start advances the start ID. An older
+            // completion must not stop a newly accepted operation.
             if (!runtime.busy() && stopSelfResult(latestStartId)) stopForeground(STOP_FOREGROUND_REMOVE);
-        }) : recover ? runtime.recoverData(intent.getData(), () -> {
-            if (!runtime.busy() && stopSelfResult(latestStartId)) stopForeground(STOP_FOREGROUND_REMOVE);
-        }) : runtime.submit(intent.getStringExtra("command"), intent.getData(), intent.getBooleanExtra("ando", false),
-                intent.getBooleanExtra("androidDns", false), intent.getBooleanExtra("installOmarchy", false), () -> {
-            // An earlier worker's posted completion must not cancel a newly
-            // accepted operation. Rejected duplicate starts still advance the
-            // service start ID, so stop the latest request only when idle.
-            if (!runtime.busy() && stopSelfResult(latestStartId)) stopForeground(STOP_FOREGROUND_REMOVE);
-        });
+        };
+        boolean accepted;
+        if (export) accepted = runtime.exportData(intent.getData(), done);
+        else if (recover) accepted = runtime.recoverData(intent.getData(), done);
+        else if (download) accepted = runtime.installDownloaded(done);
+        else accepted = runtime.submit(intent.getStringExtra("command"), intent.getData(), intent.getBooleanExtra("ando", false),
+                intent.getBooleanExtra("androidDns", false), intent.getBooleanExtra("installOmarchy", false), done);
         if (!accepted) {
             // Existing operation owns this foreground service until its completion callback.
-            if ((export || recover) && !runtime.busy()) {
+            if (!runtime.busy()) {
                 stopForeground(STOP_FOREGROUND_REMOVE);
                 stopSelfResult(latestStartId);
             }
             return START_NOT_STICKY;
         }
-        if (intent.getBooleanExtra("installOmarchy", false) || export || recover) {
+        if (intent.getBooleanExtra("installOmarchy", false) || export || recover || download) {
             setupWakeLock = getSystemService(android.os.PowerManager.class).newWakeLock(
                     android.os.PowerManager.PARTIAL_WAKE_LOCK, "omamobile:setup");
             setupWakeLock.setReferenceCounted(false);

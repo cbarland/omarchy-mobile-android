@@ -43,6 +43,15 @@ XERJ's shared local indexes were used for concrete mechanism lookup, followed by
 - Stock Android hardlink denial: `install/util/FsOps.kt:86`, `install/ProotArchiveExtractor.kt:201`. The importer uses the same relative-symlink fallback for EACCES/EPERM; this does not add a PRoot runtime. Exact imported hardlink identity remains a compatibility gap. XERJ's guessed `tawcroot_linkstore_link` symbol returned no match; direct source inspection found the relevant extraction mechanism.
 - ARM distro reference: `install/distro/arch/ArchLinuxArm.kt` (standard gzip rootfs; upstream detached PGP signature). No TAWC Android app source copied.
 
+## Authenticated bootstrap sources
+
+- Arch Linux ARM official downloads: https://archlinuxarm.org/about/downloads
+- Arch Linux ARM package-signing guidance and Build System primary fingerprint: https://archlinuxarm.org/about/package-signing
+- Arch Linux official downloads and release-key guidance: https://archlinux.org/download/
+- Arch Linux official developer/key listing: https://archlinux.org/people/developers/
+- The automatic source, download boundary and importer layout are local code in `app/src/main/java/dev/omamobile/host/BootstrapSource.java`, `BootstrapDownload.java`, and `RootfsImporter.java`. The automatic x86_64 path passed fresh-emulator verification; ARM64 remains unverified and manual import/setup evidence remains separate.
+- `BootstrapSignature.java` is adapted from TAWC's MIT `SignatureVerifier` at `64e3736699684a4fc0029e71bdfb7cc1e0884323`; it pins full primary fingerprints and does not resolve arbitrary subkeys. The attribution and pinned key provenance are recorded in `docs/AUTHENTICATED_INSTALL_PROVENANCE.md`.
+
 ## Android commands / earlier Omalauncher work
 
 - Repository: https://github.com/SimonSchubert/Omalauncher
@@ -70,6 +79,8 @@ XERJ's shared local indexes were used for concrete mechanism lookup, followed by
 ## Other shipped dependencies
 
 - Apache Commons Compress 1.28.0, Commons IO 2.20.0, Codec 1.19.0 and Lang 3.18.0: Apache-2.0, resolved through Gradle. Their license/notice resources are copied into APK assets. AGP also supplies Kotlin stdlib 2.2.10 and JetBrains annotations 13.0 (Apache-2.0).
+- Bouncy Castle Java 1.86: `bcpg-jdk18on`, `bcprov-jdk18on`, and transitively `bcutil-jdk18on`. Maven Central artifacts: https://central.sonatype.com/artifact/org.bouncycastle/bcpg-jdk18on, https://central.sonatype.com/artifact/org.bouncycastle/bcprov-jdk18on, and https://central.sonatype.com/artifact/org.bouncycastle/bcutil-jdk18on. Exact resolved notices are copied under `app/src/main/assets/licenses/bouncycastle-*.txt`.
+- zstd-jni 1.5.7-23: BSD-2-Clause binding from https://github.com/luben/zstd-jni; bundled Zstandard native code carries its BSD-3-Clause notice at https://github.com/luben/zstd-jni/blob/v1.5.7-23/src/main/native/LICENSE. Exact notices from that tag are copied under `app/src/main/assets/licenses/zstd-jni.txt` and `app/src/main/assets/licenses/zstd.txt`.
 - Statically linked Android bionic code: Android NDK notices included in APK assets under `licenses/`.
 - Gradle wrapper: copied from the existing workspace, pinned Gradle 9.5.0 distribution SHA-256 in `gradle-wrapper.properties`.
 

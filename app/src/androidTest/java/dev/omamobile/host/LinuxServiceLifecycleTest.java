@@ -57,6 +57,27 @@ public class LinuxServiceLifecycleTest {
         awaitStopped(context);
     }
 
+    @Test public void downloadedInstallRefusesExistingLinuxWithoutLeavingServiceRunning() throws Exception {
+        Assume.assumeTrue("Prepared Linux required", "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
+        var instrumentation = InstrumentationRegistry.getInstrumentation();
+        Context context = instrumentation.getTargetContext();
+        var runtime = HostRuntime.get(context);
+        assertTrue(runtime.installed());
+        var shell = runtime.root.resolve("root/.local/share/omamobile/start-shell");
+        byte[] before = java.nio.file.Files.readAllBytes(shell);
+        instrumentation.runOnMainSync(() -> {
+            context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            context.startForegroundService(new Intent(context, LinuxService.class).putExtra("downloadBootstrap", true));
+        });
+        instrumentation.waitForIdleSync();
+        awaitStopped(context);
+        assertFalse(runtime.busy());
+        assertArrayEquals(before, java.nio.file.Files.readAllBytes(shell));
+        try (var children = java.nio.file.Files.list(runtime.linux)) {
+            assertFalse(children.anyMatch(path -> path.getFileName().toString().startsWith("download-")));
+        }
+    }
+
     private static Intent command(Context context, String command) {
         return new Intent(context, LinuxService.class).putExtra("command", command);
     }

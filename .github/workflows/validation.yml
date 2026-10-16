@@ -59,7 +59,7 @@ jobs:
           # Include preview channels: the project pins NDK r30-beta1.
           # Fail if the exact package disappears; do not substitute versions.
           subprocess.run([str(manager), '--install', '--channel=3',
-                          'platforms;android-35', 'build-tools;36.0.0',
+                          'platforms;android-37.0', 'build-tools;36.0.0',
                           'cmake;4.1.2', 'ndk;30.0.14904198'],
                          input='y\n' * 100, text=True, check=True, timeout=900)
           PY

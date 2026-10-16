@@ -16,15 +16,33 @@ Omarchy.
 ## 1. Choose a matching official Linux base
 
 Use ARM64/AArch64 for an `arm64-v8a` phone and x86_64 for an x86_64 emulator. The
-importer accepts tar or gzip-compressed tar with the filesystem at its top level
-(`bin`, `etc`, `usr`, and so on). It checks the `/bin/sh` ELF architecture before
-activation. An ISO, disk image, zstd archive, or the unnormalized Arch bootstrap
-wrapper cannot be selected directly.
+manual importer accepts tar or gzip-compressed tar with the filesystem at its top
+level (`bin`, `etc`, `usr`, and so on). It checks the `/bin/sh` ELF architecture
+before activation. An ISO or disk image cannot be selected directly. The automatic
+source path additionally handles the official x86_64 zstd bootstrap wrapper after
+its detached signature has passed.
 
-The APK does not download the distribution image for you. Download it separately,
-verify its publisher signature before importing it, then copy the verified
-archive into Android's Files/Downloads storage. The preparation stage later
-downloads signed distribution packages, so it needs internet access.
+The **Download and install authenticated Arch base** button selects the matching
+official source for the device ABI. On an ARM64 phone it downloads the Arch Linux
+ARM `ArchLinuxARM-aarch64-latest.tar.gz` gzip rootfs and detached signature. On an
+x86_64 emulator it downloads the Arch bootstrap zstd archive and its detached
+signature; the importer understands the official `root.x86_64/` wrapper. The
+signature is obtained and checked before the archive is accepted by the importer,
+using the APK-pinned full primary-key fingerprint. HTTPS-only redirects, identity
+content encoding, response-size limits, truncation checks, one bounded retry, and
+temporary-file cleanup are part of this path. Cancellation stops the request and
+removes unpublished download state.
+
+The automatic x86_64 path passed on a fresh disposable API35 emulator: the actual
+button downloaded and authenticated the official bootstrap, prepared signed
+packages, activated Linux, and rendered both phone widgets and the external
+desktop. Five Android graphics/asset/service checks and 62 JVM checks passed.
+The ARM64 automatic path remains unverified. The preparation stage downloads
+signed distribution packages, so it needs internet access.
+
+The manual path remains supported. Download an official archive separately, verify
+its publisher signature before importing it, then copy the verified archive into
+Android's Files/Downloads storage.
 
 ### ARM64 phone: Arch Linux ARM
 
@@ -140,14 +158,16 @@ flashing, or permission-policy modification is part of the Linux installation.
 
 ## Validation status
 
-The new flow passed on a disposable API35 x86_64 emulator: an empty installation
-became both real graphical shells in 215.296s, including packaged-asset checks.
-The actual Android document picker, foreground service, setup wake lock and
-cancellation during signed package downloads were exercised separately. Cancel
-left no active setup processes or unpublished rootfs. Service completion/retry
-regressions also pass. See [VERIFICATION.md](VERIFICATION.md) for evidence scope.
-Fresh ARM64 installation is still unverified; previous manually prepared physical
-sessions do not establish this new installation path on a phone.
+The automatic authenticated x86_64 bootstrap path passed the fresh emulator flow
+described above; ARM64 remains pending. The earlier disposable API35 result covered the
+manual/import-and-setup flow: an empty installation became both real graphical
+shells in 215.296s, including packaged-asset checks. The actual Android document
+picker, foreground service, setup wake lock and cancellation during signed package
+downloads were exercised separately. Cancel left no active setup processes or
+unpublished rootfs. Service completion/retry regressions also pass. See
+[VERIFICATION.md](VERIFICATION.md) for evidence scope. Fresh ARM64 installation
+is still unverified; previous manually prepared physical sessions do not establish
+the automatic installation path on a phone.
 
 
 ### User-data export verification - 2026-10-15
@@ -164,7 +184,7 @@ completed through the document provider. Inspection of the resulting 98,904,258
 byte tar.gz found 1,256 regular files and 13 symlinks, all under root/ or home/;
 the foreground LinuxService had exited after completion. No archive or private
 Linux data is committed to the repository. In-place restore/replacement and authenticated
-image download remain open in issue #3.
+ARM64 installation remain open in issue #3.
 
 Separate-copy recovery then passed with the existing export and service tests:
 seven Android checks in 29.945s, plus 39 JVM tests and lint. A separate actual
