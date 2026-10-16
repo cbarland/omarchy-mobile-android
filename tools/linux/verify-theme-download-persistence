@@ -46,13 +46,13 @@ PIN = "e71a816e9032f040225e086c7256f73e8080ae45"
 HACKERBOY_URL = "https://github.com/ggregoro/hackerboy"
 HACKERBOY_COMMIT = "add711288b2549ad0b017618cb6256053391d8fa"
 HACKERBOY_TREE = {
-    "LICENSE": ("100644", "485550a28d8798ac0e6f903b0ed0d7fb793e3a477b0e5d420f3e0f792e6f236f"),
-    "README.md": ("100644", "a3168197e86b681e7dea4cb2ab6fcd55c636be3d67a57c6f5a8eca636febf38f"),
+    "LICENSE": ("100644", "ba5333fc45fd0ec151892d7199438ee9e3b75d6c84f324c3f2a210155a087cd5"),
+    "README.md": ("100644", "2f9212d4273f8bf74f14d39971f6db8bd4e8d23f69adab66977c23ae3ccd537e"),
     "backgrounds/1-glowing-city-blue-h60.jpg": ("100644", "65360af2ba468631c89b9d1da8955c5afc5a79a7c2e5d24249ff1d960a0e3ef6"),
     "backgrounds/1-glowing-city.jpg": ("100644", "1a4ed77cdcd943833027e2caf805819773bbadcabe868b58ea2ee67c6016d8a8"),
     "backgrounds/fmuAYkF.jpg": ("100644", "b1d10d1ce5abf1f6688647af53d0c382f7f627704ba0cd388143e6839c997b36"),
     "backgrounds/milky-way-core-jeremy-thomas-unsplash.jpg": ("100644", "31868c97c683c481ee8b66408c685a7d17698714d377250043fc8828cf296f35"),
-    "colors.toml": ("100644", "8c17f14227617e497f419e7d3c8d90243728a8d036b4b85b6e73cbbeda2c7b9e"),
+    "colors.toml": ("100644", "0b18543dad5777e2cc8fc0b0155073e51f15e99ac7f12c15e6a6b591196e7ffc"),
     "icons.theme": ("100644", "ab5b6354ede8448f66d224525748fc97d89771cf48ae355b1eab9dd9b30b810a"),
     "preview-unlock.png": ("100644", "b345e9d2ce8c4409f4ad6e663e41eea21827b4aa5e2db13ed216f7c4fb00ba21"),
     "preview.png": ("100644", "ff16419641d1b5145a90fffd8c3c9cff12f6047d34da4437e5ed72a33de269ff"),
@@ -286,7 +286,8 @@ def verify_hackerboy_checkout(target, env, work):
                   "hackerboy-tree", env=env)
     actual = {}
     for line in listing.splitlines():
-        mode, kind, blob, path = line.split(" ", 3)
+        metadata, path = line.split("\t", 1)
+        mode, kind, blob = metadata.split()
         require(kind == "blob", "Hackerboy tree contains a non-blob entry")
         actual[path] = mode
     require(set(actual) == set(HACKERBOY_TREE), "Hackerboy tree has unexpected or missing files")
@@ -296,6 +297,21 @@ def verify_hackerboy_checkout(target, env, work):
         entry = target / path
         require(entry.is_file() and not entry.is_symlink(), "Hackerboy file is not a regular file: " + path)
         require(sha(entry) == digest, "Hackerboy file hash changed: " + path)
+    files = {entry.relative_to(target).as_posix() for entry in target.rglob("*")
+             if entry.is_file() and ".git" not in entry.parts}
+    require(files == set(HACKERBOY_TREE), "Hackerboy checkout has unexpected working-tree files")
+
+
+def git_environment():
+    environment = dict(os.environ)
+    for key in ("GIT_SSL_NO_VERIFY", "GIT_SSL_CAINFO", "GIT_SSL_CAPATH", "GIT_SSL_VERSION",
+                "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
+                "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"):
+        environment.pop(key, None)
+    environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null",
+                       GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.hooksPath",
+                       GIT_CONFIG_VALUE_0="/dev/null", GIT_TERMINAL_PROMPT="0")
+    return environment
 
 
 def install(work, state, untrusted_cert=False):
@@ -309,9 +325,7 @@ def install(work, state, untrusted_cert=False):
     source = work / "source"
     if state["publicHackerboy"]:
         require(not untrusted_cert, "The public Hackerboy fixture has no local negative TLS mode")
-        git_env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null",
-                       GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.hooksPath", GIT_CONFIG_VALUE_0="/dev/null",
-                       GIT_TERMINAL_PROMPT="0")
+        git_env = git_environment()
         remote = run(["git", "ls-remote", "--", HACKERBOY_URL, "HEAD"], work, "hackerboy-remote-head", env=git_env)
         require(remote.split()[:1] == [HACKERBOY_COMMIT], "Public Hackerboy HEAD moved from reviewed pin")
         state.update(phase="installing", url=HACKERBOY_URL, expectedCommit=HACKERBOY_COMMIT)
@@ -323,9 +337,11 @@ def install(work, state, untrusted_cert=False):
         current = HOME / ".local/state/omarchy/current"
         current_background = current / "background"
         resolved_background = current_background.resolve()
-        require(target.resolve() in resolved_background.parents,
-                "Selected public background is outside the reviewed checkout")
-        state["colorsSha256"] = sha(current / "theme/colors.toml")
+        require((current / "theme" / "backgrounds").resolve() in resolved_background.parents,
+                "Selected public background is outside the staged theme")
+        require(sha(current / "theme/colors.toml") == HACKERBOY_TREE["colors.toml"][1],
+                "Applied public palette differs from the reviewed Hackerboy palette")
+        state["colorsSha256"] = HACKERBOY_TREE["colors.toml"][1]
         state["backgroundSha256"] = sha(current_background)
         require(state["backgroundSha256"] in HACKERBOY_BACKGROUND_HASHES,
                 "Selected public background is outside the reviewed Hackerboy tree")
@@ -346,9 +362,8 @@ def install(work, state, untrusted_cert=False):
     require(count == 1, "Pinned palette must have exactly one accent")
     (source / "colors.toml").write_text(colors)
     (source / "backgrounds/fixture.png").write_bytes(png())
-    git_env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null",
-                   GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.hooksPath", GIT_CONFIG_VALUE_0="/dev/null",
-                   GIT_TERMINAL_PROMPT="0", NO_PROXY="127.0.0.1", no_proxy="127.0.0.1")
+    git_env = git_environment()
+    git_env.update(NO_PROXY="127.0.0.1", no_proxy="127.0.0.1")
     for label, args in (("git-init", ["init", "-q", str(source)]),
                         ("git-add", ["-C", str(source), "add", "colors.toml", "backgrounds/fixture.png"]),
                         ("git-commit", ["-C", str(source), "-c", "user.name=omamobile-test", "-c",
@@ -509,13 +524,15 @@ def restore(work, state):
     assert_real_ancestors(target)
     if state["publicHackerboy"]:
         require(target.exists() and not target.is_symlink(), "Public Hackerboy checkout disappeared before cleanup")
-        verify_hackerboy_checkout(target, dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null",
-                                               GIT_TERMINAL_PROMPT="0"), work)
+        verify_hackerboy_checkout(target, git_environment(), work)
     if target.exists():
         shutil.rmtree(target)
     state["phase"] = "restored"
     write_json(work / "state.json", state)
-    write_json(work / "result.json", {"transport": state["transport"], "publicHttpsVerified": state["publicHackerboy"],
+    public_complete = (state["publicHackerboy"] and
+                       set(state.get("signatures", {})) == {"phone", "desktop"} and
+                       set(state.get("reopened", {})) == {"phone", "desktop"})
+    write_json(work / "result.json", {"transport": state["transport"], "publicHttpsVerified": public_complete,
                "bothOwnersReopened": set(state.get("reopened", {})) == {"phone", "desktop"},
                "renderedPaletteVerified": False, "originalThemeRestored": state["originalTheme"],
                "originalThemeDataRestored": True, "fixtureCheckoutRemoved": True})
