@@ -43,6 +43,7 @@ final class HostRuntime {
     private volatile boolean busy;
     private volatile boolean stopping;
     private volatile Process guest;
+    private java.io.Closeable activeInput;
     private volatile AndroidBroker broker;
     private volatile Thread activeWorker;
     private volatile boolean recordingSetup;
@@ -148,6 +149,47 @@ final class HostRuntime {
                 try { GuestPaths.deleteTree(temporary); }
                 catch (IOException error) { android.util.Log.w("OmamobileLinux", "Cannot remove temporary export", error); }
                 Thread.interrupted(); activeWorker = null; recordingSetup = false; synchronized (this) { busy = false; }
+                changed(); main.post(done);
+            }
+        });
+        return true;
+    }
+
+    synchronized boolean recoverData(Uri archive, Runnable done) {
+        if (busy || archive == null || !installed()) return false;
+        busy = true; stopping = false; recordingSetup = true; changed();
+        worker.execute(() -> {
+            activeWorker = Thread.currentThread();
+            try {
+                checkSetupRunning();
+                appendLine("Recovering Linux user data as a separate copy under /root/Recovered/…");
+                Path recovered = root.resolve("root/Recovered");
+                GuestPaths.noSymlinkParents(root, recovered);
+                if (Files.exists(recovered, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                        && !Files.isDirectory(recovered, java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                    throw new IOException("Recovered data directory is not a real directory");
+                Files.createDirectories(recovered);
+                try (var children = Files.list(linux)) {
+                    for (Path child : (Iterable<Path>) children::iterator) {
+                        checkSetupRunning();
+                        if (child.getFileName().toString().matches("recovery-[0-9a-f-]{36}\\.tmp"))
+                            GuestPaths.deleteTree(child);
+                    }
+                }
+                checkSetupRunning();
+                var input = context.getContentResolver().openInputStream(archive);
+                if (input == null) throw new IOException("Cannot read the selected recovery archive");
+                synchronized (this) { activeInput = input; }
+                try (input) {
+                    checkSetupRunning();
+                    importer().recoverUserData(input, root, this::appendLine);
+                }
+                appendLine("Linux user data recovery completed; the existing installation was preserved.");
+            } catch (Exception e) {
+                appendLine(stopping ? "Operation cancelled." : "Error: " + (e.getMessage() == null ? e.toString() : e.getMessage()));
+            } finally {
+                Thread.interrupted(); synchronized (this) { activeInput = null; } activeWorker = null; recordingSetup = false;
+                synchronized (this) { busy = false; }
                 changed(); main.post(done);
             }
         });
@@ -356,9 +398,13 @@ final class HostRuntime {
         appendLine("Updated Linux /etc/resolv.conf from Android (requested for this operation).");
     }
 
-    void stop() {
+    synchronized void stop() {
         stopping = true;
         Thread job = activeWorker;
+        java.io.Closeable input = activeInput;
+        if (input != null) new Thread(() -> {
+            try { input.close(); } catch (java.io.IOException ignored) { }
+        }, "linux-recovery-close").start();
         if (job != null && guest == null) job.interrupt();
         Process process = guest;
         if (process != null) {

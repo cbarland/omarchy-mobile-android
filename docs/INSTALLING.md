@@ -101,8 +101,24 @@ are excluded. The export walks live files at one point in time; stop graphical a
 Linux sessions first if you need a quiescent user-data copy. Keep the export with
 the archive fingerprint and verify the resulting file before moving it. A failed
 copy can leave an incomplete newly-created document in the selected provider; do
-not use that file. An in-app restore/replacement flow is not yet provided; do not
-select an export as a base Linux archive.
+not use that file.
+
+To recover an export, choose **Recover user data as separate copy** and select the
+gzip archive. Recovery validates that every entry belongs to `/root` or `/home`,
+extracts into private staging, and publishes a new UUID directory under the
+Linux guest's `/root/Recovered/<UUID>/` only after the complete archive has been
+read. The existing Linux installation is left in place; cancellation, malformed paths, and
+unsafe links remove private staging without publishing a partial copy. Links that
+point outside `/root` or `/home` are re-rooted as dangling links inside the
+recovered copy, so they cannot reach the live guest root. Recovery
+does not run package commands or replace the active rootfs. The operation and its
+result are recorded in the app's persistent `linux/install.log`.
+
+Unpublished recovery data is staged outside the guest home in app-private
+storage. Existing home contents, including older recovered copies, are included
+in future exports; remove copies you no longer need before exporting again.
+Cancellation closes the selected input stream. A document provider stalled
+while opening the archive can delay cancellation until that open returns.
 
 ## 3. Start phone and desktop sessions
 
@@ -147,5 +163,12 @@ A separate actual Export control -> Android Downloads picker -> Save flow
 completed through the document provider. Inspection of the resulting 98,904,258
 byte tar.gz found 1,256 regular files and 13 symlinks, all under root/ or home/;
 the foreground LinuxService had exited after completion. No archive or private
-Linux data is committed to the repository. Restore/replacement and authenticated
+Linux data is committed to the repository. In-place restore/replacement and authenticated
 image download remain open in issue #3.
+
+Separate-copy recovery then passed with the existing export and service tests:
+seven Android checks in 29.945s, plus 39 JVM tests and lint. A separate actual
+Recover control → Downloads document picker flow recovered a generated 41-byte
+file with mode `0640`, retained the guest root's `0555` permissions and stopped
+LinuxService afterward. The Android round trip includes a normal external
+plugin symlink; it remains intelligible and dangling inside the isolated copy.

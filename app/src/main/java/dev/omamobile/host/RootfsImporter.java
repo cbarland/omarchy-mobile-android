@@ -23,6 +23,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Collections;
 
 /** Imports a standard tar/tar.gz without executing its contents or changing Android. */
 final class RootfsImporter {
@@ -133,11 +134,55 @@ final class RootfsImporter {
                         tar.closeArchiveEntry();
                         if (count % 500 == 0) progress.update("Exporting Linux data: " + count + " entries");
                     }
-                    @Override public FileVisitResult preVisitDirectory(Path path, BasicFileAttributes attrs) throws IOException { add(path, attrs, true); return FileVisitResult.CONTINUE; }
+                    @Override public FileVisitResult preVisitDirectory(Path path, BasicFileAttributes attrs) throws IOException {
+                        add(path, attrs, true); return FileVisitResult.CONTINUE;
+                    }
                     @Override public FileVisitResult visitFile(Path path, BasicFileAttributes attrs) throws IOException { add(path, attrs, false); return FileVisitResult.CONTINUE; }
                 });
             }
             tar.finish();
+        }
+    }
+
+    /** Recover an exported /root and /home archive as a new, private copy. */
+    String recoverUserData(InputStream source, Path installedRoot, Progress progress) throws Exception {
+        if (!Files.isDirectory(installedRoot, LinkOption.NOFOLLOW_LINKS))
+            throw new IOException("Linux installation is not available");
+        Path recovered = installedRoot.resolve("root/Recovered");
+        GuestPaths.noSymlinkParents(installedRoot, recovered);
+        if (Files.exists(recovered, LinkOption.NOFOLLOW_LINKS)) {
+            if (!Files.isDirectory(recovered, LinkOption.NOFOLLOW_LINKS))
+                throw new IOException("Recovered data directory is not a real directory");
+        } else {
+            Files.createDirectory(recovered);
+        }
+        String id = UUID.randomUUID().toString();
+        Path staging = installedRoot.getParent().resolve("recovery-" + id + ".tmp");
+        Path published = recovered.resolve(id);
+        Files.createDirectory(staging);
+        boolean activated = false;
+        try (var buffered = new BufferedInputStream(source)) {
+            buffered.mark(2);
+            int first = buffered.read(), second = buffered.read();
+            buffered.reset();
+            try (InputStream payload = first == 0x1f && second == 0x8b
+                    ? new GzipCompressorInputStream(buffered) : buffered) {
+                extract(payload, staging, progress, Set.of("root", "home"));
+                byte[] remainder = new byte[8192];
+                long trailing = 0;
+                int read;
+                while ((read = payload.read(remainder)) != -1) {
+                    if ((trailing += read) > 1024 * 1024)
+                        throw new IOException("Excessive data after recovery archive");
+                }
+            }
+            if (Thread.currentThread().isInterrupted()) throw new IOException("Recovery cancelled");
+            Files.move(staging, published, StandardCopyOption.ATOMIC_MOVE);
+            activated = true;
+            progress.update("User data recovered as a separate copy: /root/Recovered/" + id);
+            return id;
+        } finally {
+            if (!activated) GuestPaths.deleteTree(staging);
         }
     }
 
@@ -155,6 +200,10 @@ final class RootfsImporter {
     }
 
     private void extract(InputStream payload, Path root, Progress progress) throws IOException {
+        extract(payload, root, progress, Collections.emptySet());
+    }
+
+    private void extract(InputStream payload, Path root, Progress progress, Set<String> allowedTop) throws IOException {
         List<Link> links = new ArrayList<>();
         Set<Path> symlinks = new HashSet<>();
         List<Path> entries = new ArrayList<>();
@@ -167,6 +216,7 @@ final class RootfsImporter {
         while ((entry = tar.getNextEntry()) != null) {
             if (Thread.currentThread().isInterrupted()) throw new IOException("Import cancelled");
             if (++count > 500_000) throw new IOException("Archive contains too many entries");
+            if (!allowedTop.isEmpty()) validateNamespace(entry.getName(), allowedTop);
             Path path = GuestPaths.archivePath(root, entry.getName());
             if (path.equals(root)) {
                 if (!entry.isDirectory()) throw new IOException("Invalid root entry");
@@ -239,6 +289,7 @@ final class RootfsImporter {
             var iterator = pendingHardlinks.iterator();
             while (iterator.hasNext()) {
                 Link link = iterator.next();
+                if (!allowedTop.isEmpty()) validateNamespace(link.target, allowedTop);
                 Path target = GuestPaths.archivePath(root, link.target);
                 GuestPaths.noSymlinkParents(root, target);
                 if (aliases.containsKey(target)) target = aliases.get(target);
@@ -258,4 +309,16 @@ final class RootfsImporter {
         if (fallbackCount > 0) progress.update("Android denied hardlinks; imported " + fallbackCount
                 + " aliases as relative symlinks. Exact hardlink identity is not preserved for these aliases.");
     }
+
+    private static void validateNamespace(String name, Set<String> allowedTop) throws IOException {
+        if (name == null || name.isEmpty() || name.startsWith("/") || name.indexOf('\0') >= 0)
+            throw new IOException("Invalid recovery archive path");
+        String clean = name.endsWith("/") ? name.substring(0, name.length() - 1) : name;
+        String[] parts = clean.split("/", -1);
+        if (parts.length == 0 || !allowedTop.contains(parts[0]))
+            throw new IOException("Recovery archive contains data outside /root or /home");
+        for (String part : parts) if (part.isEmpty() || part.equals(".") || part.equals(".."))
+            throw new IOException("Invalid recovery archive path");
+    }
+
 }

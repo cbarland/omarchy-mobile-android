@@ -20,7 +20,7 @@ public final class MainActivity extends Activity {
     private HostRuntime runtime;
     private TextView status, console;
     private EditText command;
-    private Button run, importImage, install, exportData, screens, stop;
+    private Button run, importImage, install, exportData, recoverData, screens, stop;
     private CheckBox ando, androidDns;
     private DisplaySettings displaySettings;
     private android.app.AlertDialog credits;
@@ -69,6 +69,12 @@ public final class MainActivity extends Activity {
                 .setType("application/gzip").addCategory(Intent.CATEGORY_OPENABLE)
                 .putExtra(Intent.EXTRA_TITLE, "omamobile-linux-data.tar.gz"), 13));
         layout.addView(exportData);
+        recoverData = new Button(this);
+        recoverData.setText("Recover user data as separate copy");
+        recoverData.setOnClickListener(v -> startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .setType("application/gzip").addCategory(Intent.CATEGORY_OPENABLE)
+                .putExtra(Intent.EXTRA_TITLE, "Choose an Omamobile Linux user-data archive"), 14));
+        layout.addView(recoverData);
         screens = new Button(this);
         screens.setText(R.string.start_screens);
         screens.setOnClickListener(v -> startForegroundService(new Intent(this, DesktopService.class)));
@@ -157,6 +163,9 @@ public final class MainActivity extends Activity {
         if (request == 13 && result == RESULT_OK && data != null && data.getData() != null) {
             startOperation(new Intent(this, LinuxService.class).setData(data.getData()).putExtra("exportData", true)
                     .addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION));
+        } else if (request == 14 && result == RESULT_OK && data != null && data.getData() != null) {
+            startOperation(new Intent(this, LinuxService.class).setData(data.getData()).putExtra("recoverData", true)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
         } else if ((request == 10 || request == 12) && result == RESULT_OK && data != null && data.getData() != null) {
             startOperation(new Intent(this, LinuxService.class).setData(data.getData()).putExtra("installOmarchy", request == 12)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
@@ -187,6 +196,7 @@ public final class MainActivity extends Activity {
         androidDns.setEnabled(!runtime.busy());
         stop.setEnabled(runtime.busy());
         exportData.setEnabled(runtime.installed() && !runtime.busy());
+        recoverData.setEnabled(runtime.installed() && !runtime.busy());
         displaySettings.refresh();
     }
 }
