@@ -10,6 +10,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/native"))
 import build_freetype as freetype
+import verify_release
 
 
 class OwnedFreeTypeValidationTest(unittest.TestCase):
@@ -180,6 +181,95 @@ class OwnedFreeTypeValidationTest(unittest.TestCase):
                     after = {str(p.relative_to(directory)): p.read_bytes()
                              for p in directory.rglob("*") if p.is_file()}
                     self.assertEqual(before, after)
+
+    def test_release_gate_requires_owned_freetype_after_valid_audit(self):
+        # Complete mechanically valid staged project: negatives cannot pass
+        # merely because some unrelated installer/library/proof was absent.
+        for mutation in ("legacyLabel", "missingProof"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as root:
+                project = Path(root)
+                main = project / "app/src/main"
+                install = main / "assets/install"
+                install.mkdir(parents=True)
+                entries = []
+                for name in verify_release.INSTALL_FILES:
+                    path = install / name
+                    path.write_bytes(name.encode())
+                    entries.append({"path": name, "bytes": path.stat().st_size,
+                                    "sha256": freetype.sha256(path)})
+                (install / "install-manifest.json").write_text(json.dumps({
+                    "format": 1, "pins": verify_release.INSTALL_PINS, "files": entries}))
+                (main / "assets/native").mkdir()
+                (main / "assets/native/magic.mgc").write_bytes(b"magic")
+                (main / "assets/licenses").mkdir()
+                (main / "assets/licenses/ANDROID-NDK-NOTICE.txt").write_bytes(b"notice")
+                spec = freetype.specification()
+                spec["referenceRecipe"]["sha256"] = hashlib.sha256(b"reference").hexdigest()
+                for abi in verify_release.ABIS:
+                    notices = main / "assets/licenses/native" / abi
+                    proof = notices / "owned/freetype"
+                    (proof / "recipes").mkdir(parents=True)
+                    for name in freetype.RECIPE_FILES:
+                        (proof / "recipes" / name).write_bytes((ROOT / "tools/native" / name).read_bytes())
+                    (proof / "recipes/termux-reference-build.sh").write_bytes(b"reference")
+                    (proof / "notices").mkdir()
+                    notice = proof / "notices/copyright"
+                    notice.write_bytes(b"notice")
+                    library = main / "jniLibs" / abi / "libfreetype.so"
+                    library.parent.mkdir(parents=True)
+                    library.write_bytes(b"owned library fixture")
+                    record = {"format": 1, "kind": "project-built", "abi": abi,
+                              "specification": spec, "toolchain": {"files": {"tool": "hash"}},
+                              "dependencies": list(freetype.DEPENDENCIES),
+                              "dependencyHashes": {name: {} for name in freetype.DEPENDENCIES},
+                              "dependencyInputs": {"sha256": "fingerprint"},
+                              "materials": {"notices/copyright": freetype.sha256(notice)},
+                              "librarySha256": freetype.sha256(library)}
+                    (proof / "build.json").write_text(json.dumps(record))
+                    compositor = main / "prebuilt" / abi / "libanhyprland.so"
+                    compositor.parent.mkdir(parents=True)
+                    compositor.write_bytes(b"compositor fixture")
+                    libraries = {
+                        "libanhyprland.so": {"name_in_apk": "libanhyprland.so", "needed": [],
+                                             "source": "anhyprland/build/android-hyprland/libanhyprland.so",
+                                             "sha256_apk": freetype.sha256(compositor)},
+                        "libfreetype.so": {"name_in_apk": "libfreetype.so", "needed": [],
+                                           "source": "owned/freetype/libfreetype.so",
+                                           "sha256_source": freetype.sha256(library),
+                                           "sha256_apk": freetype.sha256(library),
+                                           "origin": {"kind": "project-built", "component": "freetype", "version": "2.15.0",
+                                                      "buildManifestSha256": freetype.sha256(proof / "build.json")}}}
+                    (notices / "libraries.json").write_text(json.dumps({"abi": abi, "commit": "fixture", "libraries": libraries}))
+                    # Valid legacy evidence must not provide an escape route.
+                    (notices / "termux/doc/freetype").mkdir(parents=True)
+                    (notices / "termux/doc/freetype/copyright").write_bytes(b"legacy notice")
+                    (notices / "termux-packages.json").write_text(json.dumps([{"package": "freetype", "version": "2.15.0"}]))
+                    (notices / "upstream-deps.lock.json").write_text("{}")
+                    (notices / "Hyprland-BSD-3-Clause.txt").write_bytes(b"notice")
+                with patch.object(freetype, "specification", return_value=spec):
+                    valid = verify_release.audit(project)
+                    self.assertTrue(valid["passed"], valid)
+                    self.assertEqual(valid["errors"], [])
+                    self.assertFalse(valid["readyForPublicBinaryRelease"])
+                    for abi in verify_release.ABIS:
+                        notices = main / "assets/licenses/native" / abi
+                        if mutation == "legacyLabel":
+                            manifest = notices / "libraries.json"
+                            doc = json.loads(manifest.read_text())
+                            item = doc["libraries"]["libfreetype.so"]
+                            item["source"] = "ndk-prefix/lib/libfreetype.so"
+                            item["origin"] = {"kind": "termux-package"}
+                            manifest.write_text(json.dumps(doc))
+                        else:
+                            (notices / "owned/freetype/build.json").unlink()
+                    before = {str(p.relative_to(project)): p.read_bytes()
+                              for p in project.rglob("*") if p.is_file()}
+                    invalid = verify_release.audit(project)
+                    self.assertFalse(invalid["passed"])
+                    self.assertEqual([(error["kind"], error["abi"]) for error in invalid["errors"]],
+                                     [("invalid_owned_freetype", abi) for abi in verify_release.ABIS])
+                    self.assertEqual(before, {str(p.relative_to(project)): p.read_bytes()
+                                              for p in project.rglob("*") if p.is_file()})
 
     def test_reference_recipe_change_is_rejected(self):
         with tempfile.TemporaryDirectory() as root:

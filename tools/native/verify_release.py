@@ -227,7 +227,7 @@ def audit(project: Path, apk=None) -> dict:
                         raise ValueError("Graphite source library differs from its build evidence")
                 except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
                     error("invalid_owned_graphite", abi=abi, detail=str(exc))
-            elif name == "libfreetype.so" and item.get("source", "").startswith("owned/freetype/"):
+            elif name == "libfreetype.so":
                 package, component, version = "freetype", "freetype", "2.15.0"
                 source_versions.setdefault((package, version), []).append(abi)
                 owned_source_versions.add((package, version))
@@ -235,9 +235,10 @@ def audit(project: Path, apk=None) -> dict:
                 notice = proof / "notices"
                 try:
                     origin = item.get("origin", {})
-                    if origin != {"kind": "project-built", "component": component, "version": version,
-                                  "buildManifestSha256": sha256(proof / "build.json")}:
-                        raise ValueError("FreeType requires its explicit owned-build origin")
+                    if (item.get("source") != "owned/freetype/libfreetype.so"
+                            or origin != {"kind": "project-built", "component": component, "version": version,
+                                          "buildManifestSha256": sha256(proof / "build.json")}):
+                        raise ValueError("FreeType requires its explicit owned-build source and origin")
                     build = validate_freetype_materials(proof, abi)
                     if build["librarySha256"] != item.get("sha256_source"):
                         raise ValueError("FreeType source library differs from its build evidence")
