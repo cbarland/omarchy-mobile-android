@@ -26,7 +26,7 @@ Close cancels, pauses the track to interrupt a blocking write, signals a dedicat
 pipe to wake a blocked poll, and joins before releasing any owned descriptor or
 the track. Exactly one byte is sent to the otherwise empty cancellation pipe, so
 the signal cannot fill it. Public `ParcelFileDescriptor.createPipe()` provides
-close-on-exec descriptors on the supported API29+ range. A join failure retains
+close-on-exec descriptors on the supported API 29+ range. A join failure retains
 ownership and reports an error so the caller can retry close. Close aborts queued
 audio; it does not promise a graceful drain.
 
@@ -37,26 +37,18 @@ References: [Android AudioTrack](https://developer.android.com/reference/android
 [Android Os](https://developer.android.com/reference/android/system/Os), and
 [ParcelFileDescriptor](https://developer.android.com/reference/android/os/ParcelFileDescriptor).
 
-`AndroidPcmOutputTest` requires explicit `-e audio true`. On an unprepared API35
-x86_64 emulator, six tests executed with no skips: real synthetic PCM playback
-head progress, fragmented reads, an incomplete final frame, no-writer and
-connected-writer read stalls, cancellation during an observed AudioTrack write,
-repeated close/reopen, rejected paths, and track/descriptor release after join.
-The final run submitted 48000 frames from 192000 bytes, observed head45696, and
-closed an observed backpressured write in3 ms. These observations verify the
-public playback pipeline and bounded cleanup on that emulator, not speakers,
-ARM64, device audio routing, or a complete Linux audio service.
-
-Run the selected test using the normal test APK runner:
+`AndroidPcmOutputTest` covers playback-head progress, fragmented reads, incomplete
+frames, missing or stalled writers, cancellation during a blocked AudioTrack
+write, repeated close/reopen, rejected paths, and release after join. It requires
+explicit `-e audio true` and does not require a prepared Linux installation.
+After installing the host and test APKs, run it with:
 
 ```sh
-adb -s emulator-5562 shell am instrument -w -e audio true \
+adb -s emulator-5562 shell am instrument -w -r -e audio true \
   -e class dev.omamobile.host.AndroidPcmOutputTest \
   dev.omamobile.host.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
-Offline core APK/test assembly and lint passed. The existing Windows JVM suite
-ran74 tests with72 passed, one skipped, and the unchanged
-`InstallationLeaseTest.processDeathReleasesSharedLease` failing immediately after
-forced process death; this unit does not change that lease implementation/test.
-All seven public-delivery holds remain.
+Playback-head progress verifies the public Android pipeline. Speakers, physical
+device routing, ARM64 behavior, and a complete Linux audio service need separate
+verification.
