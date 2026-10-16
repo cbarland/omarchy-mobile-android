@@ -124,7 +124,7 @@ if value["opened"] is not False or value["pending"] != 0 or value["current"] is 
 '
 
 request_sent=1
-timeout 20s gdbus call --session --dest "$name" \
+timeout 65s gdbus call --session --timeout 60 --dest "$name" \
   --object-path /org/freedesktop/portal/desktop \
   --method org.freedesktop.impl.portal.Access.AccessDialog \
   "$request_handle" org.example.OmamobileProbe '' \
@@ -134,7 +134,7 @@ call_pid=$!
 
 deadline=$((SECONDS + 15))
 while (( SECONDS < deadline )); do
-request_id=$(snapshot_matching_id 2>/dev/null || true)
+  request_id=$(snapshot_matching_id 2>/dev/null || true)
   [[ -n "$request_id" ]] && break
   kill -0 "$call_pid" 2>/dev/null || { cat "$tmp/call.err" >&2; exit 1; }
   sleep .1
