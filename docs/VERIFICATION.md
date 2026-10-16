@@ -32,6 +32,28 @@ Generated per-build notices/manifests are recreated by staging and are not
 committed with host-specific logs. Private proof is retained under the parent
 workspace's `.build-tools/omamobile-night-20261015/source-audit/`.
 
+## Installation ownership lease — 2026-10-16
+
+The shared installation lease now covers graphical owner processes and the
+exclusive installer path. Two live owners deny `EXCLUSIVE_INSTALL`; stopping
+the desktop owner still leaves the phone owner holding the lease; stopping
+both permits exclusive ownership. A normal start attempted while exclusive
+ownership is held reports `Linux installation is busy` in each fresh owner PID,
+creates no new ready signature, and does not publish a compositor session.
+After release, normal startup produces new ready signatures and responsive
+`hyprctl monitors` replies. Failed startup after acquiring the lease remains
+busy until the existing normal stop/process-death path releases the owner
+lease. Detached Linux batch processes outside these Android owner lifetimes
+remain outside this foundation's coverage.
+
+The opt-in emulator check is `GraphicsSmokeTest#installationLeaseTracksBothGraphicalOwners`
+with `-e leaseGraphics true -e graphics true`. It passed on the prepared API35
+x86_64 `emulator-5560` after two-ABI root staging. Raw trace:
+`.build-tools/omamobile-night-20261015/lease-evidence-5560/graphics-lease-final7.txt`
+(SHA-256
+`2900C649C805BB7070A81E59D7C36607562A38F3B8304C4DE406797825652750`). Earlier
+C0/C1 premise evidence is retained privately beside that trace.
+
 ## Public HTTPS theme persistence — 2026-10-16
 
 On the merged `aaf3a1d` host in the disposable API35 x86_64 emulator, the opt-in
@@ -868,25 +890,3 @@ Final debug APK: SHA-256 `e5179769aef1f52899b9c6d126aefad37d3875b1483be60bd3c97b
 ## Historical unverified list before graphics work
 
 The original command-runtime APK did not verify graphics or interactive terminals. The graphics and physical-device milestones above supersede that status; full ecosystem and hardware/security/power checks remain open.
-
-## Installation ownership lease — 2026-10-16
-
-The shared installation lease now covers graphical owner processes and the
-exclusive installer path. Two live owners deny `EXCLUSIVE_INSTALL`; stopping
-the desktop owner still leaves the phone owner holding the lease; stopping
-both permits exclusive ownership. A normal start attempted while exclusive
-ownership is held reports `Linux installation is busy` in each fresh owner PID,
-creates no new ready signature, and does not publish a compositor session.
-After release, normal startup produces new ready signatures and responsive
-`hyprctl monitors` replies. Failed startup after acquiring the lease remains
-busy until the existing normal stop/process-death path releases the owner
-lease. Detached Linux batch processes outside these Android owner lifetimes
-remain outside this foundation's coverage.
-
-The opt-in emulator check is `GraphicsSmokeTest#installationLeaseTracksBothGraphicalOwners`
-with `-e leaseGraphics true -e graphics true`. It passed on the prepared API35
-x86_64 `emulator-5560` after two-ABI root staging. Raw trace:
-`.build-tools/omamobile-night-20261015/lease-evidence-5560/graphics-lease-final7.txt`
-(SHA-256
-`2900C649C805BB7070A81E59D7C36607562A38F3B8304C4DE406797825652750`). Earlier
-C0/C1 premise evidence is retained privately beside that trace.
