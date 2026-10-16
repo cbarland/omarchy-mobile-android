@@ -55,8 +55,9 @@ the limits of each claim and the new installer's separate results.
 The current backend uses two compositor sessions with a shared rootfs and home;
 live windows do not move between outputs. Linux clients use software rendering;
 Android windows use a CPU/JPEG transport. Hardware/status/audio adapters,
-performance and power measurements, wider ARM64 installation testing, authenticated
-image downloading and data export/recovery are useful contribution areas.
+performance and power measurements remain useful contribution areas. Authenticated
+image downloading and user-data export/recovery have x86_64 emulator verification;
+wider ARM64 installation, download, and recovery testing remain open.
 Work-profile and Wallet compatibility have not been established for this host.
 
 The read-only Android battery API is available; see [Android battery state](docs/ANDROID-BATTERY-STATE.md).
