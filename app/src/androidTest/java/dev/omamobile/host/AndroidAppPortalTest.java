@@ -17,6 +17,8 @@ import java.nio.file.Files;
 import java.util.List;
 import java.util.HashSet;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.Assert.*;
 
 public class AndroidAppPortalTest {
@@ -85,37 +87,63 @@ public class AndroidAppPortalTest {
                 "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
         var instrumentation = InstrumentationRegistry.getInstrumentation();
         Context context = instrumentation.getTargetContext();
+        finishMainActivities(instrumentation);
+        MainActivity first = null;
         try (LocalSocket socket = connect(false)) {
             JSONObject reply = request(socket, new JSONObject().put("op", "display-settings"));
             assertTrue(reply.toString(), reply.getBoolean("ok"));
             assertTrue(reply.toString(), reply.getBoolean("requested"));
-            MainActivity activity = awaitMainActivity(instrumentation);
-            assertTrue(displayDialog(activity).isShowing());
-            MainActivity first = activity;
-            instrumentation.runOnMainSync(() -> displayDialogUnchecked(first).dismiss());
+            first = awaitMainActivity(instrumentation);
+            assertEquals(android.view.Display.DEFAULT_DISPLAY, first.getDisplay().getDisplayId());
+            assertTrue(dialogShowing(instrumentation, first));
+            dismissDialog(instrumentation, first);
 
             String cli = runLinuxClient(context, context.getFilesDir().toPath().resolve("linux/rootfs"),
                     "display-settings", "portal-display-settings-");
             assertEquals("Android display settings requested", cli);
-            activity = awaitMainActivity(instrumentation);
-            assertTrue(displayDialog(activity).isShowing());
-            MainActivity second = activity;
-            instrumentation.runOnMainSync(() -> displayDialogUnchecked(second).dismiss());
+            MainActivity second = awaitMainActivity(instrumentation);
+            assertSame("Existing phone activity should receive the host action", first, second);
+            assertEquals(android.view.Display.DEFAULT_DISPLAY, second.getDisplay().getDisplayId());
+            assertTrue(dialogShowing(instrumentation, second));
+            dismissDialog(instrumentation, second);
+        } finally {
+            if (first != null) dismissDialog(instrumentation, first);
+            instrumentation.runOnMainSync(() -> context.startService(new Intent(context, DesktopService.class)
+                    .setAction(DesktopService.STOP_SCREENS)));
         }
     }
-    private static MainActivity awaitMainActivity(android.app.Instrumentation instrumentation) {
-        long deadline = SystemClock.uptimeMillis() + 5000;
-        while (SystemClock.uptimeMillis() < deadline) {
+    private static void finishMainActivities(android.app.Instrumentation instrumentation) {
+        instrumentation.runOnMainSync(() -> {
             for (var activity : androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
                     .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED))
-                if (activity instanceof MainActivity) return (MainActivity) activity;
+                if (activity instanceof MainActivity) activity.finish();
+        });
+    }
+    private static MainActivity awaitMainActivity(android.app.Instrumentation instrumentation) {
+        AtomicReference<MainActivity> found = new AtomicReference<>();
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        while (SystemClock.uptimeMillis() < deadline) {
+            instrumentation.runOnMainSync(() -> {
+                for (var activity : androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                        .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED))
+                    if (activity instanceof MainActivity) found.set((MainActivity) activity);
+            });
+            if (found.get() != null) return found.get();
             SystemClock.sleep(50);
         }
         fail("Display request must resume MainActivity on the default display");
         return null;
     }
-    private static android.app.Dialog displayDialog(MainActivity activity) throws Exception {
-        return displayDialogUnchecked(activity);
+    private static boolean dialogShowing(android.app.Instrumentation instrumentation, MainActivity activity) {
+        AtomicBoolean showing = new AtomicBoolean();
+        instrumentation.runOnMainSync(() -> showing.set(displayDialogUnchecked(activity).isShowing()));
+        return showing.get();
+    }
+    private static void dismissDialog(android.app.Instrumentation instrumentation, MainActivity activity) {
+        instrumentation.runOnMainSync(() -> {
+            android.app.Dialog dialog = displayDialogUnchecked(activity);
+            if (dialog != null && dialog.isShowing()) dialog.dismiss();
+        });
     }
     private static android.app.Dialog displayDialogUnchecked(MainActivity activity) {
         try {
