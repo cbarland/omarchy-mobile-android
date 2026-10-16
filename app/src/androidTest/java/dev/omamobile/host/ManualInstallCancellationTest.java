@@ -17,6 +17,7 @@ import static org.junit.Assert.*;
 /** Opt-in fresh-emulator proof that manual provider reads are cancellable. */
 public final class ManualInstallCancellationTest {
     private static final Uri BLOCKED = Uri.parse("content://dev.omamobile.host.test.blocking-archive/rootfs");
+    private static final Uri BLOCKED_OPEN = Uri.parse("content://dev.omamobile.host.test.blocking-archive/rootfs-open");
 
     @Test public void blockedManualArchiveReadClosesAndCleansBeforePrepare() throws Exception {
         Assume.assumeTrue("Fresh disposable install-cancel emulator required", "true".equals(
@@ -39,7 +40,7 @@ public final class ManualInstallCancellationTest {
 
             runtime.stop();
             awaitIdle(runtime, 10000);
-            assertTrue("Provider writer closed before cancellation proof",
+            assertTrue("Provider writer was not held before cancellation",
                     callProvider(context, "state").getBoolean("writerHeld"));
             assertFalse("Manual cancellation activated rootfs", Files.exists(runtime.root));
             assertFalse("Preparation ran before archive completion", hasPrefix(runtime.linux, "setup-"));
@@ -54,10 +55,45 @@ public final class ManualInstallCancellationTest {
         }
     }
 
+    @Test public void blockedProviderOpenCancelsBeforeImporterStaging() throws Exception {
+        Assume.assumeTrue("Fresh disposable install-cancel emulator required", "true".equals(
+                InstrumentationRegistry.getArguments().getString("installCancel")));
+        Assume.assumeTrue("Emulator-only cancellation proof", "ranchu".equals(Build.HARDWARE)
+                || "goldfish".equals(Build.HARDWARE));
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        HostRuntime runtime = HostRuntime.get(context);
+        assertFalse("This test must never replace a prepared rootfs", runtime.installed());
+        Files.createDirectories(runtime.linux);
+        Path sentinel = runtime.linux.resolve("keep-install-cancel-open-sentinel");
+        Files.write(sentinel, "preserve".getBytes(StandardCharsets.UTF_8));
+        callProvider(context, "reset");
+        try {
+            context.startForegroundService(new Intent(context, LinuxService.class)
+                    .setData(BLOCKED_OPEN).putExtra("installOmarchy", true));
+            assertTrue("Provider open was not entered", awaitProviderOpened(context, 10000));
+            assertFalse("Provider-open test reached importer staging", hasPrefix(runtime.linux, "import-"));
+            assertTrue("Provider open was not held inside provider",
+                    callProvider(context, "state").getBoolean("openHeld"));
+            runtime.stop();
+            awaitIdle(runtime, 10000);
+            assertFalse("Provider open remained blocked after cancellation",
+                    callProvider(context, "state").getBoolean("openHeld"));
+            assertFalse("Provider-open cancellation activated rootfs", Files.exists(runtime.root));
+            assertFalse("Provider-open cancellation created importer staging", hasPrefix(runtime.linux, "import-"));
+            assertEquals("preserve", new String(Files.readAllBytes(sentinel), StandardCharsets.UTF_8));
+        } finally {
+            runtime.stop();
+            callProvider(context, "release");
+            GuestPaths.deleteTree(sentinel);
+            awaitIdle(runtime, 10000);
+        }
+    }
+
     private static boolean awaitProviderOpened(Context context, long timeout) {
         long deadline = SystemClock.uptimeMillis() + timeout;
         do {
-            if (callProvider(context, "state").getBoolean("opened")) return true;
+            android.os.Bundle state = callProvider(context, "state");
+            if (state.getBoolean("opened") || state.getBoolean("openHeld")) return true;
             SystemClock.sleep(25);
         } while (SystemClock.uptimeMillis() < deadline);
         return false;
