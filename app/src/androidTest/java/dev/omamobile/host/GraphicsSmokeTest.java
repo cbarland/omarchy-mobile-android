@@ -173,7 +173,10 @@ public class GraphicsSmokeTest {
                 // A normal start while an installer owns the tree must fail
                 // closed and must not create a fresh ready owner.
                 startNormalOwners(context);
-                SystemClock.sleep(2500);
+                int busyPhonePid = awaitFreshOwnerPid("dev.omamobile.host:phone");
+                int busyDesktopPid = awaitFreshOwnerPid("dev.omamobile.host:desktop");
+                assertBusyLog(busyPhonePid, "phone");
+                assertBusyLog(busyDesktopPid, "desktop");
                 assertEquals("Phone compositor created a new ready signature while installation was exclusive",
                         phoneSignatureBeforeBusyStart, readySignature(context, "phone"));
                 assertEquals("Desktop compositor created a new ready signature while installation was exclusive",
@@ -227,6 +230,36 @@ public class GraphicsSmokeTest {
                 .executeShellCommand("pidof " + process);
              var in = new android.os.ParcelFileDescriptor.AutoCloseInputStream(parcel)) {
             return !new String(in.readAllBytes(), StandardCharsets.UTF_8).trim().isEmpty();
+        }
+    }
+
+    private static int awaitFreshOwnerPid(String process) throws Exception {
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        while (SystemClock.uptimeMillis() < deadline) {
+            String output = shellCapture("pidof " + process).trim();
+            if (!output.isEmpty()) return Integer.parseInt(output.split("\\s+")[0]);
+            SystemClock.sleep(100);
+        }
+        fail("No fresh " + process + " Android owner process appeared for busy-start evidence");
+        return -1;
+    }
+
+    private static void assertBusyLog(int pid, String profile) throws Exception {
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        String output = "";
+        while (SystemClock.uptimeMillis() < deadline) {
+            output = shellCapture("logcat -d --pid=" + pid + " -v brief");
+            if (output.contains("Linux installation is busy")) return;
+            SystemClock.sleep(200);
+        }
+        fail(profile + " fresh owner did not report lease rejection: " + output);
+    }
+
+    private static String shellCapture(String command) throws Exception {
+        try (var parcel = InstrumentationRegistry.getInstrumentation().getUiAutomation()
+                .executeShellCommand(command);
+             var in = new android.os.ParcelFileDescriptor.AutoCloseInputStream(parcel)) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 
