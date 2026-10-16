@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.ActivityOptions;
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Display;
 
 /** Transient Android HOME bridge; the Linux phone surface remains the owner. */
@@ -20,20 +21,27 @@ public final class HomeActivity extends Activity {
     }
 
     private void route() {
-        if (HomeRouting.choose(HostRuntime.get(this).graphicsReady(), NativeCompositor.AVAILABLE)
-                == HomeRouting.Destination.PHONE) {
-            startForegroundService(new Intent(this, DesktopService.class));
-            Intent phone = new Intent(this, PhoneActivity.class)
-                    .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP
-                            | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
-            startActivity(phone, ActivityOptions.makeBasic()
-                    .setLaunchDisplayId(Display.DEFAULT_DISPLAY).toBundle());
-        } else {
-            startActivity(new Intent(this, MainActivity.class)
-                    .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP));
+        HostRuntime runtime = HostRuntime.get(this);
+        try {
+            boolean prepared = runtime.graphicsReady() && !runtime.busy() && NativeCompositor.AVAILABLE;
+            if (prepared) {
+                startForegroundService(new Intent(this, DesktopService.class));
+                Intent phone = new Intent(this, PhoneActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
+                startActivity(phone, ActivityOptions.makeBasic()
+                        .setLaunchDisplayId(Display.DEFAULT_DISPLAY).toBundle());
+            } else {
+                Intent setup = new Intent(this, MainActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                startActivity(setup, ActivityOptions.makeBasic()
+                        .setLaunchDisplayId(Display.DEFAULT_DISPLAY).toBundle());
+            }
+        } catch (RuntimeException error) {
+            Log.e("OmamobileHome", "Cannot route HOME request", error);
+        } finally {
+            // The bridge is transient; MainActivity/PhoneActivity owns recovery controls.
+            finish();
         }
-        // Finish only after the target launch request has been accepted so a
-        // transient HOME task cannot replace the reachable host controls.
-        finish();
     }
 }
