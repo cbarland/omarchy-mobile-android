@@ -49,7 +49,7 @@ XERJ's shared local indexes were used for concrete mechanism lookup, followed by
 - Arch Linux ARM package-signing guidance and Build System primary fingerprint: https://archlinuxarm.org/about/package-signing
 - Arch Linux official downloads and release-key guidance: https://archlinux.org/download/
 - Arch Linux official developer/key listing: https://archlinux.org/people/developers/
-- The automatic source, download boundary and importer layout are local code in `app/src/main/java/dev/omamobile/host/BootstrapSource.java`, `BootstrapDownload.java`, and `RootfsImporter.java`. The automatic path is pending final device/emulator runtime proof; manual import/setup evidence remains separate.
+- The automatic source, download boundary and importer layout are local code in `app/src/main/java/dev/omamobile/host/BootstrapSource.java`, `BootstrapDownload.java`, and `RootfsImporter.java`. The automatic x86_64 path passed fresh-emulator verification; ARM64 remains unverified and manual import/setup evidence remains separate.
 - `BootstrapSignature.java` is adapted from TAWC's MIT `SignatureVerifier` at `64e3736699684a4fc0029e71bdfb7cc1e0884323`; it pins full primary fingerprints and does not resolve arbitrary subkeys. The attribution and pinned key provenance are recorded in `docs/AUTHENTICATED_INSTALL_PROVENANCE.md`.
 
 ## Android commands / earlier Omalauncher work

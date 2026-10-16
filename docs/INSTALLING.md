@@ -158,8 +158,8 @@ flashing, or permission-policy modification is part of the Linux installation.
 
 ## Validation status
 
-The automatic authenticated bootstrap path remains pending integrated runtime
-verification. The earlier disposable API35 x86_64 emulator result covered the
+The automatic authenticated x86_64 bootstrap path passed the fresh emulator flow
+described above; ARM64 remains pending. The earlier disposable API35 result covered the
 manual/import-and-setup flow: an empty installation became both real graphical
 shells in 215.296s, including packaged-asset checks. The actual Android document
 picker, foreground service, setup wake lock and cancellation during signed package
