@@ -2,7 +2,20 @@
 
 Development began 2026-10-14. This file records the tested milestone, not overall product completion.
 
-## Current accounting — 2026-10-15
+## Current accounting — 2026-10-16
+
+### Fourth merged batch — 2026-10-16
+
+PRs #19 (guest-owned runtime paths) and #20 (bounded sleep/wake audit) were
+merged and checked together at `be3a1df`. The full graphical APK and test APK
+built; 68 JVM checks and lint passed, with one POSIX-only JVM fixture skipped
+on Windows. All 72 Linux host checks passed in 8.380s without skips. Direct
+instrumentation on the updated prepared API35 emulator passed 12 graphics,
+Ando lifetime, installer asset, display-preview, export/recovery and service
+tests in 98.709s. Both real shells then reopened and the sleep/wake audit
+passed with stable owners, signatures, display IDs and monitor geometry.
+Linux data and Shizuku grants were preserved. This short emulator cycle does
+not establish deep-idle, power-efficiency or physical-device coverage.
 
 ### Guest-owned graphical runtime — 2026-10-15
 
