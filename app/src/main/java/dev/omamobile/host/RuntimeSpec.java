@@ -59,6 +59,7 @@ final class RuntimeSpec {
         env.put("OMARCHY_PATH", "/root/.local/share/omarchy");
         env.put("OMAMOBILE_PROFILE", profile);
         env.put("OMAMOBILE_SESSION_HOST", "android");
+        env.put("OMAMOBILE_ACCESS_SHELL", "/root/.local/share/omamobile/omamobile-access-shell");
         env.put("NO_AT_BRIDGE", "1");
         env.put("DBUS_SESSION_BUS_ADDRESS", "unix:path=" + runtime + "/bus");
         return env;

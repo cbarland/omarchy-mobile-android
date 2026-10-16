@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""Rootless Android lock-state adapter for the upstream omarchy-shell."""
+import json
+import os
+import subprocess
+import sys
+
+
+STATE_COMMAND = ("/usr/bin/omamobile-android", "device-state")
+
+
+def locked_from_state(raw):
+    state = json.loads(raw)
+    values = (state["keyguardLocked"], state["deviceLocked"], state["interactive"])
+    if any(type(value) is not bool for value in values):
+        raise ValueError("device-state fields must be boolean")
+    return values[0] or values[1] or not values[2]
+
+
+def shell_path(environ):
+    base = environ.get("OMARCHY_PATH") or "/usr/share/omarchy"
+    return os.path.join(base, "bin", "omarchy-shell")
+
+
+def main(argv=None, environ=None, query=None, execute=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    environ = os.environ if environ is None else environ
+    execute = os.execv if execute is None else execute
+    real = shell_path(environ)
+    if os.path.realpath(real) == os.path.realpath(__file__) or not os.path.isfile(real):
+        return 1
+    if argv == ["lock", "isLocked"]:
+        query = query or (lambda: subprocess.run(STATE_COMMAND, check=True, stdout=subprocess.PIPE,
+                                                  stderr=subprocess.DEVNULL, text=True, timeout=10).stdout)
+        try:
+            print("true" if locked_from_state(query()) else "false")
+            return 0
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError,
+                subprocess.SubprocessError):
+            return 1
+    execute(real, [real, *argv])
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
