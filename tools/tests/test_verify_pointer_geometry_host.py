@@ -16,11 +16,18 @@ class PointerGeometryTests(unittest.TestCase):
             run.assert_not_called()
         calls = []
         fixture._call = lambda command: calls.append(command)
-        fixture._session = lambda text: (_ for _ in ()).throw(subprocess.CalledProcessError(1, text))
+        app_calls = []
+        def app(text):
+            app_calls.append(text)
+            if len(app_calls) == 2:
+                raise subprocess.CalledProcessError(1, text)
+        fixture._app = app
         with self.assertRaises(subprocess.CalledProcessError):
             fixture.start()
         fixture.stop()
         self.assertTrue(any(command[-2:] == ["rm", fixture.remote_script] for command in calls))
+        self.assertIn("files/linux/rootfs/root/.", app_calls[0])
+        self.assertTrue(all("session" not in text for text in app_calls))
 
     def test_surface_geometry_requires_one_unambiguous_desktop_layer(self):
         dump = "Output Layer 1 (SurfaceView[dev.omamobile.host/dev.omamobile.host.DesktopActivity](BLAST))\n"

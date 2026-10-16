@@ -92,12 +92,13 @@ class Fixture:
         self.guest_log = f"{self.guest_dir}/events.json"
         self.pid = None
         self.remote_pushed = False
-        self.guest_installed = False
+        self.guest_dir_owned = False
     def start(self):
         self._call([self.adb, "-s", self.serial, "push", str(FIXTURE), self.remote_script])
         self.remote_pushed = True
-        self._session(f"mkdir {self.guest_dir} && cp {self.remote_script} {self.guest_script}")
-        self.guest_installed = True
+        self._app(f"mkdir files/linux/rootfs/root/.{self.token}")
+        self.guest_dir_owned = True
+        self._app(f"cp {self.remote_script} files/linux/rootfs/root/.{self.token}/fixture.py")
         started = self._session(f"nohup /usr/bin/python {self.guest_script} {self.guest_log} "
                                 f">{self.guest_log}.log 2>&1 </dev/null & echo $!")
         try:
@@ -120,6 +121,10 @@ class Fixture:
         return self._call([sys.executable, str(self.helper), "--adb", self.adb,
                            "--serial", self.serial, "session", "desktop", text])
 
+    def _app(self, text):
+        return self._call([self.adb, "-s", self.serial, "shell", "run-as", "dev.omamobile.host",
+                           "sh", "-c", text])
+
     def read(self):
         try:
             return json.loads(self._session(f"cat {self.guest_log}"))
@@ -138,9 +143,13 @@ class Fixture:
                     self._session(f"kill {self.pid}")
             except (subprocess.SubprocessError, OSError):
                 pass
-        if self.guest_installed:
-            self._session(f"rm -f {self.guest_script} {self.guest_log} {self.guest_log}.tmp {self.guest_log}.log && rmdir {self.guest_dir}")
-            self.guest_installed = False
+        if self.guest_dir_owned:
+            self._app(f"rm -f files/linux/rootfs/root/.{self.token}/fixture.py "
+                      f"files/linux/rootfs/root/.{self.token}/events.json "
+                      f"files/linux/rootfs/root/.{self.token}/events.json.tmp "
+                      f"files/linux/rootfs/root/.{self.token}/events.json.log && "
+                      f"rmdir files/linux/rootfs/root/.{self.token}")
+            self.guest_dir_owned = False
         if self.remote_pushed:
             self._call([self.adb, "-s", self.serial, "shell", "rm", self.remote_script])
             self.remote_pushed = False
@@ -220,6 +229,8 @@ def main():
                 fixture.stop()
             except (OSError, subprocess.SubprocessError, RuntimeError) as error:
                 result["cleanupError"] = str(error)
+    if result.get("error") or result.get("cleanupError"):
+        result["passed"] = False
     result["serial"] = args.serial
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
