@@ -23,6 +23,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".HomeActivity" android:exported="true" android:launchMode="singleTask"
+            android:excludeFromRecents="true" android:resizeableActivity="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <activity android:name=".PhoneActivity" android:exported="false" android:process=":phone"
             android:taskAffinity="dev.omamobile.host.phone" android:launchMode="singleTask" android:excludeFromRecents="true" android:resizeableActivity="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density|uiMode" />
