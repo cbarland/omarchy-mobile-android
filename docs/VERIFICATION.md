@@ -24,6 +24,16 @@ and the 1920×1080 desktop showed the upstream bar and matching wallpaper.
 These combined checks do not replace the individual PRs' broader evidence or
 establish new physical-device or public APK release readiness.
 
+PRs #14–#16 were then merged at `edc3147`: upstream shell command auditing,
+in-place external-display geometry checks and separate-copy recovery. The
+combined full graphical build, 39 JVM tests and lint pass; 53 Linux host tests
+pass in 7.106s without skips. Direct instrumentation on the updated disposable
+emulator passes all eight preview/export/recovery/service tests in 71.887s.
+The individual real document-picker recovery check and four-phase geometry
+audit are recorded in INSTALLING.md and display-geometry.md. These increments
+leave the broader issues open, including authenticated image download,
+in-place replacement, display power/input coverage and release source bundles.
+
 Physical device work remains paused for this batch. Resumed verification uses
 the prepared emulator and a separate disposable emulator; this task has not
 reconnected to or changed the Nubia. Preserve the prepared Linux data and
