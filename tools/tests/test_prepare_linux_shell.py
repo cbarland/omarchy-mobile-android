@@ -51,6 +51,12 @@ def members(path):
     return result
 
 
+def member_bytes(path, name):
+    with tarfile.open(path, "r:gz") as archive:
+        item = archive.getmember(name)
+        return archive.extractfile(item).read()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("omarchy", "mobile", "widgets"):
@@ -83,6 +89,19 @@ def main():
 
     before = payload("clean")
     assert before, "Preparation produced an empty payload"
+    required_portal = {
+        "usr/bin/omamobile-portal-access",
+        "usr/share/xdg-desktop-portal/portals/omamobile.portal",
+        "etc/xdg/xdg-desktop-portal/hyprland-portals.conf",
+        "usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.omamobile.service",
+        "root/.local/share/omamobile/verify-access-portal",
+    }
+    assert required_portal <= before.keys(), f"Access portal payload members missing: {required_portal - before.keys()}"
+    portal_config = member_bytes(directory / "clean.tar.gz", "etc/xdg/xdg-desktop-portal/hyprland-portals.conf")
+    assert portal_config == b"[preferred]\ndefault=*\norg.freedesktop.impl.portal.Access=omamobile\n"
+    for profile in ("phone", "desktop"):
+        config = json.loads(member_bytes(directory / "clean.tar.gz", f"usr/share/omamobile/android/{profile}.json"))
+        assert any(item.get("id") == "omamobile.access" for item in config.get("plugins", [])), profile
     # Invalid JSON makes accidental worktree reads fail loudly. License changes
     # cover both explicit put() calls and trees; widget bytes cover hash checks.
     dirty_paths = {

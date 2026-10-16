@@ -45,7 +45,11 @@ def blob(path):
 
 a.output.parent.mkdir(parents=True, exist_ok=True)
 with tarfile.open(a.output, "w:gz") as archive:
+    written = set()
     def put(name, data, mode=0o644):
+        if name in written:
+            raise SystemExit(f"Duplicate payload member: {name}")
+        written.add(name)
         data = data.encode() if isinstance(data, str) else data
         info = tarfile.TarInfo(name)
         info.size, info.mode, info.mtime = len(data), mode, 0
@@ -106,7 +110,10 @@ with tarfile.open(a.output, "w:gz") as archive:
     desktop["idle"] = {"screensaver": 0, "lock": 0}
     desktop["disabledPlugins"] = disabled
     phone = json.loads(blob(package / "profile/shell.json")[0])
-    phone["plugins"] = [{"id": x} for x in ["omamobile.home", "omamobile.launcher", "omamobile.switcher", "omamobile.quicksettings"]]
+    phone["plugins"] = [{"id": x} for x in ["omamobile.home", "omamobile.launcher", "omamobile.switcher", "omamobile.quicksettings", "omamobile.access"]]
+    desktop_plugins = desktop.setdefault("plugins", [])
+    if not any(isinstance(plugin, dict) and plugin.get("id") == "omamobile.access" for plugin in desktop_plugins):
+        desktop_plugins.append({"id": "omamobile.access"})
     phone["idle"] = desktop["idle"]
     phone["disabledPlugins"] = disabled
     for profile, config in [("phone", phone), ("desktop", desktop)]:
@@ -125,10 +132,22 @@ with tarfile.open(a.output, "w:gz") as archive:
               ]}]}
     put("usr/share/omamobile/android/home.json", json.dumps(layout, indent=2) + "\n")
     tools = Path(__file__).parent
-    for name in ["setup-linux-shell", "start-shell", "omamobile-android", "omamobile-access-shell", "sync-session-theme"]:
+    for name in ["setup-linux-shell", "start-shell", "omamobile-android", "omamobile-access-shell", "verify-access-portal", "sync-session-theme"]:
         put("root/.local/share/omamobile/" + name, (tools / "linux" / name).read_bytes(), 0o755)
     put("usr/bin/omamobile-android", (tools / "linux/omamobile-android").read_bytes(), 0o755)
+    put("usr/share/xdg-desktop-portal/portals/omamobile.portal", blob(package / "portal/omamobile.portal")[0])
+    # Select only the Access backend. Other interfaces are intentionally
+    # unverified; this payload makes no GNOME/FUSE/PipeWire claim.
+    put("etc/xdg/xdg-desktop-portal/hyprland-portals.conf",
+        b"[preferred]\ndefault=*\norg.freedesktop.impl.portal.Access=omamobile\n")
+    # Private user D-Bus activates this backend directly.  Keep only the
+    # canonical Name/Exec contract; this rootless Android payload has no
+    # systemd --user manager to consume SystemdService metadata.
+    put("usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.omamobile.service",
+        b"[D-BUS Service]\n"
+        b"Name=org.freedesktop.impl.portal.desktop.omamobile\n"
+        b"Exec=/usr/bin/omamobile-portal-access\n")
     put("usr/lib/omamobile/session-bin/uwsm-app", (tools / "linux/session-exec").read_bytes(), 0o755)
     put("usr/share/omamobile/android/sources.json", json.dumps({"omarchy": OMARCHY, "omarchy-mobile": MOBILE, "omarchy-widgets": WIDGETS,
-        "adapter": "OMARCHY_SHELL_CONFIG override; Android-session-only uwsm-app argv adapter without systemd scopes; additive theme-set.d hook applies theme IPC to the active peer profile; upstream application launch code unchanged; Linux-only setup and launch scripts"}, indent=2) + "\n")
+        "adapter": "OMARCHY_SHELL_CONFIG override; Android-session-only uwsm-app argv adapter without systemd scopes; additive theme-set.d hook applies theme IPC to the active peer profile; rootless Android lock-state adapter and canonical omamobile.access D-Bus Access backend; upstream application launch code unchanged; Linux-only setup and launch scripts"}, indent=2) + "\n")
 print(a.output, a.output.stat().st_size)
