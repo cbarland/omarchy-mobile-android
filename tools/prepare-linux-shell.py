@@ -131,6 +131,14 @@ with tarfile.open(a.output, "w:gz") as archive:
                   {"id": "w5", "kind": "widget", "type": "media", "x": 0, "y": 2, "w": 4, "h": 1, "config": {}}
               ]}]}
     put("usr/share/omamobile/android/home.json", json.dumps(layout, indent=2) + "\n")
+    put("usr/share/applications/org.omamobile.AndroidDisplays.desktop",
+        b"[Desktop Entry]\n"
+        b"Name=Android displays\n"
+        b"Type=Application\n"
+        b"Exec=/usr/bin/omamobile-android display-settings\n"
+        b"Terminal=false\n"
+        b"Icon=video-display\n"
+        b"Categories=Settings;HardwareSettings;\n")
     tools = Path(__file__).parent
     for name in ["setup-linux-shell", "start-shell", "omamobile-android", "omamobile-access-shell", "verify-access-portal", "sync-session-theme"]:
         put("root/.local/share/omamobile/" + name, (tools / "linux" / name).read_bytes(), 0o755)

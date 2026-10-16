@@ -87,7 +87,12 @@ public class AndroidAppPortalTest {
                 "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
         var instrumentation = InstrumentationRegistry.getInstrumentation();
         Context context = instrumentation.getTargetContext();
+        // Reuse the repository's real two-session readiness probe before
+        // testing the Linux request, so this path is exercised with both
+        // graphical peers alive.
+        new GraphicsSmokeTest().upstreamShellsMapOnBothNativeHyprlandSessions();
         finishMainActivities(instrumentation);
+        awaitNoMainActivity(instrumentation);
         MainActivity first = null;
         try (LocalSocket socket = connect(false)) {
             JSONObject reply = request(socket, new JSONObject().put("op", "display-settings"));
@@ -95,7 +100,7 @@ public class AndroidAppPortalTest {
             assertTrue(reply.toString(), reply.getBoolean("requested"));
             first = awaitMainActivity(instrumentation);
             assertEquals(android.view.Display.DEFAULT_DISPLAY, first.getDisplay().getDisplayId());
-            assertTrue(dialogShowing(instrumentation, first));
+            awaitDialogShowing(instrumentation, first);
             dismissDialog(instrumentation, first);
 
             String cli = runLinuxClient(context, context.getFilesDir().toPath().resolve("linux/rootfs"),
@@ -104,7 +109,7 @@ public class AndroidAppPortalTest {
             MainActivity second = awaitMainActivity(instrumentation);
             assertSame("Existing phone activity should receive the host action", first, second);
             assertEquals(android.view.Display.DEFAULT_DISPLAY, second.getDisplay().getDisplayId());
-            assertTrue(dialogShowing(instrumentation, second));
+            awaitDialogShowing(instrumentation, second);
             dismissDialog(instrumentation, second);
         } finally {
             if (first != null) dismissDialog(instrumentation, first);
@@ -114,10 +119,32 @@ public class AndroidAppPortalTest {
     }
     private static void finishMainActivities(android.app.Instrumentation instrumentation) {
         instrumentation.runOnMainSync(() -> {
-            for (var activity : androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
-                    .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED))
-                if (activity instanceof MainActivity) activity.finish();
+            for (var stage : new androidx.test.runner.lifecycle.Stage[]{
+                    androidx.test.runner.lifecycle.Stage.RESUMED,
+                    androidx.test.runner.lifecycle.Stage.STARTED,
+                    androidx.test.runner.lifecycle.Stage.CREATED})
+                for (var activity : androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                        .getActivitiesInStage(stage))
+                    if (activity instanceof MainActivity) activity.finish();
         });
+    }
+    private static void awaitNoMainActivity(android.app.Instrumentation instrumentation) {
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        while (SystemClock.uptimeMillis() < deadline) {
+            AtomicBoolean present = new AtomicBoolean();
+            instrumentation.runOnMainSync(() -> {
+                for (var stage : new androidx.test.runner.lifecycle.Stage[]{
+                        androidx.test.runner.lifecycle.Stage.RESUMED,
+                        androidx.test.runner.lifecycle.Stage.STARTED,
+                        androidx.test.runner.lifecycle.Stage.CREATED})
+                    for (var activity : androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                            .getActivitiesInStage(stage))
+                        if (activity instanceof MainActivity) present.set(true);
+            });
+            if (!present.get()) return;
+            SystemClock.sleep(50);
+        }
+        fail("Cold display-settings request requires MainActivity to be destroyed first");
     }
     private static MainActivity awaitMainActivity(android.app.Instrumentation instrumentation) {
         AtomicReference<MainActivity> found = new AtomicReference<>();
@@ -136,8 +163,19 @@ public class AndroidAppPortalTest {
     }
     private static boolean dialogShowing(android.app.Instrumentation instrumentation, MainActivity activity) {
         AtomicBoolean showing = new AtomicBoolean();
-        instrumentation.runOnMainSync(() -> showing.set(displayDialogUnchecked(activity).isShowing()));
+        instrumentation.runOnMainSync(() -> {
+            android.app.Dialog dialog = displayDialogUnchecked(activity);
+            showing.set(dialog != null && dialog.isShowing());
+        });
         return showing.get();
+    }
+    private static void awaitDialogShowing(android.app.Instrumentation instrumentation, MainActivity activity) {
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (dialogShowing(instrumentation, activity)) return;
+            SystemClock.sleep(50);
+        }
+        fail("Display request did not show the existing Android display dialog");
     }
     private static void dismissDialog(android.app.Instrumentation instrumentation, MainActivity activity) {
         instrumentation.runOnMainSync(() -> {

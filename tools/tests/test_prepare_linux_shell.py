@@ -96,6 +96,12 @@ def main():
         "usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.omamobile.service",
         "root/.local/share/omamobile/verify-access-portal",
     }
+    desktop_entry = "usr/share/applications/org.omamobile.AndroidDisplays.desktop"
+    assert desktop_entry in before
+    assert member_bytes(directory / "clean.tar.gz", desktop_entry) == (
+        b"[Desktop Entry]\nName=Android displays\nType=Application\n"
+        b"Exec=/usr/bin/omamobile-android display-settings\nTerminal=false\n"
+        b"Icon=video-display\nCategories=Settings;HardwareSettings;\n")
     assert required_portal <= before.keys(), f"Access portal payload members missing: {required_portal - before.keys()}"
     portal_config = member_bytes(directory / "clean.tar.gz", "etc/xdg/xdg-desktop-portal/hyprland-portals.conf")
     assert portal_config == b"[preferred]\ndefault=*\norg.freedesktop.impl.portal.Access=omamobile\n"
