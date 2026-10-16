@@ -9,7 +9,9 @@ import android.media.ImageReader;
 import android.net.LocalServerSocket;
 import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
+import android.app.KeyguardManager;
 import android.os.Process;
+import android.os.PowerManager;
 import android.os.SystemClock;
 import android.system.Os;
 import org.json.JSONArray;
@@ -98,6 +100,13 @@ final class AndroidAppPortal implements AutoCloseable {
                                 apps.put(new JSONObject().put("package", app.activityInfo.packageName).put("name", app.loadLabel(context.getPackageManager())));
                         }
                         reply.put("apps", apps);
+                    } else if (op.equals("device-state")) {
+                        KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
+                        PowerManager power = context.getSystemService(PowerManager.class);
+                        if (keyguard == null || power == null) throw new IOException("Android device state is unavailable");
+                        reply.put("keyguardLocked", keyguard.isKeyguardLocked())
+                                .put("deviceLocked", keyguard.isDeviceLocked())
+                                .put("interactive", power.isInteractive());
                     } else if (op.equals("open")) {
                         if (hosted != null) throw new IOException("A connection already owns a display");
                         if (windows.incrementAndGet() > 3) { windows.decrementAndGet(); throw new IOException("At most three Android windows"); }

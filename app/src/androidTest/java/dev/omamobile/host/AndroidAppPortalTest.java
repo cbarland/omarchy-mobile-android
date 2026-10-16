@@ -52,6 +52,47 @@ public class AndroidAppPortalTest {
             JSONObject list = request(socket, new JSONObject().put("op", "list"));
             assertTrue(list.toString(), list.getBoolean("ok"));
             assertTrue(list.getJSONArray("apps").length() > 0);
+            assertFalse(request(socket, new JSONObject().put("op", "unknown-device-state-operation")).getBoolean("ok"));
+        }
+    }
+    @Test public void deviceStateMatchesAndroidApisAndLinuxCli() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        JSONObject host;
+        try (LocalSocket socket = connect()) {
+            host = request(socket, new JSONObject().put("op", "device-state"));
+        }
+        assertTrue(host.toString(), host.getBoolean("ok"));
+        var keyguard = context.getSystemService(android.app.KeyguardManager.class);
+        var power = context.getSystemService(android.os.PowerManager.class);
+        assertNotNull(keyguard);
+        assertNotNull(power);
+        assertEquals(keyguard.isKeyguardLocked(), host.getBoolean("keyguardLocked"));
+        assertEquals(keyguard.isDeviceLocked(), host.getBoolean("deviceLocked"));
+        assertEquals(power.isInteractive(), host.getBoolean("interactive"));
+
+        org.junit.Assume.assumeTrue("Prepared graphics session required for Linux CLI path",
+                "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
+        var root = context.getFilesDir().toPath().resolve("linux/rootfs");
+        var argv = RuntimeSpec.command(new File(context.getApplicationInfo().nativeLibraryDir, "libtawcroot.so").toPath(),
+                root, List.of(new RuntimeSpec.Bind("/dev", "/dev", false),
+                        new RuntimeSpec.Bind("/proc", "/proc", false)),
+                List.of("/usr/bin/omamobile-android", "device-state"));
+        var captured = Files.createTempFile(context.getCacheDir().toPath(), "device-state-", ".json");
+        Process process = null;
+        try {
+            process = new ProcessBuilder(argv).directory(root.toFile()).redirectErrorStream(true)
+                    .redirectOutput(captured.toFile()).start();
+            process.getOutputStream().close();
+            assertTrue("Linux device-state client timed out", process.waitFor(10, TimeUnit.SECONDS));
+            String output = new String(Files.readAllBytes(captured), StandardCharsets.UTF_8).trim();
+            assertEquals(output, 0, process.exitValue());
+            JSONObject cli = new JSONObject(output);
+            assertEquals(host.getBoolean("keyguardLocked"), cli.getBoolean("keyguardLocked"));
+            assertEquals(host.getBoolean("deviceLocked"), cli.getBoolean("deviceLocked"));
+            assertEquals(host.getBoolean("interactive"), cli.getBoolean("interactive"));
+        } finally {
+            if (process != null) process.destroyForcibly();
+            Files.deleteIfExists(captured);
         }
     }
     @Test public void linuxClientReachesTheSamePortal() throws Exception {
