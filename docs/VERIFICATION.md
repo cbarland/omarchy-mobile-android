@@ -863,9 +863,9 @@ toolkit compatibility. Non-ASCII transport uses the pinned US-keyboard
 Ctrl+Shift+U route and remains client/toolkit dependent.
 
 The default `androidx.test.runner.AndroidJUnitRunner` remains registered for
-main-process tests, alongside the phone-process runner. The default runner's
-EscapeIme fixture was invoked separately; its environment-specific visible
-IME precondition failed, so that result is not counted as an EscapeIme pass.
+main-process tests, alongside the phone-process runner. After a normal
+graphics cleanup, the unchanged `EscapeImeTest` passed against both the old
+host and the candidate host through the default runner (65.116s and 63.947s).
 
 The following records the earlier APK before the graphics integration.
 
