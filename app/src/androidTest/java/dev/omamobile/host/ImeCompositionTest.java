@@ -94,8 +94,8 @@ public class ImeCompositionTest {
             assertEquals(List.of("52:1", "52:0"), awaitCanonical(log, zStart, 2));
             report.getJSONArray("cases").put(new JSONObject().put("name", "xy-commit-z-before-finish")
                     .put("events", canonical(read(log).substring(before.length())).toString()));
-            finish(instrumentation, input);
             int noFinishStart = read(log).length();
+            finish(instrumentation, input);
             SystemClock.sleep(1000);
             assertTrue(canonical(read(log).substring(noFinishStart)).isEmpty());
             finish(instrumentation, input);
@@ -125,19 +125,30 @@ public class ImeCompositionTest {
             assertEquals(asciiBC, awaitCanonical(log, asciiPendingStart, 4));
             assertEquals("", editable(input));
             InputConnection deleting = findPhoneInput(instrumentation, report);
-            compose(instrumentation, deleting, "draft", 5);
+            int draftControlStart = read(log).length();
+            commit(instrumentation, deleting, "draft", 5);
+            List<String> draftControl = awaitCanonical(log, draftControlStart, 10);
+            InputConnection deletingPending = findPhoneInput(instrumentation, report);
+            compose(instrumentation, deletingPending, "draft", 5);
             int deleteStart = read(log).length();
-            assertTrue(deleteSurrounding(instrumentation, deleting, 1, 0));
-            assertTrue(deleteCodePoints(instrumentation, deleting, 1, 0));
-            assertEquals("draft", editable(deleting));
+            assertTrue(deleteSurrounding(instrumentation, deletingPending, 1, 0));
+            assertTrue(deleteCodePoints(instrumentation, deletingPending, 1, 0));
+            assertEquals("draft", editable(deletingPending));
             SystemClock.sleep(1000);
             assertTrue(canonical(read(log).substring(deleteStart)).isEmpty());
-            finish(instrumentation, deleting);
+            finish(instrumentation, deletingPending);
+            assertEquals(draftControl, awaitCanonical(log, deleteStart, 10));
             InputConnection aliased = findPhoneInput(instrumentation, report);
-            compose(instrumentation, aliased, "alias", 5);
-            Editable alias = ((BaseInputConnection) aliased).getEditable();
-            commit(instrumentation, aliased, alias, 5);
-            assertEquals("", editable(aliased));
+            int aliasControlStart = read(log).length();
+            commit(instrumentation, aliased, "alias", 5);
+            List<String> aliasControl = awaitCanonical(log, aliasControlStart, 10);
+            InputConnection aliasedPending = findPhoneInput(instrumentation, report);
+            compose(instrumentation, aliasedPending, "alias", 5);
+            Editable alias = ((BaseInputConnection) aliasedPending).getEditable();
+            int aliasStart = read(log).length();
+            commit(instrumentation, aliasedPending, alias, 5);
+            assertEquals(aliasControl, awaitCanonical(log, aliasStart, 10));
+            assertEquals("", editable(aliasedPending));
             InputConnection closed = findPhoneInput(instrumentation, report);
             compose(instrumentation, closed, "q", 1);
             assertEquals("q", editable(closed));
@@ -149,7 +160,8 @@ public class ImeCompositionTest {
             AtomicReference<Boolean> closedCommit = new AtomicReference<>();
             instrumentation.runOnMainSync(() -> closedCommit.set(closed.commitText("r", 1)));
             assertEquals(Boolean.FALSE, closedCommit.get());
-            assertEquals(beforeClose, read(log));
+            SystemClock.sleep(1000);
+            assertTrue(canonical(read(log).substring(beforeClose.length())).isEmpty());
             report.getJSONArray("cases").put(new JSONObject().put("name", "close-clears-pending").put("events", "[]"));
         } catch (Throwable error) {
             failure = error;
@@ -192,7 +204,27 @@ public class ImeCompositionTest {
         AtomicReference<JSONObject> state = new AtomicReference<>(new JSONObject());
         instrumentation.getTargetContext().startActivity(new Intent(instrumentation.getTargetContext(), PhoneActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), ActivityOptions.makeBasic().setLaunchDisplayId(0).toBundle());
-        try (ParcelFileDescriptor ignored = instrumentation.getUiAutomation().executeShellCommand("input tap 540 1212")) { }
+        AtomicReference<int[]> tapPoint = new AtomicReference<>();
+        instrumentation.runOnMainSync(() -> {
+            for (Stage stage : new Stage[]{Stage.RESUMED, Stage.STARTED, Stage.CREATED}) {
+                for (var activity : ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(stage)) {
+                    if (activity instanceof PhoneActivity) {
+                        SurfaceView surface = findSurface(activity.getWindow().getDecorView());
+                        if (surface != null) {
+                            int[] location = new int[2];
+                            surface.getLocationOnScreen(location);
+                            tapPoint.set(new int[]{location[0] + Math.max(1, surface.getWidth() / 2),
+                                    location[1] + Math.max(1, surface.getHeight() / 2)});
+                        }
+                    }
+                }
+            }
+        });
+        if (tapPoint.get() != null) {
+            int[] point = tapPoint.get();
+            try (ParcelFileDescriptor ignored = instrumentation.getUiAutomation().executeShellCommand(
+                    "input tap " + point[0] + " " + point[1])) { }
+        }
         long deadline = SystemClock.uptimeMillis() + 5000;
         while (result.get() == null && SystemClock.uptimeMillis() < deadline) {
             instrumentation.runOnMainSync(() -> {
