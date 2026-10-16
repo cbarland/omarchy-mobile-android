@@ -206,9 +206,11 @@ final class HostRuntime {
         worker.execute(() -> {
             activeWorker = Thread.currentThread();
             java.io.Closeable inputForCleanup = null;
+            InstallationLease installLease = null;
             try {
                 checkSetupRunning();
                 if (image != null) {
+                    installLease = InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL);
                     if (installOmarchy) {
                         beginOmarchyInstall("Installing Omarchy from the selected trusted Linux archive.");
                     }
@@ -240,6 +242,8 @@ final class HostRuntime {
                     if (inputForCleanup != null && activeInput == inputForCleanup) activeInput = null;
                     activeInputCancellation = null;
                 }
+                if (installLease != null) try { installLease.close(); }
+                catch (IOException error) { android.util.Log.w("OmamobileLinux", "Cannot release installation lease", error); }
                 synchronized (this) { busy = false; }
                 changed();
                 main.post(done);
@@ -253,8 +257,10 @@ final class HostRuntime {
         busy = true; stopping = false; changed();
         worker.execute(() -> {
             activeWorker = Thread.currentThread();
+            InstallationLease installLease = null;
             try {
                 checkSetupRunning();
+                installLease = InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL);
                 BootstrapSource source = BootstrapSource.forMachine(machine());
                 beginOmarchyInstall("Downloading a publisher-authenticated Arch bootstrap.");
                 BootstrapDownload download = new BootstrapDownload();
@@ -275,6 +281,8 @@ final class HostRuntime {
                         + (error.getMessage() == null ? error.toString() : error.getMessage()));
             } finally {
                 Thread.interrupted();
+                if (installLease != null) try { installLease.close(); }
+                catch (IOException error) { android.util.Log.w("OmamobileLinux", "Cannot release installation lease", error); }
                 synchronized (this) { activeInput = null; activeInputCancellation = null; activeDownload = null; }
                 guest = null; activeWorker = null; recordingSetup = false;
                 synchronized (this) { busy = false; }

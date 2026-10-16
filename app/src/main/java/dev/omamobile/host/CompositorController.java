@@ -77,8 +77,11 @@ final class CompositorController {
         attachedDisplayId = androidDisplayId;
         started = true;
         thread = new Thread(() -> {
+            InstallationLease lease = null;
             try {
                 if (!NativeCompositor.AVAILABLE) throw new IllegalStateException("This APK has no Hyprland backend for this device ABI");
+                lease = InstallationLease.acquire(context.getFilesDir().toPath().resolve("linux"),
+                        InstallationLease.Mode.SHARED_USE);
                 session = new GraphicalSession(context, phone, androidDisplayId);
                 if (stopping) return;
                 NativeCompositor.listener = (display, signature) -> {
@@ -108,6 +111,8 @@ final class CompositorController {
                 // here could discard the live shell before stopForUser records
                 // that its widget startup marker belongs to an intentional stop.
                 if (!stopping && session != null) session.stop();
+                if (lease != null) try { lease.close(); }
+                catch (java.io.IOException error) { android.util.Log.w("OmamobileHyprland", "Cannot release installation lease", error); }
             }
         }, "native-hyprland");
         thread.start();
