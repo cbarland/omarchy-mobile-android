@@ -171,10 +171,14 @@ window using `MOZ_ENABLE_WAYLAND=1`. No sandbox-disabling flags or settings
 were changed, and no privilege changes were used. This is a launch/rendering
 check, not an audit of Firefox's sandbox feature availability.
 
+The unmodified upstream `omamobile-launch url` also opened a unique local
+HTTP test page in Firefox after package installation, confirmed by the server
+request and matching native Wayland window title. No explicit default-browser
+configuration was needed for that check.
+
 This result is established for the tested x86_64 emulator only. ARM Firefox
 execution, GPU behavior on other devices, and other browsers remain
-unverified. Whether the upstream `omamobile-launch` URL path selects Firefox
-is also unverified.
+unverified.
 
 ## Validation status
 
