@@ -12,6 +12,15 @@ single-task activity and its foreground notification remain the reachable host
 controls. When setup or the native payload is unavailable, HOME routes to the
 ordinary installation and command controls in `MainActivity`.
 
+API 35 emulator checks explicitly launched the HOME bridge from the controls
+screen twice, observed the phone activity resumed on display 0, and retained
+the same compositor PID and instance signature. A separate unprepared emulator
+opened setup without creating a phone owner. Both retained their default
+launcher and application data. Selecting the app as the default launcher and
+device-specific HOME behavior remain to be verified.
+
+## Android window adapter
+
 This adapter is optional. Linux shells, widgets and plugins work without it.
 An unmodified Android base is retained. The user separately starts official
 [Shizuku](https://shizuku.rikka.app/guide/setup/) in ADB mode and authorizes
