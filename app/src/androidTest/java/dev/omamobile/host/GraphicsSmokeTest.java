@@ -107,60 +107,66 @@ public class GraphicsSmokeTest {
 
     private static void verifyDbusActivationEnvironment(Context context, String profile, Properties properties) throws Exception {
         Path root = context.getFilesDir().toPath().resolve("linux/rootfs");
-        String id = "dev.omamobile.envprobe." + profile;
+        String id = "dev.omamobile.envprobe." + profile + ".p" + java.util.UUID.randomUUID().toString().replace("-", "");
         Path service = root.resolve("usr/share/dbus-1/services/" + id + ".service");
-        Path script = root.resolve("root/.local/share/omamobile/env-probe-" + profile + ".py");
-        Path output = root.resolve("root/.local/share/omamobile/env-probe-" + profile + ".json");
+        Path temporary = Files.createTempDirectory(root.resolve("tmp"), "omamobile-env-");
+        Path script = temporary.resolve("probe.py");
+        Path output = temporary.resolve("environment.json");
+        String guestTemporary = "/tmp/" + temporary.getFileName();
         String source = """
                 import json, os, sys
                 from gi.repository import Gio, GLib
                 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-                bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
+                result = bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
                               'org.freedesktop.DBus', 'RequestName',
-                              GLib.Variant('(su)', (sys.argv[1], 0)),
+                              GLib.Variant('(su)', (sys.argv[1], 4)),
                               GLib.VariantType('(u)'), Gio.DBusCallFlags.NONE, 2000, None)
-                with open(sys.argv[2], 'w') as out:
+                assert result.unpack()[0] == 1
+                with open(sys.argv[2] + '.tmp', 'x') as out:
                     json.dump({key: os.environ.get(key) for key in (
-                        'OMARCHY_PATH', 'OMAMOBILE_SESSION_HOST', 'PATH',
+                        'OMARCHY_PATH', 'OMAMOBILE_SESSION_HOST', 'OMAMOBILE_PROFILE', 'PATH',
                         'WAYLAND_DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE',
                         'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR')}, out)
+                os.replace(sys.argv[2] + '.tmp', sys.argv[2])
                 loop = GLib.MainLoop()
                 GLib.timeout_add(2000, loop.quit)
                 loop.run()
                 """;
-        Files.createDirectories(service.getParent());
-        Files.createDirectories(script.getParent());
-        Files.deleteIfExists(output);
-        Files.writeString(script, source, StandardCharsets.UTF_8);
-        Files.writeString(service, "[D-BUS Service]\nName=" + id + "\nExec=/usr/bin/python3 "
-                + "/root/.local/share/omamobile/env-probe-" + profile + ".py " + id + " "
-                + "/root/.local/share/omamobile/env-probe-" + profile + ".json\n", StandardCharsets.UTF_8);
+        boolean serviceCreated = false;
         try {
+            Files.createDirectories(service.getParent());
+            Files.write(script, source.getBytes(StandardCharsets.UTF_8), java.nio.file.StandardOpenOption.CREATE_NEW);
+            Files.write(service, ("[D-BUS Service]\nName=" + id + "\nExec=/usr/bin/python3 "
+                    + guestTemporary + "/probe.py " + id + " " + guestTemporary + "/environment.json\n")
+                    .getBytes(StandardCharsets.UTF_8), java.nio.file.StandardOpenOption.CREATE_NEW);
+            serviceCreated = true;
             String runtime = "/run/omamobile/" + (profile.equals("phone") ? "p" : "d");
             String reload = runGuest(context, profile, properties, List.of("/usr/bin/gdbus", "call", "--session",
                     "--dest", "org.freedesktop.DBus", "--object-path", "/org/freedesktop/DBus",
                     "--method", "org.freedesktop.DBus.ReloadConfig"));
-            assertTrue(profile + " D-Bus ReloadConfig failed: " + reload, reload.contains("()")
-                    || reload.contains("uint32"));
+            assertEquals(profile + " D-Bus ReloadConfig failed", "()", reload.trim());
             String start = runGuest(context, profile, properties, List.of("/usr/bin/gdbus", "call", "--session",
                     "--dest", "org.freedesktop.DBus", "--object-path", "/org/freedesktop/DBus",
                     "--method", "org.freedesktop.DBus.StartServiceByName", id, "0"));
-            assertTrue(profile + " D-Bus activation failed: " + start, start.contains("uint32 1") || start.contains("uint32 2"));
+            assertEquals(profile + " D-Bus activation did not start a new service", "(uint32 1,)", start.trim());
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
             while (!Files.exists(output) && System.nanoTime() < deadline) Thread.sleep(100);
             assertTrue(profile + " activated service did not write environment", Files.isRegularFile(output));
-            var env = new org.json.JSONObject(Files.readString(output));
-            assertEquals(profile + " runtime", runtime, env.getString("XDG_RUNTIME_DIR"));
-            assertEquals(properties.getProperty("WAYLAND_DISPLAY"), env.getString("WAYLAND_DISPLAY"));
-            assertEquals(properties.getProperty("HYPRLAND_INSTANCE_SIGNATURE"), env.getString("HYPRLAND_INSTANCE_SIGNATURE"));
-            assertEquals("android", env.getString("OMAMOBILE_SESSION_HOST"));
-            assertTrue(env.getString("OMARCHY_PATH").endsWith("/.local/share/omarchy"));
-            assertTrue(env.getString("DBUS_SESSION_BUS_ADDRESS").contains(runtime + "/bus"));
-            assertTrue(env.getString("PATH").contains("/usr/lib/omamobile/session-bin"));
+            var env = new org.json.JSONObject(new String(Files.readAllBytes(output), StandardCharsets.UTF_8));
+            assertEquals(profile + " runtime", runtime, env.optString("XDG_RUNTIME_DIR", null));
+            assertEquals(properties.getProperty("WAYLAND_DISPLAY"), env.optString("WAYLAND_DISPLAY", null));
+            assertEquals(properties.getProperty("HYPRLAND_INSTANCE_SIGNATURE"), env.optString("HYPRLAND_INSTANCE_SIGNATURE", null));
+            assertEquals(profile, env.optString("OMAMOBILE_PROFILE", null));
+            assertEquals("android", env.optString("OMAMOBILE_SESSION_HOST", null));
+            assertEquals("/root/.local/share/omarchy", env.optString("OMARCHY_PATH", null));
+            String busAddress = env.optString("DBUS_SESSION_BUS_ADDRESS", "");
+            assertTrue(profile + " activated service used another bus: " + busAddress,
+                    busAddress.matches(java.util.regex.Pattern.quote("unix:path=" + runtime + "/bus")
+                            + "(?:,guid=[0-9a-f]{32})?"));
+            assertTrue(List.of(env.getString("PATH").split(":")).contains("/usr/lib/omamobile/session-bin"));
         } finally {
-            Files.deleteIfExists(output);
-            Files.deleteIfExists(service);
-            Files.deleteIfExists(script);
+            if (serviceCreated) Files.deleteIfExists(service);
+            GuestPaths.deleteTree(temporary);
         }
     }
 
