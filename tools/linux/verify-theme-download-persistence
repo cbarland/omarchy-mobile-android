@@ -19,8 +19,9 @@ Example guest commands, with BOTH profiles running and the same WORK each time:
 
 All phases have finite process bounds. Do not run concurrent theme changes or
 other user activity. Keep WORK until results/snapshots have been copied out.
-The only theme files downloaded are colors.toml and a generated PNG; no
-third-party scripts, plugins, Lua or terminal/editor configuration are fetched.
+The default fixture downloads only colors.toml and a generated PNG. The
+opt-in --public-hackerboy fixture is the one reviewed public repository below;
+it is fixed to one commit and a complete data-only tree manifest.
 """
 import argparse
 import base64
@@ -42,6 +43,26 @@ import time
 import zlib
 
 PIN = "e71a816e9032f040225e086c7256f73e8080ae45"
+HACKERBOY_URL = "https://github.com/ggregoro/hackerboy"
+HACKERBOY_COMMIT = "add711288b2549ad0b017618cb6256053391d8fa"
+HACKERBOY_TREE = {
+    "LICENSE": ("100644", "485550a28d8798ac0e6f903b0ed0d7fb793e3a477b0e5d420f3e0f792e6f236f"),
+    "README.md": ("100644", "a3168197e86b681e7dea4cb2ab6fcd55c636be3d67a57c6f5a8eca636febf38f"),
+    "backgrounds/1-glowing-city-blue-h60.jpg": ("100644", "65360af2ba468631c89b9d1da8955c5afc5a79a7c2e5d24249ff1d960a0e3ef6"),
+    "backgrounds/1-glowing-city.jpg": ("100644", "1a4ed77cdcd943833027e2caf805819773bbadcabe868b58ea2ee67c6016d8a8"),
+    "backgrounds/fmuAYkF.jpg": ("100644", "b1d10d1ce5abf1f6688647af53d0c382f7f627704ba0cd388143e6839c997b36"),
+    "backgrounds/milky-way-core-jeremy-thomas-unsplash.jpg": ("100644", "31868c97c683c481ee8b66408c685a7d17698714d377250043fc8828cf296f35"),
+    "colors.toml": ("100644", "8c17f14227617e497f419e7d3c8d90243728a8d036b4b85b6e73cbbeda2c7b9e"),
+    "icons.theme": ("100644", "ab5b6354ede8448f66d224525748fc97d89771cf48ae355b1eab9dd9b30b810a"),
+    "preview-unlock.png": ("100644", "b345e9d2ce8c4409f4ad6e663e41eea21827b4aa5e2db13ed216f7c4fb00ba21"),
+    "preview.png": ("100644", "ff16419641d1b5145a90fffd8c3c9cff12f6047d34da4437e5ed72a33de269ff"),
+    "screenshot-eza.webp": ("100644", "53a6514d2670dd6cdab83019890e5d259f23b81361d9046654441018dbff96bb"),
+    "screenshot-wallpaper.webp": ("100644", "4f060a277fd3af5246f61f08c8d0f8de536a30e716c930fa0d1faf08af755011"),
+    "screenshot.webp": ("100644", "56baddc19d34b9323dabf01d25d2e56638d1cdb97d68ad27c18fa43da4cfe6a4"),
+    "unlock.png": ("100644", "c13694ea57e697ec38012f2be3bf13585dd1a5a7edc01d5e6084eb24fab01870"),
+}
+HACKERBOY_BACKGROUND_HASHES = {digest for path, (_, digest) in HACKERBOY_TREE.items()
+                               if path.startswith("backgrounds/")}
 UPSTREAM_HASHES = {
     "bin/omarchy-theme-install": "1fd7417d2d9b3b6f39e4b74ae00440a6cc36a48e706c589bd5a30e6a25702550",
     "bin/omarchy-theme-set": "0bfdee10347b12e074217f36b40fa96a6831e80a0ce8583b3149d8ba96a84796",
@@ -205,12 +226,17 @@ def preconditions():
         assert_real_ancestors(HOME / relative)
 
 
-def prepare(work, transport="loopback-http-git"):
+def prepare(work, transport="loopback-http-git", public_hackerboy=False):
+    require(not public_hackerboy or transport == "loopback-http-git",
+            "The public Hackerboy fixture does not use a loopback transport")
     preconditions()
     require(not work.exists(), "Refusing to overwrite previous fixture or recovery data: " + str(work))
     original = (HOME / ".local/state/omarchy/current/theme.name").read_text().strip()
     require(re.fullmatch(r"[a-z0-9_][a-z0-9._+-]*", original), "Original theme name is invalid")
     require((OMARCHY / "themes" / original).is_dir(), "This bounded fixture requires an original built-in theme")
+    theme_name = "hackerboy" if public_hackerboy else work.name
+    target = HOME / ".config/omarchy/themes" / theme_name
+    require(not target.exists() and not target.is_symlink(), "Refusing existing theme checkout: " + str(target))
     work.mkdir(mode=0o700)
     (work / "snapshots").mkdir()
     saved = {}
@@ -222,6 +248,7 @@ def prepare(work, transport="loopback-http-git"):
     state = {"version": 1, "home": str(HOME), "originalTheme": original,
              "fixture": work.name, "snapshots": saved, "signatures": {},
              "transport": transport,
+             "themeName": theme_name, "publicHackerboy": public_hackerboy,
              "publicHttpsVerified": False,
              "renderedPaletteVerified": False, "phase": "prepared"}
     write_json(work / "state.json", state)
@@ -252,15 +279,67 @@ def tls_material(work):
     return cert, key
 
 
+def verify_hackerboy_checkout(target, env, work):
+    cloned = run(["git", "-C", str(target), "rev-parse", "HEAD"], work, "hackerboy-downloaded-commit", env=env).strip()
+    require(cloned == HACKERBOY_COMMIT, "Downloaded Hackerboy checkout differs from reviewed commit")
+    listing = run(["git", "-C", str(target), "ls-tree", "-r", "--full-tree", "HEAD"], work,
+                  "hackerboy-tree", env=env)
+    actual = {}
+    for line in listing.splitlines():
+        mode, kind, blob, path = line.split(" ", 3)
+        require(kind == "blob", "Hackerboy tree contains a non-blob entry")
+        actual[path] = mode
+    require(set(actual) == set(HACKERBOY_TREE), "Hackerboy tree has unexpected or missing files")
+    require(all(actual[path] == mode for path, (mode, _) in HACKERBOY_TREE.items()),
+            "Hackerboy tree contains an unexpected file mode")
+    for path, (_, digest) in HACKERBOY_TREE.items():
+        entry = target / path
+        require(entry.is_file() and not entry.is_symlink(), "Hackerboy file is not a regular file: " + path)
+        require(sha(entry) == digest, "Hackerboy file hash changed: " + path)
+
+
 def install(work, state, untrusted_cert=False):
     require(not untrusted_cert or state["transport"] == "loopback-https-git",
             "Untrusted certificate probe requires HTTPS transport")
     preconditions()
     require(state["phase"] == "prepared", "Install can run only once after prepare")
-    target = HOME / ".config/omarchy/themes" / state["fixture"]
+    target = HOME / ".config/omarchy/themes" / state["themeName"]
     assert_real_ancestors(target)
     require(not target.exists(), "Unique fixture theme already exists")
     source = work / "source"
+    if state["publicHackerboy"]:
+        require(not untrusted_cert, "The public Hackerboy fixture has no local negative TLS mode")
+        git_env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null",
+                       GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.hooksPath", GIT_CONFIG_VALUE_0="/dev/null",
+                       GIT_TERMINAL_PROMPT="0")
+        remote = run(["git", "ls-remote", "--", HACKERBOY_URL, "HEAD"], work, "hackerboy-remote-head", env=git_env)
+        require(remote.split()[:1] == [HACKERBOY_COMMIT], "Public Hackerboy HEAD moved from reviewed pin")
+        state.update(phase="installing", url=HACKERBOY_URL, expectedCommit=HACKERBOY_COMMIT)
+        write_json(work / "state.json", state)
+        offset = SYNC_LOG.stat().st_size if SYNC_LOG.exists() else 0
+        run(["omarchy-theme-install", HACKERBOY_URL], work, "upstream-public-install", timeout=90, env=git_env)
+        verify_hackerboy_checkout(target, git_env, work)
+        require(target.name == "hackerboy", "Public checkout name changed")
+        current = HOME / ".local/state/omarchy/current"
+        current_background = current / "background"
+        resolved_background = current_background.resolve()
+        require(target.resolve() in resolved_background.parents,
+                "Selected public background is outside the reviewed checkout")
+        state["colorsSha256"] = sha(current / "theme/colors.toml")
+        state["backgroundSha256"] = sha(current_background)
+        require(state["backgroundSha256"] in HACKERBOY_BACKGROUND_HASHES,
+                "Selected public background is outside the reviewed Hackerboy tree")
+        peer = "desktop" if profile() == "phone" else "phone"
+        new_log = SYNC_LOG.read_bytes()[offset:].decode("utf-8")
+        (work / "install-peer-sync.log").write_text(new_log)
+        for acknowledgment in ("ping", "applyTheme", "background setInstant"):
+            require(peer + " " + acknowledgment + " acknowledged" in new_log, "Peer did not acknowledge " + acknowledgment)
+        require(peer + " inactive" not in new_log and " failed:" not in new_log, "Peer sync failed or skipped")
+        state["phase"] = "installed"
+        write_json(work / "state.json", state)
+        check(work, state, "installed", False)
+        return
+
     (source / "backgrounds").mkdir(parents=True)
     colors = (OMARCHY / "themes/tokyo-night/colors.toml").read_text()
     colors, count = re.subn(r'^accent\s*=.*$', 'accent = "#12abef"', colors, flags=re.MULTILINE)
@@ -357,9 +436,13 @@ def check(work, state, stage, require_restart):
     require((stage == "reopened") == require_restart, "Reopened checks require --require-restart; installed checks must omit it")
     require(state["phase"] == "installed", "Install must complete before persistence check")
     current = HOME / ".local/state/omarchy/current"
-    require((current / "theme.name").read_text().strip() == state["fixture"], "Selected theme did not persist")
+    require((current / "theme.name").read_text().strip() == state["themeName"], "Selected theme did not persist")
     require(sha(current / "theme/colors.toml") == state["colorsSha256"], "Persisted palette changed")
-    require(sha(current / "background") == state["backgroundSha256"], "Persisted background changed")
+    current_background = current / "background"
+    require(sha(current_background) == state["backgroundSha256"], "Persisted background changed")
+    if state["publicHackerboy"]:
+        require(state["backgroundSha256"] in HACKERBOY_BACKGROUND_HASHES,
+                "Selected public background is outside the reviewed Hackerboy tree")
     signature = os.environ["HYPRLAND_INSTANCE_SIGNATURE"]
     previous = state["signatures"].get(name)
     if require_restart:
@@ -382,7 +465,7 @@ def check(work, state, stage, require_restart):
         state.setdefault("reopened", {})[name] = signature
     write_json(work / (stage + "-" + name + ".json"), {
         "profile": name, "signature": signature, "previousSignature": previous, "ownerRestartVerified": require_restart,
-        "selectedTheme": state["fixture"], "paletteSha256": state["colorsSha256"],
+        "selectedTheme": state["themeName"], "paletteSha256": state["colorsSha256"],
         "backgroundSha256": state["backgroundSha256"], "shellPing": ping,
         "renderedPaletteVerified": False, "appearanceEvidenceRequired": "Capture this Android display before and after reopening",
     })
@@ -422,13 +505,17 @@ def restore(work, state):
         require(peer + " " + acknowledgment + " acknowledged" in restored_log, "Restore peer did not acknowledge " + acknowledgment)
     for relative in SNAPSHOTS:
         require(inventory(HOME / relative) == state["snapshots"][relative], "Restored data changed after peer sync: " + relative)
-    target = HOME / ".config/omarchy/themes" / state["fixture"]
+    target = HOME / ".config/omarchy/themes" / state["themeName"]
     assert_real_ancestors(target)
+    if state["publicHackerboy"]:
+        require(target.exists() and not target.is_symlink(), "Public Hackerboy checkout disappeared before cleanup")
+        verify_hackerboy_checkout(target, dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null",
+                                               GIT_TERMINAL_PROMPT="0"), work)
     if target.exists():
         shutil.rmtree(target)
     state["phase"] = "restored"
     write_json(work / "state.json", state)
-    write_json(work / "result.json", {"transport": state["transport"], "publicHttpsVerified": False,
+    write_json(work / "result.json", {"transport": state["transport"], "publicHttpsVerified": state["publicHackerboy"],
                "bothOwnersReopened": set(state.get("reopened", {})) == {"phone", "desktop"},
                "renderedPaletteVerified": False, "originalThemeRestored": state["originalTheme"],
                "originalThemeDataRestored": True, "fixtureCheckoutRemoved": True})
@@ -444,6 +531,8 @@ def main():
     parser.add_argument("--untrusted-cert", action="store_true", help="Negative HTTPS install probe; no theme mutation expected")
     parser.add_argument("--transport", choices=("loopback-http-git", "loopback-https-git"),
                         default="loopback-http-git", help="Generated two-file fixture transport")
+    parser.add_argument("--public-hackerboy", action="store_true",
+                        help="Use the fixed reviewed Hackerboy public HTTPS fixture")
     args = parser.parse_args()
     require(not args.untrusted_cert or args.action == "install",
             "--untrusted-cert is valid only with install")
@@ -451,7 +540,8 @@ def main():
         raise InterruptedError("Fixture terminated; preserve WORK recovery snapshots")
     signal.signal(signal.SIGTERM, terminate)
     if args.action == "prepare":
-        prepare(args.work, args.transport)
+        require(not args.untrusted_cert, "--untrusted-cert is valid only with install")
+        prepare(args.work, args.transport, args.public_hackerboy)
         return
     state = load(args.work)
     if args.action == "install":
