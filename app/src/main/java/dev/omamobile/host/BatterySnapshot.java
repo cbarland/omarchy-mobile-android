@@ -35,13 +35,19 @@ final class BatterySnapshot {
 
     private static Boolean booleanExtra(Intent intent, String key) {
         if (!intent.hasExtra(key)) return null;
-        try { return intent.getBooleanExtra(key, false); }
+        try {
+            Object value = intent.getExtras().get(key);
+            return value instanceof Boolean ? (Boolean) value : null;
+        }
         catch (RuntimeException malformed) { return null; }
     }
 
     private static Integer intExtra(Intent intent, String key) {
         if (!intent.hasExtra(key)) return null;
-        try { return intent.getIntExtra(key, Integer.MIN_VALUE); }
+        try {
+            Object value = intent.getExtras().get(key);
+            return value instanceof Integer ? (Integer) value : null;
+        }
         catch (RuntimeException malformed) { return null; }
     }
 

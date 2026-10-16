@@ -14,7 +14,6 @@ import android.app.KeyguardManager;
 import android.app.ActivityOptions;
 import android.os.Process;
 import android.os.PowerManager;
-import android.os.BatteryManager;
 import android.os.SystemClock;
 import android.system.Os;
 import android.view.Display;

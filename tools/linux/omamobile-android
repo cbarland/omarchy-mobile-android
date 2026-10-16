@@ -162,7 +162,7 @@ def device_state(reply):
 
 
 def battery_state(reply):
-    if set(reply) != set(BATTERY_STATE_KEYS):
+    if set(reply) - {"ok"} != set(BATTERY_STATE_KEYS) or ("ok" in reply and reply["ok"] is not True):
         raise RuntimeError("Android battery state fields are not exact")
     state = {}
     for key in ("present", "plugged"):

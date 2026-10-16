@@ -1,9 +1,11 @@
 import importlib.machinery
 import importlib.util
+import io
 import json
 import math
 import pathlib
 import unittest
+from contextlib import redirect_stdout
 
 MODULE = pathlib.Path(__file__).parents[1] / "linux" / "omamobile-android"
 loader = importlib.machinery.SourceFileLoader("omamobile_android", str(MODULE))
@@ -31,6 +33,7 @@ class BatteryStateTest(unittest.TestCase):
         self.assertEqual(cli.battery_state(valid), valid)
         unknown = {"present": None, "percentage": None, "plugged": None, "state": "unknown"}
         self.assertEqual(cli.battery_state(unknown), unknown)
+        self.assertEqual(cli.battery_state(dict(valid, ok=True)), valid)
 
     def test_rejects_bad_fields(self):
         base = {"present": True, "percentage": 12.5, "plugged": False, "state": "charging"}
@@ -50,6 +53,24 @@ class BatteryStateTest(unittest.TestCase):
         extra = dict(base, extra=False)
         with self.assertRaises(RuntimeError):
             cli.battery_state(extra)
+
+    def test_main_path_outputs_valid_payload_and_closes_portal(self):
+        payload = {"ok": True, "present": True, "percentage": 12.5,
+                   "plugged": False, "state": "charging"}
+        portal = FakePortal(payload)
+        old = cli.Portal
+        cli.Portal = lambda: portal
+        old_argv = __import__("sys").argv
+        output = io.StringIO()
+        try:
+            __import__("sys").argv = [str(MODULE), "battery-state"]
+            with redirect_stdout(output):
+                cli.main()
+        finally:
+            __import__("sys").argv = old_argv
+            cli.Portal = old
+        self.assertEqual(json.loads(output.getvalue()), {key: value for key, value in payload.items() if key != "ok"})
+        self.assertTrue(portal.closed)
 
     def test_main_path_closes_portal_on_validation_failure(self):
         portal = FakePortal({"ok": True, "present": True, "percentage": True,

@@ -89,6 +89,8 @@ public class AndroidAppPortalTest {
         assertEquals(host.getBoolean("interactive"), cli.getBoolean("interactive"));
     }
     @Test public void batteryStateMatchesAndroidStickyApiAndLinuxCli() throws Exception {
+        org.junit.Assume.assumeTrue("Explicit -e graphics true and prepared Linux required",
+                "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         JSONObject host;
         try (LocalSocket socket = connect()) {
@@ -110,10 +112,14 @@ public class AndroidAppPortalTest {
     }
     private static void assertNullableEquals(Object expected, JSONObject actual, String key) throws Exception {
         if (expected == null) assertTrue(key + " should be JSON null", actual.isNull(key));
+        else if (expected instanceof Number && actual.get(key) instanceof Number)
+            assertEquals(((Number) expected).doubleValue(), ((Number) actual.get(key)).doubleValue(), 0.000001);
         else assertEquals(expected, actual.get(key));
     }
     private static void assertNullableEquals(JSONObject expected, JSONObject actual, String key) throws Exception {
         if (expected.isNull(key)) assertTrue(key + " should be JSON null", actual.isNull(key));
+        else if (expected.get(key) instanceof Number && actual.get(key) instanceof Number)
+            assertEquals(((Number) expected.get(key)).doubleValue(), ((Number) actual.get(key)).doubleValue(), 0.000001);
         else assertEquals(expected.get(key), actual.get(key));
     }
     @Test public void batterySnapshotHandlesSyntheticMissingAndMalformedIntents() {
@@ -125,8 +131,9 @@ public class AndroidAppPortalTest {
         Intent malformed = new Intent()
                 .putExtra(android.os.BatteryManager.EXTRA_PRESENT, "yes")
                 .putExtra(android.os.BatteryManager.EXTRA_LEVEL, "half")
-                .putExtra(android.os.BatteryManager.EXTRA_SCALE, 100)
-                .putExtra(android.os.BatteryManager.EXTRA_PLUGGED, -1);
+                .putExtra(android.os.BatteryManager.EXTRA_SCALE, "whole")
+                .putExtra(android.os.BatteryManager.EXTRA_STATUS, "charging")
+                .putExtra(android.os.BatteryManager.EXTRA_PLUGGED, "usb");
         BatterySnapshot value = BatterySnapshot.fromIntent(malformed);
         assertNull(value.present());
         assertNull(value.percentage());
