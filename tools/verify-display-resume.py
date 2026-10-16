@@ -14,8 +14,18 @@ APP = "dev.omamobile.host"
 PROFILES = ("phone", "desktop")
 
 
-def run(command, timeout=30, check=True):
-    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+def remaining(deadline, default=30):
+    if deadline is None:
+        return default
+    budget = deadline - time.monotonic()
+    if budget <= 0:
+        raise TimeoutError("shared probe deadline exhausted")
+    return min(default, budget)
+
+
+def run(command, timeout=30, check=True, deadline=None):
+    result = subprocess.run(command, capture_output=True, text=True,
+                            timeout=remaining(deadline, timeout))
     if check and result.returncode:
         raise RuntimeError(f"Command failed: {command!r}: {result.stdout[-800:]}{result.stderr[-800:]}")
     return result
@@ -40,10 +50,10 @@ def keyguard_state(text):
     return fields
 
 
-def ready(adb, profile):
-    result = run(adb + ["shell", "run-as", APP, "cat", f"files/graphics/{profile}/ready.properties"])
+def ready(adb, profile, deadline=None):
+    result = run(adb + ["shell", "run-as", APP, "cat", f"files/graphics/{profile}/ready.properties"], deadline=deadline)
     values = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
-    pid = run(adb + ["shell", "pidof", f"{APP}:{profile}"] , check=False)
+    pid = run(adb + ["shell", "pidof", f"{APP}:{profile}"], check=False, deadline=deadline)
     return {
         "pid": pid.stdout.strip(),
         "signature": values.get("HYPRLAND_INSTANCE_SIGNATURE"),
@@ -52,16 +62,16 @@ def ready(adb, profile):
     }
 
 
-def session_health(root, adb, profile):
+def session_health(root, adb, profile, deadline=None):
     command = [sys.executable, str(root / "tools/emulator-linux.py"),
                "--adb", adb[0], "--serial", adb[2], "session", profile,
                "hyprctl -j monitors"]
-    result = run(command, timeout=30, check=False)
+    result = run(command, timeout=30, check=False, deadline=deadline)
     try:
         monitors = json.loads(result.stdout)
         healthy = (result.returncode == 0 and isinstance(monitors, list) and bool(monitors)
-                   and all(int(item.get("width", 0)) > 0 and int(item.get("height", 0)) > 0
-                           for item in monitors if isinstance(item, dict)))
+                   and all(isinstance(item, dict) and int(item.get("width", 0)) > 0
+                           and int(item.get("height", 0)) > 0 for item in monitors))
     except (json.JSONDecodeError, TypeError):
         monitors = None
         healthy = False
@@ -82,6 +92,8 @@ def geometry(snapshot_value):
 
 def lifecycle_passes(baseline, after, restored_power):
     return (all(item["healthy"] for item in after["health"].values())
+            and after["power"] == "Awake"
+            and after["keyguard"].get("showing") is False
             and owner_matches(baseline["profiles"], after["profiles"])
             and geometry(after) == geometry(baseline)
             and restored_power == "Awake")
@@ -95,14 +107,14 @@ def baseline_ready(snapshot_value):
                     for profile in snapshot_value["profiles"].values()))
 
 
-def snapshot(root, adb):
-    power = run(adb + ["shell", "dumpsys", "power"]).stdout
-    window = run(adb + ["shell", "dumpsys", "window"]).stdout
+def snapshot(root, adb, deadline=None):
+    power = run(adb + ["shell", "dumpsys", "power"], deadline=deadline).stdout
+    window = run(adb + ["shell", "dumpsys", "window"], deadline=deadline).stdout
     return {
         "power": power_state(power),
         "keyguard": keyguard_state(window),
-        "profiles": {profile: ready(adb, profile) for profile in PROFILES},
-        "health": {profile: session_health(root, adb, profile) for profile in PROFILES},
+        "profiles": {profile: ready(adb, profile, deadline) for profile in PROFILES},
+        "health": {profile: session_health(root, adb, profile, deadline) for profile in PROFILES},
     }
 
 
@@ -114,7 +126,7 @@ def validate_avd(name):
 def wait_power(adb, expected, timeout=15):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        state = power_state(run(adb + ["shell", "dumpsys", "power"]).stdout)
+        state = power_state(run(adb + ["shell", "dumpsys", "power"], deadline=deadline).stdout)
         if state == expected:
             return state
         time.sleep(.25)
@@ -125,8 +137,10 @@ def wait_healthy(root, adb, baseline, timeout=15):
     deadline = time.monotonic() + timeout
     last = None
     while time.monotonic() < deadline:
-        last = snapshot(root, adb)
+        last = snapshot(root, adb, deadline)
         if (all(item["healthy"] for item in last["health"].values())
+                and last["power"] == "Awake"
+                and last["keyguard"].get("showing") is False
                 and owner_matches(baseline["profiles"], last["profiles"])
                 and geometry(last) == geometry(baseline)):
             return last
@@ -142,10 +156,12 @@ def verify(adb, root):
     initial_power = baseline["power"]
     result = {"serial": adb[2], "avd": avd, "passed": False,
               "initialPower": initial_power, "baseline": baseline}
+    cycle_started = False
     try:
         if not baseline_ready(baseline):
             raise RuntimeError("Baseline must be awake, known unlocked, healthy, and have complete owners")
         run(adb + ["shell", "input", "keyevent", "KEYCODE_SLEEP"])
+        cycle_started = True
         result["afterSleepPower"] = wait_power(adb, "Asleep")
         run(adb + ["shell", "input", "keyevent", "KEYCODE_WAKEUP"])
         wait_power(adb, "Awake")
@@ -160,6 +176,8 @@ def verify(adb, root):
         result["error"] = str(error)
     finally:
         try:
+            if not cycle_started:
+                return result
             if initial_power == "Asleep":
                 run(adb + ["shell", "input", "keyevent", "KEYCODE_SLEEP"])
                 result["restoredPower"] = wait_power(adb, "Asleep")

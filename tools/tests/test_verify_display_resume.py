@@ -39,6 +39,21 @@ class DisplayResumeAuditTest(unittest.TestCase):
                                for name in MODULE.PROFILES}}
         self.assertFalse(MODULE.baseline_ready(snapshot))
 
+    def test_baseline_gate_rejects_sleep_locked_and_unknown(self):
+        healthy = {name: {"healthy": True, "monitors": [{"width": 1920, "height": 1080}]}
+                   for name in MODULE.PROFILES}
+        profiles = {name: {"pid": "1", "signature": name, "displayId": "0"}
+                    for name in MODULE.PROFILES}
+        for power, keyguard in (("Asleep", {"showing": False}),
+                                ("Awake", {"showing": True}),
+                                ("Awake", {})):
+            self.assertFalse(MODULE.baseline_ready({"power": power, "keyguard": keyguard,
+                                                    "profiles": profiles, "health": healthy}))
+
+    def test_shared_deadline_exhaustion_is_explicit(self):
+        with self.assertRaises(TimeoutError):
+            MODULE.remaining(MODULE.time.monotonic() - 1)
+
     def test_wrong_avd_is_rejected_before_any_cycle(self):
         with self.assertRaises(RuntimeError):
             MODULE.validate_avd("Other_AVD")
@@ -63,8 +78,10 @@ class DisplayResumeAuditTest(unittest.TestCase):
                     for index, name in enumerate(MODULE.PROFILES)}
         health = {name: {"healthy": True, "monitors": [{"width": 1920, "height": 1080}]}
                   for name in MODULE.PROFILES}
-        baseline = {"profiles": profiles, "health": health}
-        after = {"profiles": {name: dict(value) for name, value in profiles.items()},
+        baseline = {"power": "Awake", "keyguard": {"showing": False},
+                    "profiles": profiles, "health": health}
+        after = {"power": "Awake", "keyguard": {"showing": False},
+                 "profiles": {name: dict(value) for name, value in profiles.items()},
                  "health": {name: {"healthy": True, "monitors": [dict(health[name]["monitors"][0])]}
                             for name in MODULE.PROFILES}}
         self.assertTrue(MODULE.lifecycle_passes(baseline, after, "Awake"))
