@@ -148,7 +148,8 @@ final class RootfsImporter {
     String recoverUserData(InputStream source, Path installedRoot, Progress progress) throws Exception {
         if (!Files.isDirectory(installedRoot, LinkOption.NOFOLLOW_LINKS))
             throw new IOException("Linux installation is not available");
-        Path recovered = installedRoot.resolve("Recovered");
+        Path recovered = installedRoot.resolve("root/Recovered");
+        GuestPaths.noSymlinkParents(installedRoot, recovered);
         if (Files.exists(recovered, LinkOption.NOFOLLOW_LINKS)) {
             if (!Files.isDirectory(recovered, LinkOption.NOFOLLOW_LINKS))
                 throw new IOException("Recovered data directory is not a real directory");
@@ -156,7 +157,7 @@ final class RootfsImporter {
             Files.createDirectory(recovered);
         }
         String id = UUID.randomUUID().toString();
-        Path staging = recovered.resolve("." + id + ".staging");
+        Path staging = installedRoot.getParent().resolve("recovery-" + id + ".tmp");
         Path published = recovered.resolve(id);
         Files.createDirectory(staging);
         boolean activated = false;
@@ -178,7 +179,7 @@ final class RootfsImporter {
             if (Thread.currentThread().isInterrupted()) throw new IOException("Recovery cancelled");
             Files.move(staging, published, StandardCopyOption.ATOMIC_MOVE);
             activated = true;
-            progress.update("User data recovered as a separate copy: /Recovered/" + id);
+            progress.update("User data recovered as a separate copy: /root/Recovered/" + id);
             return id;
         } finally {
             if (!activated) GuestPaths.deleteTree(staging);
@@ -272,19 +273,9 @@ final class RootfsImporter {
             if (target.isEmpty() || target.indexOf('\0') >= 0
                     || (target.indexOf('\\') >= 0 && root.getFileSystem().getSeparator().equals("\\")))
                 throw new IOException("Invalid symlink target");
-            Path guestTarget = target.startsWith("/")
-                    ? java.nio.file.Paths.get(target.substring(1)).normalize()
-                    : root.relativize(link.path.getParent()).resolve(target).normalize();
-            if (guestTarget.getNameCount() == 0 || guestTarget.startsWith(".."))
-                throw new IOException("Symlink escapes guest root");
-            Path resolved = root.resolve(guestTarget);
-            if (!allowedTop.isEmpty() && !inNamespace(root, resolved, allowedTop)) {
-                // Re-root external guest links inside the isolated copy. The
-                // target remains dangling because recovery contains only root/home.
-                Path relative = link.path.getParent().relativize(resolved);
-                Files.createSymbolicLink(link.path, relative);
-                continue;
-            }
+            Path resolved = target.startsWith("/") ? root.resolve(target.substring(1)) : link.path.getParent().resolve(target);
+            resolved = resolved.normalize();
+            if (!resolved.startsWith(root)) throw new IOException("Symlink escapes root");
             // Guest-absolute links become equivalent relative links safe for host-side access.
             Path relative = link.path.getParent().relativize(resolved);
             Files.createSymbolicLink(link.path, relative.toString().isEmpty() ? java.nio.file.Paths.get(".") : relative);
@@ -328,11 +319,6 @@ final class RootfsImporter {
             throw new IOException("Recovery archive contains data outside /root or /home");
         for (String part : parts) if (part.isEmpty() || part.equals(".") || part.equals(".."))
             throw new IOException("Invalid recovery archive path");
-    }
-
-    private static boolean inNamespace(Path root, Path path, Set<String> allowedTop) {
-        Path relative = root.relativize(path);
-        return relative.getNameCount() > 0 && allowedTop.contains(relative.getName(0).toString());
     }
 
 }

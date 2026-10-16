@@ -157,35 +157,33 @@ final class HostRuntime {
 
     synchronized boolean recoverData(Uri archive, Runnable done) {
         if (busy || archive == null || !installed()) return false;
-        try {
-            Path recovered = root.resolve("Recovered");
-            if (Files.exists(recovered, java.nio.file.LinkOption.NOFOLLOW_LINKS)
-                    && !Files.isDirectory(recovered, java.nio.file.LinkOption.NOFOLLOW_LINKS))
-                throw new IOException("Recovered data directory is not a real directory");
-            Files.createDirectories(recovered);
-            try (var children = Files.list(recovered)) {
-                for (Path child : (Iterable<Path>) children::iterator) {
-                    if (child.getFileName().toString().matches("\\.[0-9a-f-]{36}\\.staging"))
-                        GuestPaths.deleteTree(child);
-                }
-            }
-        } catch (IOException error) {
-            appendLine("Cannot prepare recovery directory: " + error.getMessage());
-            return false;
-        }
         busy = true; stopping = false; recordingSetup = true; changed();
         worker.execute(() -> {
             activeWorker = Thread.currentThread();
             try {
                 checkSetupRunning();
-                appendLine("Recovering Linux user data as a separate copy under /Recovered/…");
+                appendLine("Recovering Linux user data as a separate copy under /root/Recovered/…");
+                Path recovered = root.resolve("root/Recovered");
+                GuestPaths.noSymlinkParents(root, recovered);
+                if (Files.exists(recovered, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                        && !Files.isDirectory(recovered, java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                    throw new IOException("Recovered data directory is not a real directory");
+                Files.createDirectories(recovered);
+                try (var children = Files.list(linux)) {
+                    for (Path child : (Iterable<Path>) children::iterator) {
+                        checkSetupRunning();
+                        if (child.getFileName().toString().matches("recovery-[0-9a-f-]{36}\\.tmp"))
+                            GuestPaths.deleteTree(child);
+                    }
+                }
+                checkSetupRunning();
                 var input = context.getContentResolver().openInputStream(archive);
                 if (input == null) throw new IOException("Cannot read the selected recovery archive");
-                synchronized (this) {
-                    if (stopping) { input.close(); throw new IOException("Recovery cancelled"); }
-                    activeInput = input;
+                synchronized (this) { activeInput = input; }
+                try (input) {
+                    checkSetupRunning();
+                    importer().recoverUserData(input, root, this::appendLine);
                 }
-                try (input) { importer().recoverUserData(input, root, this::appendLine); }
                 appendLine("Linux user data recovery completed; the existing installation was preserved.");
             } catch (Exception e) {
                 appendLine(stopping ? "Operation cancelled." : "Error: " + (e.getMessage() == null ? e.toString() : e.getMessage()));

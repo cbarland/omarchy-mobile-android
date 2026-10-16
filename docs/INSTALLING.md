@@ -106,13 +106,19 @@ not use that file.
 To recover an export, choose **Recover user data as separate copy** and select the
 gzip archive. Recovery validates that every entry belongs to `/root` or `/home`,
 extracts into private staging, and publishes a new UUID directory under the
-Linux guest's `/Recovered/<UUID>/` only after the complete archive has been
+Linux guest's `/root/Recovered/<UUID>/` only after the complete archive has been
 read. The existing Linux installation is left in place; cancellation, malformed paths, and
 unsafe links remove private staging without publishing a partial copy. Links that
 point outside `/root` or `/home` are re-rooted as dangling links inside the
 recovered copy, so they cannot reach the live guest root. Recovery
 does not run package commands or replace the active rootfs. The operation and its
 result are recorded in the app's persistent `linux/install.log`.
+
+Unpublished recovery data is staged outside the guest home in app-private
+storage. Existing home contents, including older recovered copies, are included
+in future exports; remove copies you no longer need before exporting again.
+Cancellation closes the selected input stream. A document provider stalled
+while opening the archive can delay cancellation until that open returns.
 
 ## 3. Start phone and desktop sessions
 

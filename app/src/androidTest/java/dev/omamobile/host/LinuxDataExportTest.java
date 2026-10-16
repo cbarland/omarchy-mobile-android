@@ -127,11 +127,15 @@ public class LinuxDataExportTest {
         Files.write(fixture.resolve("settings"), "recovery proof".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         Path pluginLink = fixture.resolve("plugins");
         Files.createSymbolicLink(pluginLink, java.nio.file.Paths.get("/usr/share/omamobile/shell/plugins"));
+        Path recovered = runtime.root.resolve("root/Recovered");
+        Files.createDirectories(recovered);
+        java.util.Set<Path> originalCopies;
+        try (var copies = Files.list(recovered)) { originalCopies = copies.collect(java.util.stream.Collectors.toSet()); }
         try {
             try (var out = Files.newOutputStream(archive)) {
                 HostRuntime.importer().exportUserData(runtime.root, out, message -> { });
             }
-            Path abandoned = runtime.root.resolve("Recovered/.01234567-89ab-cdef-0123-456789abcdef.staging");
+            Path abandoned = runtime.linux.resolve("recovery-01234567-89ab-cdef-0123-456789abcdef.tmp");
             Files.createDirectories(abandoned);
             Files.write(abandoned.resolve("partial"), new byte[]{1});
             assertTrue(runtime.recoverData(Uri.fromFile(archive.toFile()), () -> { }));
@@ -139,10 +143,12 @@ public class LinuxDataExportTest {
             assertFalse("Abandoned recovery staging survived", Files.exists(abandoned, java.nio.file.LinkOption.NOFOLLOW_LINKS));
             assertEquals("recovery proof", new String(Files.readAllBytes(fixture.resolve("settings")), java.nio.charset.StandardCharsets.UTF_8));
             Path copy;
-            try (var copies = Files.list(runtime.root.resolve("Recovered"))) {
-                copy = copies.filter(Files::isDirectory).findFirst().orElseThrow();
+            try (var copies = Files.list(runtime.root.resolve("root/Recovered"))) {
+                copy = copies.filter(path -> !originalCopies.contains(path))
+                        .filter(path -> Files.isDirectory(path, java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                        .findFirst().orElseThrow();
             }
-            assertEquals("recovery proof", new String(Files.readAllBytes(copy.resolve("root").resolve(fixture.getFileName())), java.nio.charset.StandardCharsets.UTF_8));
+            assertEquals("recovery proof", new String(Files.readAllBytes(copy.resolve("root").resolve(fixture.getFileName()).resolve("settings")), java.nio.charset.StandardCharsets.UTF_8));
             Path recoveredLink = copy.resolve("root").resolve(fixture.getFileName()).resolve("plugins");
             assertTrue("External plugin link was not retained", Files.isSymbolicLink(recoveredLink));
             assertTrue(Files.readSymbolicLink(recoveredLink).toString().contains("usr/share"));
@@ -152,8 +158,8 @@ public class LinuxDataExportTest {
             runtime.stop();
             waitIdle(runtime, 30000);
             GuestPaths.deleteTree(fixture);
-            try (var copies = Files.list(runtime.root.resolve("Recovered"))) {
-                copies.filter(Files::isDirectory).forEach(path -> { try { GuestPaths.deleteTree(path); } catch (IOException error) { throw new RuntimeException(error); } });
+            try (var copies = Files.list(runtime.root.resolve("root/Recovered"))) {
+                copies.filter(path -> !originalCopies.contains(path)).forEach(path -> { try { GuestPaths.deleteTree(path); } catch (IOException error) { throw new RuntimeException(error); } });
             }
             Files.deleteIfExists(archive);
         }

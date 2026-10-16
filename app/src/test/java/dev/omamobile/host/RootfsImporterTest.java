@@ -38,7 +38,7 @@ public class RootfsImporterTest {
     private byte[] recoveryTarWithDirectory(String directory, String path, byte[] contents) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (TarArchiveOutputStream out = new TarArchiveOutputStream(bytes)) {
-            TarArchiveEntry dir = new TarArchiveEntry(directory, true);
+            TarArchiveEntry dir = new TarArchiveEntry(directory + "/", TarArchiveEntry.LF_DIR);
             dir.setMode(0750); out.putArchiveEntry(dir); out.closeArchiveEntry();
             TarArchiveEntry entry = new TarArchiveEntry(path);
             entry.setSize(contents.length); entry.setMode(0600);
@@ -169,16 +169,17 @@ public class RootfsImporterTest {
         String id = new RootfsImporter((p, mode) -> modes.add(mode), 1000).recoverUserData(new ByteArrayInputStream(
                 recoveryTarWithDirectory("root/.config", "root/.config/recovered", "restored".getBytes(java.nio.charset.StandardCharsets.UTF_8))), root, p -> {});
         assertEquals("keep", new String(Files.readAllBytes(root.resolve("root/.config/live")), java.nio.charset.StandardCharsets.UTF_8));
-        assertEquals("restored", new String(Files.readAllBytes(root.resolve("Recovered").resolve(id).resolve("root/.config/recovered")), java.nio.charset.StandardCharsets.UTF_8));
-        assertTrue(Files.isDirectory(root.resolve("Recovered").resolve(id)));
-        assertTrue("Recovered directories must remain app-writable", modes.stream().anyMatch(mode -> (mode & 0700) == 0700));
+        assertEquals("restored", new String(Files.readAllBytes(root.resolve("root/Recovered").resolve(id).resolve("root/.config/recovered")), java.nio.charset.StandardCharsets.UTF_8));
+        assertTrue(Files.isDirectory(root.resolve("root/Recovered").resolve(id)));
+        assertTrue("Explicit directory mode was not restored", modes.contains(0750));
+        assertTrue("File mode was not restored", modes.contains(0600));
     }
 
     @Test public void recoveryPreservesSafeRelativeAndGuestAbsoluteLinksInsideCopy() throws Exception {
         Path root = base();
         Files.createDirectories(root.resolve("root"));
         String id = importer(1000).recoverUserData(new ByteArrayInputStream(safeRecoveryLinksTar()), root, p -> {});
-        Path copy = root.resolve("Recovered").resolve(id);
+        Path copy = root.resolve("root/Recovered").resolve(id);
         assertTrue(Files.isSymbolicLink(copy.resolve("root/.config/relative")));
         assertTrue(Files.isSymbolicLink(copy.resolve("home/alice/absolute")));
         assertEquals("target", Files.readSymbolicLink(copy.resolve("root/.config/relative")).toString());
@@ -193,7 +194,9 @@ public class RootfsImporterTest {
         assertThrows(IOException.class, () -> importer(1000).recoverUserData(new ByteArrayInputStream(
                 recoveryLinkTar("root/escape", "../../outside")), root, p -> {}));
         assertFalse(Files.exists(root.resolve("outside")));
-        try (var children = Files.list(root.resolve("Recovered"))) {
+        assertThrows(IOException.class, () -> importer(1000).recoverUserData(new ByteArrayInputStream(
+                recoveryLinkTar("root/absolute-escape", "//etc/passwd")), root, p -> {}));
+        try (var children = Files.list(root.resolve("root/Recovered"))) {
             assertEquals(0, children.count());
         }
     }
@@ -203,7 +206,7 @@ public class RootfsImporterTest {
         Files.createDirectories(root.resolve("root"));
         String id = importer(1000).recoverUserData(new ByteArrayInputStream(
                 recoveryLinkTar("root/shared", "/usr/share")), root, p -> {});
-        Path link = root.resolve("Recovered").resolve(id).resolve("root/shared");
+        Path link = root.resolve("root/Recovered").resolve(id).resolve("root/shared");
         assertTrue(Files.isSymbolicLink(link));
         assertTrue(Files.readSymbolicLink(link).toString().contains("usr"));
         assertFalse(Files.exists(link));
@@ -217,7 +220,7 @@ public class RootfsImporterTest {
             assertThrows(IOException.class, () -> importer(1000).recoverUserData(new ByteArrayInputStream(
                     recoveryTar("home/alice/note", new byte[]{1})), root, p -> {}));
         } finally { Thread.interrupted(); }
-        try (var children = Files.list(root.resolve("Recovered"))) {
+        try (var children = Files.list(root.resolve("root/Recovered"))) {
             assertEquals(0, children.count());
         }
     }
