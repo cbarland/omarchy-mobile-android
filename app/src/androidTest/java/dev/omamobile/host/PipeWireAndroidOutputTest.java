@@ -38,6 +38,14 @@ public class PipeWireAndroidOutputTest {
                 "true".equals(InstrumentationRegistry.getArguments().getString("pipewireAudio")));
         var instrumentation = InstrumentationRegistry.getInstrumentation();
         Context context = instrumentation.getTargetContext();
+        try (InstallationLease ignored = InstallationLease.acquire(
+                context.getFilesDir().toPath().resolve("linux"), InstallationLease.Mode.SHARED_USE)) {
+            runOwned(context, injectFailure);
+        }
+    }
+
+    private void runOwned(Context context, boolean injectFailure) throws Exception {
+        var instrumentation = InstrumentationRegistry.getInstrumentation();
         Path root = context.getFilesDir().toPath().resolve("linux/rootfs");
         assertTrue("Prepared Linux is required; do not skip this opted-in test", Files.isDirectory(root));
         String name = "pa-" + UUID.randomUUID().toString().substring(0, 8);
