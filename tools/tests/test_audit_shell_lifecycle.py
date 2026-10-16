@@ -22,7 +22,14 @@ class AuditShellLifecycleTest(unittest.TestCase):
                     "#!/bin/sh\n"
                     f"case \"$2\" in ping|reloadConfig) printf '%s' '{ping}' ;; *) printf '%s' 'ok' ;; esac\n")
             if sleep:
-                (fake / "quickshell").write_text("#!/bin/sh\nsleep 1\n")
+                (fake / "omarchy-shell").write_text(
+                    f"#!{sys.executable}\n"
+                    "import sys, time\n"
+                    "if sys.argv[2] == 'ping':\n"
+                    "    print('partial reply', flush=True)\n"
+                    "    time.sleep(2)\n"
+                    "else:\n"
+                    "    print('ok')\n")
             for command in fake.iterdir():
                 command.chmod(0o755)
             environment = os.environ.copy()
@@ -53,10 +60,12 @@ class AuditShellLifecycleTest(unittest.TestCase):
         self.assertIn("error", report["checks"]["ping"])
 
     def test_timeout_is_reported_without_json_crash(self):
-        result = self.run_audit(timeout=0.01, sleep=True)
+        result = self.run_audit(timeout=0.2, sleep=True)
         self.assertEqual(result.returncode, 1)
         report = json.loads(result.stdout)
-        self.assertIsNone(report["checks"]["discovery"]["status"])
+        self.assertIsNone(report["checks"]["ping"]["status"])
+        self.assertEqual(report["checks"]["ping"]["stdout"], "partial reply")
+        self.assertEqual(report["checks"]["app_menu_hide"]["status"], 0)
 
     def test_profile_mismatch_is_rejected(self):
         if os.name != "posix":
