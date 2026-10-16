@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.Assert.*;
 
 public class HomeActivityTest {
-    @Test public void missingSetupHomeReturnsToMainActivityOnDefaultDisplay() {
+    @Test public void missingSetupHomeReturnsToMainActivityOnDefaultDisplay() throws Exception {
         Assume.assumeTrue("Explicit -e homeFallback true required",
                 "true".equals(InstrumentationRegistry.getArguments().getString("homeFallback")));
         var instrumentation = InstrumentationRegistry.getInstrumentation();
@@ -29,6 +29,7 @@ public class HomeActivityTest {
         assertHomeComponentIsDiscoverable(context);
         startHome(context);
         Activity main = awaitMainActivity(instrumentation);
+        awaitTopResumed(context, MainActivity.class);
         assertEquals(Display.DEFAULT_DISPLAY, main.getDisplay().getDisplayId());
         instrumentation.runOnMainSync(main::finish);
         assertFalse("Fallback must not start the phone owner", hasPhoneProcess(context));
@@ -57,9 +58,13 @@ public class HomeActivityTest {
             assertNotNull("Explicit HOME request must launch the bridge", home);
             awaitFinished(instrumentation, home);
             awaitPhoneTask(context);
+            awaitTopResumed(context, PhoneActivity.class);
             assertEquals(initialPid, awaitPhonePid(context));
             assertEquals(initialSignature, readySignature(context));
+            bringHostControlsToFront(context, instrumentation);
+            awaitTopResumed(context, MainActivity.class);
             startHome(context); awaitPhoneTask(context);
+            awaitTopResumed(context, PhoneActivity.class);
             assertEquals(initialPid, awaitPhonePid(context));
             assertEquals(initialSignature, readySignature(context));
         } finally {
@@ -113,6 +118,30 @@ public class HomeActivityTest {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), android.app.ActivityOptions.makeBasic()
                         .setLaunchDisplayId(Display.DEFAULT_DISPLAY).toBundle());
         awaitMainActivity(instrumentation);
+    }
+
+    private static void awaitTopResumed(Context context, Class<?> activityClass) throws Exception {
+        String component = context.getPackageName() + "/." + activityClass.getSimpleName();
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        while (SystemClock.uptimeMillis() < deadline) {
+            String dump = shell("dumpsys activity activities");
+            int display = dump.indexOf("Display #0");
+            int nextDisplay = display < 0 ? -1 : dump.indexOf("Display #", display + 9);
+            String defaultDisplay = display < 0 ? "" : dump.substring(display,
+                    nextDisplay < 0 ? dump.length() : nextDisplay);
+            int top = defaultDisplay.indexOf("topResumedActivity=");
+            if (top >= 0 && defaultDisplay.substring(top).contains(component)) return;
+            SystemClock.sleep(200);
+        }
+        fail("Display 0 did not focus " + component);
+    }
+
+    private static String shell(String command) throws Exception {
+        var ui = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        try (var parcel = ui.executeShellCommand(command);
+             var in = new android.os.ParcelFileDescriptor.AutoCloseInputStream(parcel)) {
+            return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
     }
 
     private static void assertPhoneTaskAndNoHomeTask(Context context) {
