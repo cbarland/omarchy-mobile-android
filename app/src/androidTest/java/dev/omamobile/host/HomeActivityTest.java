@@ -185,7 +185,13 @@ public class HomeActivityTest {
                 .stream().anyMatch(node -> String.valueOf(node.getText()).contains(label)
                         && String.valueOf(node.getText()).contains("notifications?"));
         if (!ours) return; // The gated English API35 fixture must never answer an unrelated permission.
-        for (var node : root.findAccessibilityNodeInfosByViewId("com.android.permissioncontroller:id/permission_deny_button"))
+        var deny = root.findAccessibilityNodeInfosByViewId(
+                "com.android.permissioncontroller:id/permission_deny_button");
+        if (deny.isEmpty()) {
+            deny = root.findAccessibilityNodeInfosByViewId(
+                    "com.android.permissioncontroller:id/permission_deny_and_dont_ask_again_button");
+        }
+        for (var node : deny)
             assertTrue("Decline the optional first-run notification request through its visible UI",
                     node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK));
     }
