@@ -154,6 +154,19 @@ class ApkPayloadBindingTest(unittest.TestCase):
         self.assertTrue(any(e["kind"] == "invalid_apk_native_elf" and e.get("entry", "").endswith("libbad.so") for e in errors))
         self.assertTrue(any(e["kind"] == "duplicate_apk_native_entry" and e.get("entry", "").endswith("libfoo.so") for e in errors))
 
+    def test_noncanonical_native_provider_paths_are_rejected(self):
+        self.write_apk()
+        self.assertEqual(verify_release.apk_native_errors(self.apk), ([], 8))
+        for entry in ("lib/x86_64/nested/libbar.so", "lib/x86_64/../libbar.so"):
+            with self.subTest(entry=entry):
+                self.native[entry] = valid_elf(62)
+                self.write_apk()
+                errors, checked = verify_release.apk_native_errors(self.apk)
+                self.assertEqual(checked, 8)
+                self.assertTrue(any(e["kind"] == "invalid_apk_native_path" and
+                                    e["entry"] == entry for e in errors))
+                del self.native[entry]
+
 
 if __name__ == "__main__":
     unittest.main()

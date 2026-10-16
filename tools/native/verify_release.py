@@ -72,11 +72,20 @@ def _apk_native_errors_archive(archive):
     errors, checked = [], 0
     required = ("libomamobile_hyprland.so", "libanhyprland.so", "libtawcroot.so", "libando.so")
     names = archive.namelist()
-    packaged = {abi: {Path(name).name for name in names
-                      if name.startswith("lib/" + abi + "/") and name.endswith(".so")}
-                for abi in ABIS}
+    canonical = {abi: set() for abi in ABIS}
+    for name in names:
+        if not (name.startswith("lib/") and name.endswith(".so")):
+            continue
+        parts = name.split("/")
+        if (len(parts) != 3 or parts[0] != "lib" or parts[1] not in canonical
+                or not parts[2].startswith("lib") or parts[2] == "lib.so"):
+            errors.append({"kind": "invalid_apk_native_path", "entry": name})
+            continue
+        canonical[parts[1]].add(name)
+    packaged = {abi: {name.rsplit("/", 1)[1] for name in entries}
+                for abi, entries in canonical.items()}
     for abi, machine in (("x86_64", 62), ("arm64-v8a", 183)):
-        for entry in sorted(name for name in names if name.startswith("lib/" + abi + "/") and name.endswith(".so")):
+        for entry in sorted(canonical[abi]):
             if names.count(entry) != 1:
                 errors.append({"kind": "duplicate_apk_native_entry", "abi": abi, "entry": entry})
                 continue
