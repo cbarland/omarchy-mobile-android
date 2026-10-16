@@ -1,8 +1,16 @@
 # Release readiness
 
 Audit date: 2026-10-15. No rootfs is
-redistributed by the installer: users supply an official archive,
+embedded in the APK: users download or supply an official archive,
 then the host prepares packages in its private Linux installation.
+
+Follow-up: the automatic x86_64 path now verifies the official detached
+publisher signature before extraction and passed a fresh emulator installation
+through both graphical shells. Automatic ARM64 installation is unverified.
+The [source-input snapshot](SOURCE-INPUTS.md) now includes 38 hash-checked
+archives, recipes, patches and notice inputs for seven audited dependencies.
+Binary-to-recipe build evidence, exact build-system provenance and a complete
+public source bundle still block graphical APK publication.
 
 ## Before an installable APK release
 
@@ -38,8 +46,9 @@ then the host prepares packages in its private Linux installation.
   version-specific corresponding-source records. The default command exits
   nonzero while either fails; `--mechanical-only` is available for diagnostics.
   Neither field certifies license compliance or completeness of source delivery.
-  The factual remaining gap is the seven package versions' matching upstream
-  source archives, Termux recipe/patch commits and distributable source bundles.
+  Candidate matching upstream archives and Termux recipes/patches are now locked
+  by the source-input snapshot. Their relationship to the shipped binaries and
+  complete distributable source bundles still needs to be established.
   `corresponding-sources.json` can record these inputs once they exist; the JSON
   result names the missing fields. A reference URL to the binary package or a
   generic license text does not supply them.

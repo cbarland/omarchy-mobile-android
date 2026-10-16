@@ -4,6 +4,16 @@ Development began 2026-10-14. This file records the tested milestone, not overal
 
 ## Current accounting — 2026-10-15
 
+### Third merged batch — 2026-10-15
+
+PRs #17 (verified source-input snapshots) and #18 (authenticated automatic
+installation) were merged and checked together at `f10ef7f`. The complete
+graphical APK and test APK built; all 62 JVM checks and lint passed. All 59 Linux
+host checks passed in 7.737s without skips. Direct instrumentation on the new
+API35 installation passed 11 graphics, assets, display preview, user-data
+export/recovery and service-lifecycle tests in 74.955s. The prepared emulator
+data and grants were preserved, and the physical device was untouched.
+
 ### Authenticated automatic installation — 2026-10-15
 
 A new empty disposable API35 x86_64 emulator (`Omamobile_Install_Trust_API35`,
