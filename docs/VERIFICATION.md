@@ -14,8 +14,9 @@ directly.
 On the API35 Adapter Test emulator, the opt-in diagnostics test exercised real
 success, exit 7, a timeout, and 200 KiB of output (5.469s). The complete desktop
 scale Keep/Revert/timeout test then passed with the final helper (50.496s).
-An earlier intermittent final phone IPC timeout remains unclassified; these
-passing checks establish useful failure reporting rather than its resolution.
+The intermittent final phone IPC timeout was later captured as Android freezing
+the separate compositor process; see [process ownership](COMPOSITOR-LIFETIME.md)
+for the fix and matching regression evidence.
 
 Development began 2026-10-14. This file records the tested milestone, not overall product completion.
 

@@ -7,6 +7,8 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.ComponentName;
+import android.content.ServiceConnection;
 import android.hardware.display.DisplayManager;
 import android.os.Handler;
 import android.os.IBinder;
@@ -26,12 +28,19 @@ public final class DesktopService extends Service {
     private boolean running;
     private int externalId = -1;
     private AndroidAppPortal portal;
+    private boolean phoneOwnershipBound;
+    private boolean desktopOwnershipBound;
+    private ServiceConnection phoneOwnership;
+    private ServiceConnection desktopOwnership;
+    private int phoneOwnershipGeneration;
+    private int desktopOwnershipGeneration;
     private final DisplayManager.DisplayListener listener = new DisplayManager.DisplayListener() {
         public void onDisplayAdded(int id) { if (running && externalId == -1) showDesktop(); }
         public void onDisplayChanged(int id) { }
         public void onDisplayRemoved(int id) {
             if (id == externalId) {
                 externalId = -1;
+                unbindOwnership(false);
                 sendBroadcast(new Intent(STOP_SCREENS).setPackage(getPackageName()).putExtra("profile", "desktop"));
             }
         }
@@ -81,6 +90,7 @@ public final class DesktopService extends Service {
                 .setContentTitle("Omarchy Mobile").setContentText("Hyprland phone and desktop sessions")
                 .setContentIntent(controls).addAction(new Notification.Action.Builder(null, "Stop screens", stop).build()).setOngoing(true).build());
         running = true;
+        bindOwnership(true);
         // Reopening the controls must also let the user return to an already
         // running phone shell without creating another compositor.
         ActivityOptions phoneOutput = ActivityOptions.makeBasic().setLaunchDisplayId(Display.DEFAULT_DISPLAY);
@@ -118,6 +128,7 @@ public final class DesktopService extends Service {
             if (selection.id() == -1) return;
             externalId = selection.id();
         }
+        bindOwnership(false);
         ActivityOptions options = ActivityOptions.makeBasic().setLaunchDisplayId(externalId);
         try {
             startActivity(new Intent(this, DesktopActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
@@ -126,10 +137,57 @@ public final class DesktopService extends Service {
             // Display removal/permission changes can race discovery. Keep the phone reachable.
             android.util.Log.w("OmamobileDisplay", "Cannot launch desktop on display " + externalId, unavailable);
             externalId = -1;
+            unbindOwnership(false);
         }
+    }
+    private ServiceConnection ownershipConnection(boolean phone, int generation) {
+        return new ServiceConnection() {
+            @Override public void onServiceConnected(ComponentName name, android.os.IBinder service) {
+                if (!isCurrent(phone, this, generation)) return;
+            }
+            @Override public void onServiceDisconnected(ComponentName name) {
+                // Keep the registration owned until the output is intentionally
+                // stopped; Android may reconnect a temporarily dead process.
+                android.util.Log.w("OmamobileOwnership", (phone ? "Phone" : "Desktop") + " owner disconnected");
+            }
+            @Override public void onBindingDied(ComponentName name) {
+                if (!isCurrent(phone, this, generation)) return;
+                boolean desired = phone ? phoneOwnershipBound : desktopOwnershipBound;
+                unbindOwnership(phone);
+                if (desired && running && (phone || externalId != -1)) bindOwnership(phone);
+            }
+        };
+    }
+    private boolean isCurrent(boolean phone, ServiceConnection connection, int generation) {
+        return (phone ? phoneOwnership : desktopOwnership) == connection
+                && (phone ? phoneOwnershipGeneration : desktopOwnershipGeneration) == generation;
+    }
+    private void bindOwnership(boolean phone) {
+        if (phone ? phoneOwnershipBound : desktopOwnershipBound) return;
+        int generation = phone ? ++phoneOwnershipGeneration : ++desktopOwnershipGeneration;
+        ServiceConnection connection = ownershipConnection(phone, generation);
+        if (phone) phoneOwnership = connection; else desktopOwnership = connection;
+        Intent intent = new Intent(this, phone ? PhoneCompositorOwnershipService.class : DesktopCompositorOwnershipService.class);
+        boolean bound = bindService(intent, connection,
+                BIND_AUTO_CREATE | BIND_IMPORTANT);
+        if (phone) phoneOwnershipBound = bound; else desktopOwnershipBound = bound;
+        if (!bound) {
+            if (phone) phoneOwnership = null; else desktopOwnership = null;
+            android.util.Log.e("OmamobileOwnership", "Cannot bind " + (phone ? "phone" : "desktop") + " compositor owner");
+        }
+    }
+    private void unbindOwnership(boolean phone) {
+        if (phone ? !phoneOwnershipBound : !desktopOwnershipBound) return;
+        ServiceConnection connection = phone ? phoneOwnership : desktopOwnership;
+        if (phone) { phoneOwnershipBound = false; phoneOwnership = null; }
+        else { desktopOwnershipBound = false; desktopOwnership = null; }
+        try { unbindService(connection); }
+        catch (IllegalArgumentException alreadyUnbound) { android.util.Log.w("OmamobileOwnership", "Owner already unbound", alreadyUnbound); }
     }
     private void stopScreens() {
         running = false;
+        unbindOwnership(false);
+        unbindOwnership(true);
         sendBroadcast(new Intent(STOP_SCREENS).setPackage(getPackageName()));
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
@@ -141,6 +199,11 @@ public final class DesktopService extends Service {
                 && rootIntent.getComponent().getClassName().equals(MainActivity.class.getName())) stopScreens();
         super.onTaskRemoved(rootIntent);
     }
-    @Override public void onDestroy() { previewHandler.removeCallbacksAndMessages(null); revertPreview(); displays.unregisterDisplayListener(listener); portal.close(); AndroidShell.get(this).close(); super.onDestroy(); }
+    @Override public void onDestroy() {
+        running = false;
+        unbindOwnership(false); unbindOwnership(true);
+        previewHandler.removeCallbacksAndMessages(null); revertPreview(); displays.unregisterDisplayListener(listener);
+        portal.close(); AndroidShell.get(this).close(); super.onDestroy();
+    }
     @Override public IBinder onBind(Intent intent) { return null; }
 }
