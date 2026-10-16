@@ -236,7 +236,7 @@ def file_records(root):
     for path in bundle_files(root):
         relative = path.relative_to(root).as_posix()
         records.append({"path": relative, "bytes": path.stat().st_size,
-                        "mode": stat.S_IMODE(path.stat().st_mode), "sha256": digest(path)})
+                        "mode": 0o644, "sha256": digest(path)})
     return records
 
 

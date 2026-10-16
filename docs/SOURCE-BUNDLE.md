@@ -30,3 +30,14 @@ verify its recipe and patches, then provide a separately reviewed Termux
 toolchain and missing build-system objects. The bundle does not contain every
 relink dependency, does not prove Debian package identity or shipped-binary
 provenance, and never executes recovered source or build scripts.
+
+Root verification on 2026-10-16 packaged six full build-tree archives, seven
+locked upstream archives, 30 recipe/patch files and 102 explicitly reviewed
+official provenance files. All 152 recorded files were rehashed; the original
+12 ABI artifact-digest and job-log references were present in the bundle.
+The resulting private archive SHA-256 is
+`166309462514fa6b8a38469eba9faed5418751707faa7cf114b9020e7328040f`.
+Nine focused tests pass on Windows and Linux, including a fresh-process check
+that Python supplied through `--repo-root` is never executed. The archive is
+retained as private release preparation; corresponding-source/relink delivery
+and all public graphical APK release holds remain open.

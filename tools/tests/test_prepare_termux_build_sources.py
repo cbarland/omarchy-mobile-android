@@ -88,6 +88,7 @@ class SourceBundleTest(unittest.TestCase):
         MODULE.prepare(self.evidence, self.repo, second, self.provenance_manifest)
         self.assertEqual((first.with_suffix(".tar.gz")).read_bytes(), (second.with_suffix(".tar.gz")).read_bytes())
         manifest = json.loads((first / "manifest.json").read_text())
+        self.assertTrue(all(record["mode"] == 0o644 for record in manifest["files"]))
         self.assertEqual({record["name"] for record in manifest["packages"]}, MODULE.EXPECTED_PACKAGES)
         with tarfile.open(first.with_suffix(".tar.gz"), "r:gz") as archive:
             names = {member.name for member in archive.getmembers()}
