@@ -137,12 +137,12 @@ def main():
     assert 'networkKind === "cellular" ? "CELL"' in bar
     assert 'networkKind === "connected" ? "NET"' in bar
     assert 'StatusModel.cellularIcon(-1)' not in bar
-    assert 'import "../omamobile.android" as AndroidBattery' in bar
+    assert 'import "file:///usr/share/omamobile/shell/plugins/omamobile.android" as AndroidBattery' in bar
     assert 'AndroidBattery.AndroidBattery.requestPanel' in bar
     assert 'root.androidBattery || root.hasBattery' in bar
     assert 'root.batteryPercent >= 0 ? root.batteryPercent + "%" : "—"' in bar
     power = member_bytes(directory / "clean.tar.gz", "root/.local/share/omarchy/shell/plugins/panels/power/Panel.qml").decode()
-    assert 'import omamobile.android 1.0 as AndroidBattery' in power
+    assert 'import "file:///usr/share/omamobile/shell/plugins/omamobile.android" as AndroidBattery' in power
     assert power.count('Component.onCompleted:') == 1
     assert 'AndroidBattery.AndroidBattery.requestPanel' in power
     assert 'androidBattery || batteryPresent' in power

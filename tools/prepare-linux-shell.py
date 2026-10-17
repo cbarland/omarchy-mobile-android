@@ -59,7 +59,7 @@ def mobile_transform(relative, data):
     text = data.decode("utf-8")
     if relative.endswith("omamobile.bar/Bar.qml"):
         text = text.replace('import "StatusModel.js" as StatusModel\n',
-            'import "StatusModel.js" as StatusModel\nimport "../omamobile.android" as Android\nimport "../omamobile.android" as AndroidBattery\nimport "../omamobile.android/AndroidBatteryModel.js" as AndroidBatteryModel\n', 1)
+            'import "StatusModel.js" as StatusModel\nimport "../omamobile.android" as Android\nimport "file:///usr/share/omamobile/shell/plugins/omamobile.android" as AndroidBattery\n', 1)
         text = text.replace('  id: root\n',
             '  id: root\n\n'
             '  Component.onCompleted: {\n'
@@ -110,7 +110,7 @@ def mobile_transform(relative, data):
         text = text.replace('  readonly property var battery: UPower.displayDevice\n  readonly property bool hasBattery: !!battery && battery.isPresent === true\n  readonly property int batteryPercent: hasBattery ? Math.round(battery.percentage * 100) : -1\n  readonly property bool charging: hasBattery && !UPower.onBattery\n  readonly property string batteryIcon: StatusModel.batteryIcon(batteryPercent, charging,\n    hasBattery && battery.state === UPowerDeviceState.FullyCharged)\n',
             '  readonly property var battery: UPower.displayDevice\n'
             '  readonly property bool androidBattery: AndroidBattery.AndroidBattery.enabled\n'
-            '  readonly property bool hasBattery: androidBattery ? true : !!battery && battery.isPresent === true\n'
+            '  readonly property bool hasBattery: androidBattery ? AndroidBattery.AndroidBattery.sample.present !== false : !!battery && battery.isPresent === true\n'
             '  readonly property int batteryPercent: androidBattery\n'
             '    ? (AndroidBattery.AndroidBattery.sample.present === true && Number.isFinite(AndroidBattery.AndroidBattery.sample.percentage) ? Math.round(AndroidBattery.AndroidBattery.sample.percentage) : -1)\n'
             '    : (hasBattery ? Math.round(battery.percentage * 100) : -1)\n'
@@ -125,7 +125,7 @@ def mobile_transform(relative, data):
             '            opacity: root.networkKind === "off" || root.networkKind === "disconnected" || root.networkKind === "unavailable" || root.networkKind === "unknown" ? 0.55 : 1', 1)
     elif relative.endswith("panels/power/Panel.qml"):
         text = text.replace('import "Model.js" as Model\n',
-            'import "Model.js" as Model\nimport omamobile.android 1.0 as AndroidBattery\n', 1)
+            'import "Model.js" as Model\nimport "file:///usr/share/omamobile/shell/plugins/omamobile.android" as AndroidBattery\n', 1)
         text = text.replace('  id: root\n',
             '  id: root\n\n'
             '  readonly property bool androidBattery: AndroidBattery.AndroidBattery.enabled\n'
@@ -134,7 +134,7 @@ def mobile_transform(relative, data):
             '  Component.onDestruction: AndroidBattery.AndroidBattery.requestPanel(root, false)\n', 1)
         text = text.replace('  readonly property bool batteryPresent: {\n    var device = UPower.displayDevice\n    return !!(device && device.isPresent)\n  }\n',
             '  readonly property bool batteryPresent: androidBattery\n'
-            '    ? true\n'
+            '    ? AndroidBattery.AndroidBattery.sample.present !== false\n'
             '    : !!(UPower.displayDevice && UPower.displayDevice.isPresent)\n', 1)
         text = text.replace('  function batteryIcon() {\n    var device = UPower.displayDevice\n    return Model.batteryIcon(device, root.discharging, upowerStates())\n  }\n',
             '  function batteryIcon() {\n'
@@ -190,6 +190,10 @@ def mobile_transform(relative, data):
             '  implicitWidth: (androidBattery || batteryPresent) ? button.implicitWidth : 0\n', 1)
         text = text.replace('  implicitHeight: batteryPresent ? button.implicitHeight : 0\n',
             '  implicitHeight: (androidBattery || batteryPresent) ? button.implicitHeight : 0\n', 1)
+        text = text.replace('        // ---------- Power profile picker ----------\n        PanelSeparator {\n',
+            '        // ---------- Power profile picker ----------\n        PanelSeparator {\n          visible: !root.androidBattery\n', 1)
+        text = text.replace('        Column {\n          width: parent.width\n          spacing: Style.space(10)\n\n          PanelSectionHeader {\n            text: "POWER PROFILE"',
+            '        Column {\n          visible: !root.androidBattery\n          width: parent.width\n          spacing: Style.space(10)\n\n          PanelSectionHeader {\n            text: "POWER PROFILE"', 1)
         text = text.replace('            text: root.batteryInfo.percentage || "—"\n',
             '            text: root.androidBattery ? AndroidBattery.AndroidBattery.displayPercentage(AndroidBattery.AndroidBattery.sample) : (root.batteryInfo.percentage || "—")\n', 1)
         text = text.replace('      ? Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()\n',
