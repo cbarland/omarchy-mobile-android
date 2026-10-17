@@ -36,6 +36,25 @@ This does not verify secure-keyguard transitions: the emulator has no device
 credential and both lock booleans remained false. The three API reads are
 separate observations rather than an atomic security snapshot.
 
+## Android radio state
+
+The authenticated portal's `radio-state` operation and Linux
+`omamobile-android radio-state` command expose Android's current default
+network state and transport/capability facts, plus Wi-Fi and Bluetooth radio
+support and transition state. Missing services, unavailable samples, and
+unsupported hardware remain explicit as `unknown`, `null`, or `unsupported`;
+the response contains no network identifiers or nearby-device data. These are
+read-only observations. Android owns radio hardware and connectivity; Linux
+does not gain NetworkManager or BlueZ control from this interface.
+
+The normal Android permissions are `ACCESS_NETWORK_STATE` and
+`ACCESS_WIFI_STATE`; the legacy `BLUETOOTH` declaration is limited to API 30
+and below. No nearby-device runtime permission is requested. A fresh Linux
+payload includes this command. An APK update may refresh only an exact audited
+helper preimage; it does not add a missing desktop entry or replace upstream
+network and Bluetooth tools. A failed portal acknowledgement or malformed
+response exits with stderr and a nonzero status.
+
 ## Android display controls
 
 Choose **Android displays** in the Linux application menu, or run

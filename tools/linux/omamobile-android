@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Android applications as real, resizable Wayland clients in the shared Linux.
 
-`omamobile-android list`, `device-state`, `display-settings`, `network-settings`,
+`omamobile-android list`, `device-state`, `battery-state`, `radio-state`, `display-settings`, `network-settings`,
 `bluetooth-settings`, `sync` (desktop entries), or `open PACKAGE`.
 The private Unix socket authenticates the app UID; it never listens on TCP.
 The initial transport is changed-frame JPEG at <=10 fps. Secure Android
@@ -26,6 +26,10 @@ SOCKET = "/run/omamobile/android.sock"
 DEVICE_STATE_KEYS = ("deviceLocked", "interactive", "keyguardLocked")
 BATTERY_STATE_KEYS = ("present", "percentage", "plugged", "state")
 BATTERY_STATES = {"charging", "discharging", "full", "not-charging", "unknown"}
+RADIO_TRANSPORTS = {"wifi", "cellular", "ethernet", "bluetooth", "vpn", "wifi-aware",
+                    "lowpan", "usb", "thread", "satellite", "other"}
+WIFI_RADIO_STATES = {"enabled", "disabled", "enabling", "disabling", "unsupported", "unknown"}
+BLUETOOTH_RADIO_STATES = {"on", "off", "turning-on", "turning-off", "unsupported", "unknown"}
 PACKAGE_RE = re.compile(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+\Z")
 LAUNCHER_PREFIX = "omamobile-android-"
 
@@ -184,6 +188,55 @@ def battery_state(reply):
     return state
 
 
+def radio_state(reply):
+    if (not isinstance(reply, dict) or set(reply) != {"ok", "network", "wifi", "bluetooth"}
+            or reply["ok"] is not True):
+        raise RuntimeError("Android radio state fields are not exact")
+    network = reply["network"]
+    if not isinstance(network, dict) or set(network) != {"state", "transports", "internetCapable", "validated"}:
+        raise RuntimeError("Android network state fields are not exact")
+    if type(network["state"]) is not str or network["state"] not in {"connected", "disconnected", "unknown"}:
+        raise RuntimeError("Android network state is invalid")
+    transports = network["transports"]
+    if transports is not None:
+        if (not isinstance(transports, list) or any(type(item) is not str or item not in RADIO_TRANSPORTS
+                                                   for item in transports)
+                or len(set(transports)) != len(transports)):
+            raise RuntimeError("Android network transports are invalid")
+    for key in ("internetCapable", "validated"):
+        if network[key] is not None and type(network[key]) is not bool:
+            raise RuntimeError("Android network capability is not boolean or null: " + key)
+    if network["state"] == "disconnected":
+        if transports != [] or network["internetCapable"] is not None or network["validated"] is not None:
+            raise RuntimeError("Disconnected Android network state is inconsistent")
+    elif network["state"] == "unknown":
+        if transports is not None or network["internetCapable"] is not None or network["validated"] is not None:
+            raise RuntimeError("Unknown Android network state is inconsistent")
+    elif (not transports or network["internetCapable"] is None or network["validated"] is None):
+        raise RuntimeError("Connected Android network state is incomplete")
+
+    result = {"network": {key: network[key] for key in
+                           ("state", "transports", "internetCapable", "validated")}}
+    for key, states in (("wifi", WIFI_RADIO_STATES), ("bluetooth", BLUETOOTH_RADIO_STATES)):
+        radio = reply[key]
+        if not isinstance(radio, dict) or set(radio) != {"supported", "state"}:
+            raise RuntimeError("Android " + key + " radio fields are not exact")
+        supported = radio["supported"]
+        state = radio["state"]
+        if supported is not None and type(supported) is not bool:
+            raise RuntimeError("Android " + key + " support flag is not boolean or null")
+        if type(state) is not str or state not in states:
+            raise RuntimeError("Android " + key + " radio state is invalid")
+        if supported is False and state != "unsupported":
+            raise RuntimeError("Unsupported Android " + key + " radio state is inconsistent")
+        if supported is True and state == "unsupported":
+            raise RuntimeError("Supported Android " + key + " radio is marked unsupported")
+        if supported is None and state != "unknown":
+            raise RuntimeError("Unknown Android " + key + " support has a known state")
+        result[key] = {"supported": supported, "state": state}
+    return result
+
+
 class Portal:
     def __init__(self):
         self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -218,7 +271,7 @@ class Portal:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["list", "device-state", "battery-state", "display-settings",
+    parser.add_argument("action", choices=["list", "device-state", "battery-state", "radio-state", "display-settings",
                                            "network-settings", "bluetooth-settings", "sync", "open"])
     parser.add_argument("package", nargs="?")
     args = parser.parse_args()
@@ -235,6 +288,12 @@ def main():
     if args.action == "battery-state":
         try:
             print(json.dumps(battery_state(portal.request("battery-state")[0]), sort_keys=True))
+        finally:
+            portal.close()
+        return
+    if args.action == "radio-state":
+        try:
+            print(json.dumps(radio_state(portal.request("radio-state")[0]), sort_keys=True))
         finally:
             portal.close()
         return

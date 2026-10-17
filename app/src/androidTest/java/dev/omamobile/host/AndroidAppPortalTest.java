@@ -110,6 +110,178 @@ public class AndroidAppPortalTest {
         assertNullableEquals(host, cli, "plugged");
         assertEquals(host.getString("state"), cli.getString("state"));
     }
+    @Test public void radioStateMatchesAndroidApisAndInstalledLinuxCli() throws Exception {
+        org.junit.Assume.assumeTrue("Explicit -e radioState true required",
+                "true".equals(InstrumentationRegistry.getArguments().getString("radioState")));
+        org.junit.Assume.assumeTrue("Explicit -e graphics true and prepared Linux required",
+                "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
+        var instrumentation = InstrumentationRegistry.getInstrumentation();
+        Context context = instrumentation.getTargetContext();
+        new GraphicsSmokeTest().upstreamShellsMapOnBothNativeHyprlandSessions();
+        List<String> owners = compositorOwnerIdentity(instrumentation);
+
+        JSONObject host;
+        try (LocalSocket socket = connect()) {
+            host = request(socket, new JSONObject().put("op", "radio-state"));
+        }
+        assertTrue(host.toString(), host.getBoolean("ok"));
+        assertKeys(host, "ok", "network", "wifi", "bluetooth");
+        assertAndroidRadioFacts(context, host);
+        assertEquals("Radio query changed a compositor owner", owners, compositorOwnerIdentity(instrumentation));
+
+        java.nio.file.Path root = context.getFilesDir().toPath().resolve("linux/rootfs");
+        JSONObject cli = new JSONObject(runLinuxClient(context, root, "radio-state", "portal-radio-state-"));
+        assertKeys(cli, "network", "wifi", "bluetooth");
+        assertRadioSectionEquals(host, cli, "network", "state", "transports", "internetCapable", "validated");
+        assertRadioSectionEquals(host, cli, "wifi", "supported", "state");
+        assertRadioSectionEquals(host, cli, "bluetooth", "supported", "state");
+        assertEquals("Linux radio-state query changed a compositor owner", owners,
+                compositorOwnerIdentity(instrumentation));
+    }
+
+    private static void assertAndroidRadioFacts(Context context, JSONObject packet) throws Exception {
+        var connectivity = context.getSystemService(android.net.ConnectivityManager.class);
+        JSONObject network = packet.getJSONObject("network");
+        if (connectivity == null) {
+            assertEquals("unknown", network.getString("state"));
+            assertTrue(network.isNull("transports"));
+            assertTrue(network.isNull("internetCapable"));
+            assertTrue(network.isNull("validated"));
+        } else {
+            var active = connectivity.getActiveNetwork();
+            if (active == null) {
+                assertEquals("disconnected", network.getString("state"));
+                assertEquals(0, network.getJSONArray("transports").length());
+                assertTrue(network.isNull("internetCapable"));
+                assertTrue(network.isNull("validated"));
+            } else {
+                var caps = connectivity.getNetworkCapabilities(active);
+                if (caps == null) {
+                    assertEquals("unknown", network.getString("state"));
+                    assertTrue(network.isNull("transports"));
+                    assertTrue(network.isNull("internetCapable"));
+                    assertTrue(network.isNull("validated"));
+                } else {
+                    assertEquals("connected", network.getString("state"));
+                    java.util.Set<String> transports = new java.util.HashSet<>();
+                    for (int type : new int[] { android.net.NetworkCapabilities.TRANSPORT_WIFI,
+                            android.net.NetworkCapabilities.TRANSPORT_CELLULAR,
+                            android.net.NetworkCapabilities.TRANSPORT_ETHERNET,
+                            android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH,
+                            android.net.NetworkCapabilities.TRANSPORT_VPN,
+                            android.net.NetworkCapabilities.TRANSPORT_WIFI_AWARE,
+                            android.net.NetworkCapabilities.TRANSPORT_LOWPAN,
+                            android.net.NetworkCapabilities.TRANSPORT_USB,
+                            android.net.NetworkCapabilities.TRANSPORT_THREAD,
+                            android.net.NetworkCapabilities.TRANSPORT_SATELLITE }) {
+                        if (caps.hasTransport(type)) transports.add(radioTransportName(type));
+                    }
+                    if (transports.isEmpty()) transports.add("other");
+                    var actual = network.getJSONArray("transports");
+                    java.util.Set<String> actualTransports = new java.util.HashSet<>();
+                    for (int i = 0; i < actual.length(); i++) actualTransports.add(actual.getString(i));
+                    assertEquals(transports, actualTransports);
+                    assertEquals(caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET),
+                            network.getBoolean("internetCapable"));
+                    assertEquals(caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+                            network.getBoolean("validated"));
+                }
+            }
+        }
+
+        var packageManager = context.getPackageManager();
+        boolean wifiFeature = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_WIFI);
+        JSONObject wifi = packet.getJSONObject("wifi");
+        if (!wifiFeature) {
+            assertFalse(wifi.getBoolean("supported"));
+            assertEquals("unsupported", wifi.getString("state"));
+        } else {
+            var manager = context.getSystemService(android.net.wifi.WifiManager.class);
+            if (manager == null) {
+                assertTrue(wifi.isNull("supported"));
+                assertEquals("unknown", wifi.getString("state"));
+            } else {
+                assertTrue(wifi.getBoolean("supported"));
+                assertEquals(wifiStateName(manager.getWifiState()), wifi.getString("state"));
+            }
+        }
+
+        boolean bluetoothFeature = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_BLUETOOTH);
+        JSONObject bluetooth = packet.getJSONObject("bluetooth");
+        if (!bluetoothFeature) {
+            assertFalse(bluetooth.getBoolean("supported"));
+            assertEquals("unsupported", bluetooth.getString("state"));
+        } else {
+            var manager = context.getSystemService(android.bluetooth.BluetoothManager.class);
+            var adapter = manager == null ? null : manager.getAdapter();
+            if (adapter == null) {
+                assertTrue(bluetooth.isNull("supported"));
+                assertEquals("unknown", bluetooth.getString("state"));
+            } else {
+                assertTrue(bluetooth.getBoolean("supported"));
+                assertEquals(bluetoothStateName(adapter.getState()), bluetooth.getString("state"));
+            }
+        }
+    }
+
+    private static String radioTransportName(int transport) {
+        return switch (transport) {
+            case android.net.NetworkCapabilities.TRANSPORT_WIFI -> "wifi";
+            case android.net.NetworkCapabilities.TRANSPORT_CELLULAR -> "cellular";
+            case android.net.NetworkCapabilities.TRANSPORT_ETHERNET -> "ethernet";
+            case android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH -> "bluetooth";
+            case android.net.NetworkCapabilities.TRANSPORT_VPN -> "vpn";
+            case android.net.NetworkCapabilities.TRANSPORT_WIFI_AWARE -> "wifi-aware";
+            case android.net.NetworkCapabilities.TRANSPORT_LOWPAN -> "lowpan";
+            case android.net.NetworkCapabilities.TRANSPORT_USB -> "usb";
+            case android.net.NetworkCapabilities.TRANSPORT_THREAD -> "thread";
+            case android.net.NetworkCapabilities.TRANSPORT_SATELLITE -> "satellite";
+            default -> "other";
+        };
+    }
+
+    private static String wifiStateName(int state) {
+        return switch (state) {
+            case android.net.wifi.WifiManager.WIFI_STATE_ENABLED -> "enabled";
+            case android.net.wifi.WifiManager.WIFI_STATE_DISABLED -> "disabled";
+            case android.net.wifi.WifiManager.WIFI_STATE_ENABLING -> "enabling";
+            case android.net.wifi.WifiManager.WIFI_STATE_DISABLING -> "disabling";
+            default -> "unknown";
+        };
+    }
+
+    private static String bluetoothStateName(int state) {
+        return switch (state) {
+            case android.bluetooth.BluetoothAdapter.STATE_ON -> "on";
+            case android.bluetooth.BluetoothAdapter.STATE_OFF -> "off";
+            case android.bluetooth.BluetoothAdapter.STATE_TURNING_ON -> "turning-on";
+            case android.bluetooth.BluetoothAdapter.STATE_TURNING_OFF -> "turning-off";
+            default -> "unknown";
+        };
+    }
+
+    private static void assertKeys(JSONObject object, String... expected) {
+        java.util.Set<String> names = new java.util.HashSet<>();
+        for (String key : expected) names.add(key);
+        java.util.Set<String> actual = new java.util.HashSet<>();
+        var keys = object.keys();
+        while (keys.hasNext()) actual.add(keys.next());
+        assertEquals(names, actual);
+    }
+
+    private static void assertRadioSectionEquals(JSONObject expected, JSONObject actual, String section,
+            String... keys) throws Exception {
+        JSONObject expectedSection = expected.getJSONObject(section);
+        JSONObject actualSection = actual.getJSONObject(section);
+        assertKeys(actualSection, keys);
+        for (String key : keys) {
+            if (key.equals("transports")) {
+                if (expectedSection.isNull(key)) assertTrue(actualSection.isNull(key));
+                else assertEquals(expectedSection.getJSONArray(key).toString(), actualSection.getJSONArray(key).toString());
+            } else assertNullableEquals(expectedSection, actualSection, key);
+        }
+    }
+
     private static void assertNullableEquals(Object expected, JSONObject actual, String key) throws Exception {
         if (expected == null) assertTrue(key + " should be JSON null", actual.isNull(key));
         else if (expected instanceof Number && actual.get(key) instanceof Number)
