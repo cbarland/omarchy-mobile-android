@@ -1,7 +1,9 @@
 package dev.omamobile.host;
 
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -102,5 +104,64 @@ public class SessionRuntimeTest {
         Path prepared = SessionRuntime.prepare(files, root, "phone");
         assertEquals(root.resolve("var/run/omamobile/p"), prepared.toRealPath());
         assertTrue(prepared.normalize().startsWith(files.resolve(SessionRuntime.HOST_ALIAS)));
+    }
+
+    @Test public void adapterPreparationConvergesThroughTheHostAlias() throws Exception {
+        Path files = temporary.newFolder().toPath();
+        Path root = Files.createDirectory(files.resolve("root"));
+        Path runtime = SessionRuntime.prepare(files, root, "phone");
+        Path bin = SessionRuntime.prepareAdapterBin(runtime);
+        Files.writeString(bin.resolve("custom"), "preserve");
+        assertEquals(bin, SessionRuntime.prepareAdapterBin(runtime));
+        assertEquals(runtime.resolve("ando/bin"), bin);
+        assertTrue(Files.isDirectory(bin, LinkOption.NOFOLLOW_LINKS));
+        assertTrue(Files.isDirectory(bin.getParent(), LinkOption.NOFOLLOW_LINKS));
+        assertTrue(Files.isSymbolicLink(files.resolve("s")));
+        assertEquals("preserve", Files.readString(bin.resolve("custom")));
+    }
+
+    @Test public void relativeAdapterAliasesPreserveCustomContentsAndPermissions() throws Exception {
+        Assume.assumeTrue("POSIX symlink and permission semantics", java.io.File.separatorChar == '/');
+        for (String aliasPath : List.of("ando", "ando/bin")) {
+            Path files = temporary.newFolder().toPath();
+            Path root = Files.createDirectory(files.resolve("root"));
+            Path runtime = SessionRuntime.prepare(files, root, "phone");
+            Path custom = Files.createDirectory(root.resolve("custom"));
+            var directoryMode = PosixFilePermissions.fromString("rwxr-x---");
+            var sentinelMode = PosixFilePermissions.fromString("rw-r-----");
+            Files.setPosixFilePermissions(custom, directoryMode);
+            for (String name : List.of("ando", "hyprland-dialog", "dialog.qml")) {
+                Path sentinel = Files.writeString(custom.resolve(name), "custom " + name);
+                Files.setPosixFilePermissions(sentinel, sentinelMode);
+            }
+            Path alias = runtime.toRealPath().resolve(aliasPath);
+            if (aliasPath.equals("ando/bin")) Files.createDirectory(alias.getParent());
+            Path relativeTarget = alias.getParent().relativize(custom);
+            Files.createSymbolicLink(alias, relativeTarget);
+
+            assertThrows(java.io.IOException.class, () -> SessionRuntime.prepareAdapterBin(runtime));
+
+            assertTrue(Files.isSymbolicLink(alias));
+            assertEquals(relativeTarget, Files.readSymbolicLink(alias));
+            assertEquals(directoryMode, Files.getPosixFilePermissions(custom));
+            for (String name : List.of("ando", "hyprland-dialog", "dialog.qml")) {
+                assertEquals("custom " + name, Files.readString(custom.resolve(name)));
+                assertEquals(sentinelMode, Files.getPosixFilePermissions(custom.resolve(name)));
+            }
+            try (var entries = Files.list(custom)) {
+                assertEquals(3, entries.count());
+            }
+        }
+    }
+
+    @Test public void adapterPreparationRejectsNonDirectoriesWithoutChangingThem() throws Exception {
+        for (String entryPath : List.of("ando", "ando/bin")) {
+            Path runtime = temporary.newFolder().toPath();
+            Path entry = runtime.resolve(entryPath);
+            if (entryPath.equals("ando/bin")) Files.createDirectory(entry.getParent());
+            Files.writeString(entry, "preserve");
+            assertThrows(java.io.IOException.class, () -> SessionRuntime.prepareAdapterBin(runtime));
+            assertEquals("preserve", Files.readString(entry));
+        }
     }
 }

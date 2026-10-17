@@ -3,6 +3,12 @@ from pathlib import Path
 
 
 def apply(source: Path):
+    apply_executor(source)
+    from patch_dialog import apply as apply_dialog
+    apply_dialog(source)
+
+
+def apply_executor(source: Path):
     path = source / "src/config/supplementary/executor/Executor.cpp"
     text = path.read_text()
     if "OMAMOBILE_POSIX_SPAWN" in text:

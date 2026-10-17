@@ -1,0 +1,76 @@
+#!/usr/bin/python3
+"""Android session frontend for the hyprland-guiutils 0.2.2 dialog CLI."""
+import json
+import os
+import sys
+
+
+HELP = """hyprland-dialog: Android software frontend (hyprland-guiutils 0.2.2 CLI)
+--title       Set heading
+--apptitle    Set window title
+--text        Message to show
+--buttons     Semicolon-separated list of buttons
+"""
+
+
+def parse(argv):
+    spec = dict(title="", apptitle="", text="", buttons=[])
+    index = 0
+    while index < len(argv):
+        flag = argv[index]
+        if flag in ("--help", "-h"):
+            return None
+        if flag not in ("--title", "--apptitle", "--text", "--buttons"):
+            raise ValueError("invalid arg " + flag)
+        if index + 1 >= len(argv):
+            raise ValueError(flag + " requires a parameter")
+        value = argv[index + 1]
+        if flag == "--buttons":
+            # Hyprutils removes raw empty fields before trimming ASCII whitespace.
+            spec["buttons"].extend(part.strip(" \t\n\r\v\f") for part in value.split(";") if part)
+        else:
+            spec[flag[2:]] = value
+        index += 2
+    spec["text"] = spec["text"].replace("<br/>", "\n").replace("\\n", "\n")
+    return spec
+
+
+def main(argv=None):
+    try:
+        spec = parse(sys.argv[1:] if argv is None else argv)
+        if spec is None:
+            os.write(1, HELP.encode())
+            return 0
+        # Check before opening a stderr fallback: a closed stdout must not turn
+        # into /dev/null and appear to have delivered a response successfully.
+        os.fstat(1)
+        try:
+            os.fstat(2)
+        except OSError:
+            null = os.open(os.devnull, os.O_WRONLY)
+            try:
+                os.dup2(null, 2)
+            finally:
+                if null != 2:
+                    os.close(null)
+        # os.open defaults to CLOEXEC, including when it filled descriptor 2.
+        os.set_inheritable(2, True)
+        os.dup2(1, 3, inheritable=True)
+        os.dup2(2, 1)  # qs logs normally use stdout; keep the response FD separate.
+        env = os.environ.copy()
+        env.update(OMAMOBILE_DIALOG_SPEC=json.dumps(spec), QS_APP_ID="hyprland-dialog",
+                   QS_DISABLE_CRASH_HANDLER="1", QS_DISABLE_FILE_WATCHER="1",
+                   QT_QPA_PLATFORM="wayland", QT_QUICK_BACKEND="software", QSG_RENDER_LOOP="basic")
+        qml = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dialog.qml")
+        # Foreground exec preserves the native-owned PID. Each dialog is independent.
+        os.execve("/usr/bin/qs", ["qs", "--path", qml], env)
+    except (OSError, ValueError) as error:
+        try:
+            os.write(2, ("hyprland-dialog: " + str(error) + "\n").encode("utf-8", errors="replace"))
+        except OSError:
+            pass
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

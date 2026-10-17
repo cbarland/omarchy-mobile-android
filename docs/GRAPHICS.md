@@ -267,3 +267,104 @@ Unix-domain socket paths short while making absolute links such as
 Quickshell's `by-pid` records resolve inside the same runtime tree. Existing
 `files/r` data is left untouched as private legacy state and is never retargeted
 or migrated. Android-owned bind semantics are unchanged.
+
+## Native guest dialogs
+
+Android's native compositor cannot find guest programs by searching its own
+`PATH`. The compositor warning, dialog creation, and ANR manager use one guest
+availability probe through the session wrapper. The probe invokes a fixed
+`/bin/sh` command with the executable name as a separate argument and waits for
+up to one second before terminating and reaping that specific probe child.
+
+Android sessions select an APK-owned software dialog frontend from the existing
+profile-owned `/opt/omamobile/bin` read-only bind. Each session construction copies
+`runtime-dialog/hyprland-dialog` (0755) and `runtime-dialog/dialog.qml` (0644) into
+that staging directory. The original Linux `/usr/bin/hyprland-dialog` and packages
+remain untouched. This dialog-only adapter uses installed Quickshell/Qt software
+Wayland rendering; it does not add a dmabuf backend or fix general Hyprtoolkit
+applications.
+
+Before changing permissions or copying adapters, session preparation requires
+literal `ando` and `ando/bin` directories beneath the checked profile runtime.
+Symlinks and non-directories there stop startup without changing their targets;
+the intentional host `files/s` alias remains supported. This check assumes the
+session owns preparation; it is not protection against a concurrent same-UID
+editor replacing directories after validation.
+
+The frontend preserves the guiutils 0.2.2 title/apptitle/text/buttons CLI, including
+button trimming and text newline normalization. Heading, message, and labels are
+displayed as plain text. It passes data in child-only `OMAMOBILE_DIALOG_SPEC` JSON
+and execs foreground `qs --path`, preserving the native-owned Wayland client PID.
+It sets the child app ID to `hyprland-dialog`, disables that child's crash restart
+and file watching, and uses independent instances. Quickshell diagnostics use the
+inherited stderr sink. A saved stdout FD3 carries only the selected label plus
+newline: a fixed shell/printf command receives the label as one argument and writes
+directly to that descriptor, without reopening or truncating it. Closing the
+window or failing to launch/respond returns no choice; Android permission policy
+denies an empty/unrecognized response. The scrolling window fits the current
+screen and supports pointer, Tab focus, and Escape/close. Equal capped minimum
+and maximum size hints retain guiutils' fixed-size floating-dialog contract.
+
+Android dialog launch uses `posix_spawn` with `/system/bin/sh`, the wrapper,
+`--argv`, and separate guest arguments. Titles, text, and buttons are never
+reconstructed into shell command text. The wrapper retains legacy command-string
+launches by adapting them to `/bin/bash -c "$1"`; both modes then execute the
+guest argv through the existing tawcroot/environment boundary. Exec-rule tokens
+are child-only; the native compositor's environment and Hyprutils remain intact.
+
+The stdout pipe uses close-on-exec descriptors and handles absent standard FDs.
+Stderr inherits the native compositor's log sink (with a null fallback only if
+the parent stderr was absent).
+The event loop owns the dialog's PID, pipe, source, and promise. It drains the
+button response, clears running/PID registration, and resolves the promise before
+releasing the child owner. That owner alone reaps the PID; if closing stdout did
+not end the child, cleanup allows brief exit/TERM intervals, then sends KILL and
+waits for exit. It never signals a PID after reaping it or changes SIGCHLD policy.
+Android permission-dialog creation, open, or response failures deny the request
+and complete its pending permission promise. The other platforms retain their
+existing missing-utility fallback.
+
+ANR responses capture weak ownership of the real shared ANR actor and the exact
+dialog instance. A delayed response is ignored after that actor is destroyed,
+its dialog is canceled, or a replacement dialog is opened. Neither capture
+retains the actor or creates an ownership cycle.
+
+Rerunnable source and Linux host checks:
+
+```sh
+python3 tools/native/check_guest_dialog_source.py --port-repository /path/to/anhyprland --output /task/proof/generated
+python3 -m unittest discover -s tools/tests -p test_guest_dialog.py -v
+python3 -m unittest discover -s tools/tests -p test_software_dialog.py -v
+```
+
+The source check reads pristine pinned Git objects without trusting cache edits,
+generates the patches twice, and records matching hashes. The host harness uses
+the actual wrapper argument protocol and spawn helper under a seccomp no-fork
+gate; it checks argv, stdout, token isolation, signal mask, PID preservation,
+availability, timeout, FD cleanup, and targeted child reaping. It does not prove
+Android ART, tawcroot, Wayland dialog mapping, or startup latency.
+The software frontend check exercises its actual parser and fixed QML response
+command under real Linux pipe/socket/file descriptors, including preserved file
+offsets, exec PID, hostile label arguments, missing standard FDs, independent
+invocations, and failure/empty-response paths. It substitutes a process fixture
+for Quickshell; visible QML layout, input, and actual native-child interaction
+still require the runtime checks below.
+
+Add `--check-anr-owner --hyprutils-include /path/to/hyprutils/include` to the
+source check to compile the emitted ANR callback against the real pointer types
+with ASan/UBSan. It exercises valid Wait/Terminate, actor destruction, cancellation,
+and dialog replacement; the original pinned callback is a negative control that
+must reproduce its use-after-free. This requires a host compiler with sanitizers.
+
+The remaining runtime check uses the existing native ANR flow, without a test
+hook: launch an owned Foot window, record its PID/starttime and current profile,
+and STOP only that identified process. Wait for Hyprland's real ANR dialog, record
+its native-log PID and Wayland client PID, then click **Wait**. Confirm the Foot
+process remains owned/alive and the dialog is gone; CONT the same Foot process
+in guaranteed cleanup and confirm it responds again. Capture artifact/source
+identities, both PID identities, raw dialog output evidence and timing, and verify
+no dialog zombie remains. Run independently on phone/external owners. Measure
+normal guest-probe/dialog latency there; the host test is not an ART performance
+claim. Do not freeze an unrelated process or weaken the existing graphics smoke
+deadline. Native build and Android runtime validation remain required before
+claiming this path works on a device.
