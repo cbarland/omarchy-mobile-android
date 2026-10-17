@@ -82,3 +82,29 @@ Normal and controlled-failure cases assert Python reaped the server; the forced
 case bypasses Python finally and proves parent-death termination and observed
 process absence, with orphan reaping left to Android. This fixture-specific
 binding does not establish ownership for a future application audio service.
+
+## Ordinary Linux-client policy test
+
+`PipeWirePolicyOutputTest` is a separate opt-in integration gate. Run it only on a
+prepared disposable emulator with the signed Arch packages `pipewire`,
+`libpipewire`, `pipewire-audio`, `pipewire-pulse` 1:1.6.9-1 and `wireplumber`
+0.5.18-1. It checks the installed WirePlumber policy config hash and fails on
+missing or changed prerequisites. Enable it with `-e pipewirePolicyAudio true`
+and class `dev.omamobile.host.PipeWirePolicyOutputTest`.
+
+Its private foreground fixture uses WirePlumber's installed policy profile,
+PipeWire's internal software driver and a pipe-tunnel sink connected to a real
+app-owned FIFO. It disables Pulse's fallback sink in a private XDG config. A
+normal native `pw-play` stream, a second native stream after idle, and a normal
+Pulse `paplay` stream must each automatically link to that default sink and
+produce complete frames plus an advancing Android playback head while the
+client is active. There is no synthetic test source or manual link. The test
+also checks that the Android worker survives idle, that all exact foreground
+children are gone after normal stop or forced helper death, and that the track,
+descriptors, FIFO and run directory are released. Raw logs, graph snapshots,
+identities and receipts remain under the app's private
+`cache/pipewire-policy-proof/<run>` directory.
+
+This is an application-to-Android pipeline gate, not a phone/desktop audio
+service. It does not claim speaker audibility, Android focus/routing policy,
+real hardware, or service lifecycle support.
