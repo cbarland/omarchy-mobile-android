@@ -49,6 +49,11 @@ def blob(path):
     root = a.omarchy if path.is_relative_to(a.omarchy) else a.mobile
     return canonical[root][path.relative_to(root).as_posix()]
 
+def replace_once(text, original, replacement):
+    if text.count(original) != 1:
+        raise SystemExit(f"Expected one battery adapter insertion point: {original[:80]!r}")
+    return text.replace(original, replacement, 1)
+
 def mobile_transform(relative, data):
     expected = MOBILE_TRANSFORM_HASHES.get(relative)
     if expected is None:
@@ -115,93 +120,86 @@ def mobile_transform(relative, data):
             '    ? (AndroidBattery.AndroidBattery.sample.present === true && Number.isFinite(AndroidBattery.AndroidBattery.sample.percentage) ? Math.round(AndroidBattery.AndroidBattery.sample.percentage) : -1)\n'
             '    : (hasBattery ? Math.round(battery.percentage * 100) : -1)\n'
             '  readonly property bool charging: androidBattery ? AndroidBattery.AndroidBattery.sample.state === "charging" : hasBattery && !UPower.onBattery\n'
-            '  readonly property string batteryIcon: androidBattery ? AndroidBatteryModel.icon(AndroidBattery.AndroidBattery.sample) : StatusModel.batteryIcon(batteryPercent, charging,\n'
+            '  readonly property string batteryIcon: androidBattery ? AndroidBattery.AndroidBattery.icon(AndroidBattery.AndroidBattery.sample) : StatusModel.batteryIcon(batteryPercent, charging,\n'
             '    hasBattery && battery.state === UPowerDeviceState.FullyCharged)\n', 1)
-        text = text.replace('            visible: root.hasBattery\n', '            visible: root.androidBattery || root.hasBattery\n', 1)
         text = text.replace('              text: root.batteryPercent + "%"\n', '              text: root.batteryPercent >= 0 ? root.batteryPercent + "%" : "—"\n', 1)
         text = text.replace('visible: !!root.btAdapter && root.btAdapter.enabled\n            text: root.bluetoothConnected ? "󰂱" : "󰂯"',
             'visible: root.androidRadio ? (Android.AndroidRadio.bluetooth.state === "on" || Android.AndroidRadio.bluetooth.state === "turning-on") : (!!root.btAdapter && root.btAdapter.enabled)\n            text: root.androidRadio ? "󰂯" : (root.bluetoothConnected ? "󰂱" : "󰂯")', 1)
         text = text.replace('            opacity: root.networkKind === "off" || root.networkKind === "disconnected" ? 0.55 : 1',
             '            opacity: root.networkKind === "off" || root.networkKind === "disconnected" || root.networkKind === "unavailable" || root.networkKind === "unknown" ? 0.55 : 1', 1)
     elif relative.endswith("panels/power/Panel.qml"):
-        text = text.replace('import "Model.js" as Model\n',
-            'import "Model.js" as Model\nimport "file:///usr/share/omamobile/shell/plugins/omamobile.android" as AndroidBattery\n', 1)
-        text = text.replace('  id: root\n',
+        text = replace_once(text, 'import "Model.js" as Model\n',
+            'import "Model.js" as Model\nimport "file:///usr/share/omamobile/shell/plugins/omamobile.android" as AndroidBattery\n')
+        text = replace_once(text, '  id: root\n',
             '  id: root\n\n'
             '  readonly property bool androidBattery: AndroidBattery.AndroidBattery.enabled\n'
             '  Component.onCompleted: AndroidBattery.AndroidBattery.requestPanel(root, androidBattery && root.visible)\n'
             '  onVisibleChanged: if (androidBattery) AndroidBattery.AndroidBattery.requestPanel(root, root.visible)\n'
-            '  Component.onDestruction: AndroidBattery.AndroidBattery.requestPanel(root, false)\n', 1)
-        text = text.replace('  readonly property bool batteryPresent: {\n    var device = UPower.displayDevice\n    return !!(device && device.isPresent)\n  }\n',
+            '  Component.onDestruction: AndroidBattery.AndroidBattery.requestPanel(root, false)\n')
+        text = replace_once(text, '  readonly property bool batteryPresent: {\n    var device = UPower.displayDevice\n    return !!(device && device.isPresent)\n  }\n',
             '  readonly property bool batteryPresent: androidBattery\n'
             '    ? AndroidBattery.AndroidBattery.sample.present !== false\n'
-            '    : !!(UPower.displayDevice && UPower.displayDevice.isPresent)\n', 1)
-        text = text.replace('  function batteryIcon() {\n    var device = UPower.displayDevice\n    return Model.batteryIcon(device, root.discharging, upowerStates())\n  }\n',
+            '    : !!(UPower.displayDevice && UPower.displayDevice.isPresent)\n')
+        text = replace_once(text, '  function batteryIcon() {\n    var device = UPower.displayDevice\n    return Model.batteryIcon(device, root.discharging, upowerStates())\n  }\n',
             '  function batteryIcon() {\n'
             '    if (androidBattery) return AndroidBattery.AndroidBattery.icon(AndroidBattery.AndroidBattery.sample)\n'
             '    var device = UPower.displayDevice\n'
             '    return Model.batteryIcon(device, root.discharging, upowerStates())\n'
-            '  }\n', 1)
-        text = text.replace('  function modeLabel() {\n    var device = UPower.displayDevice\n    return Model.modeLabel(device, root.discharging, upowerStates())\n  }\n',
+            '  }\n')
+        text = replace_once(text, '  function modeLabel() {\n    var device = UPower.displayDevice\n    return Model.modeLabel(device, root.discharging, upowerStates())\n  }\n',
             '  function modeLabel() {\n'
             '    if (androidBattery) return AndroidBattery.AndroidBattery.label(AndroidBattery.AndroidBattery.sample)\n'
             '    var device = UPower.displayDevice\n'
             '    return Model.modeLabel(device, root.discharging, upowerStates())\n'
-            '  }\n', 1)
-        text = text.replace('  readonly property bool fullyCharged: {\n',
+            '  }\n')
+        text = replace_once(text, '  readonly property bool fullyCharged: {\n',
             '  readonly property bool fullyCharged: androidBattery\n'
             '    ? AndroidBattery.AndroidBattery.sample.state === "full"\n'
-            '    : (function() {\n', 1)
-        text = text.replace('    return device && device.isPresent && device.state === UPowerDeviceState.FullyCharged && !root.chargeThresholdActive\n  }\n',
+            '    : (function() {\n')
+        text = replace_once(text, '    return device && device.isPresent && device.state === UPowerDeviceState.FullyCharged && !root.chargeThresholdActive\n  }\n',
             '        return device && device.isPresent && device.state === UPowerDeviceState.FullyCharged && !root.chargeThresholdActive\n'
-            '      })()\n', 1)
-        text = text.replace('  readonly property bool discharging: {\n',
+            '      })()\n')
+        text = replace_once(text, '  readonly property bool discharging: {\n',
             '  readonly property bool discharging: androidBattery\n'
             '    ? AndroidBattery.AndroidBattery.sample.state === "discharging"\n'
-            '    : (function() {\n', 1)
-        text = text.replace('    return !!(device && device.isPresent && UPower.onBattery)\n  }\n',
+            '    : (function() {\n')
+        text = replace_once(text, '    return !!(device && device.isPresent && UPower.onBattery)\n  }\n',
             '        return !!(device && device.isPresent && UPower.onBattery)\n'
-            '      })()\n', 1)
-        text = text.replace('  readonly property real batteryFraction: {\n',
+            '      })()\n')
+        text = replace_once(text, '  readonly property real batteryFraction: {\n',
             '  readonly property real batteryFraction: androidBattery\n'
             '    ? AndroidBattery.AndroidBattery.fraction\n'
-            '    : (function() {\n', 1)
-        text = text.replace('    return Model.batteryFraction(d)\n  }\n',
+            '    : (function() {\n')
+        text = replace_once(text, '    return Model.batteryFraction(d)\n  }\n',
             '        return Model.batteryFraction(d)\n'
-            '      })()\n', 1)
-        text = text.replace('  readonly property bool charging: {\n',
+            '      })()\n')
+        text = replace_once(text, '  readonly property bool charging: {\n',
             '  readonly property bool charging: androidBattery\n'
             '    ? AndroidBattery.AndroidBattery.sample.state === "charging"\n'
-            '    : (function() {\n', 1)
-        text = text.replace('    return d && d.isPresent && !UPower.onBattery && !root.batteryFlowIdle\n  }\n',
+            '    : (function() {\n')
+        text = replace_once(text, '    return d && d.isPresent && !UPower.onBattery && !root.batteryFlowIdle\n  }\n',
             '        return d && d.isPresent && !UPower.onBattery && !root.batteryFlowIdle\n'
-            '      })()\n', 1)
-        text = text.replace('  function refresh() {\n    if (!batteryPresent) return\n',
+            '      })()\n')
+        text = replace_once(text, '  function refresh() {\n    if (!batteryPresent) return\n',
             '  function refresh() {\n'
             '    if (androidBattery) { AndroidBattery.AndroidBattery.refresh(); return }\n'
-            '    if (!batteryPresent) return\n', 1)
-        text = text.replace('  function setProfile(profile) {\n    if (!profile || actionProc.running) return\n',
-            '  function setProfile(profile) {\n    if (androidBattery || !profile || actionProc.running) return\n', 1)
-        text = text.replace('if (!batteryPresent) {\n        close()', 'if (!androidBattery && !batteryPresent) {\n        close()', 1)
-        text = text.replace('  visible: batteryPresent\n', '  visible: androidBattery || batteryPresent\n', 1)
-        text = text.replace('  onBatteryPresentChanged: if (!batteryPresent) close()\n',
-            '  onBatteryPresentChanged: if (!androidBattery && !batteryPresent) close()\n', 1)
-        text = text.replace('  implicitWidth: batteryPresent ? button.implicitWidth : 0\n',
-            '  implicitWidth: (androidBattery || batteryPresent) ? button.implicitWidth : 0\n', 1)
-        text = text.replace('  implicitHeight: batteryPresent ? button.implicitHeight : 0\n',
-            '  implicitHeight: (androidBattery || batteryPresent) ? button.implicitHeight : 0\n', 1)
-        text = text.replace('        // ---------- Power profile picker ----------\n        PanelSeparator {\n',
-            '        // ---------- Power profile picker ----------\n        PanelSeparator {\n          visible: !root.androidBattery\n', 1)
-        text = text.replace('        Column {\n          width: parent.width\n          spacing: Style.space(10)\n\n          PanelSectionHeader {\n            text: "POWER PROFILE"',
-            '        Column {\n          visible: !root.androidBattery\n          width: parent.width\n          spacing: Style.space(10)\n\n          PanelSectionHeader {\n            text: "POWER PROFILE"', 1)
-        text = text.replace('            text: root.batteryInfo.percentage || "—"\n',
-            '            text: root.androidBattery ? AndroidBattery.AndroidBattery.displayPercentage(AndroidBattery.AndroidBattery.sample) : (root.batteryInfo.percentage || "—")\n', 1)
-        text = text.replace('      ? Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()\n',
-            '      ? (root.androidBattery ? AndroidBattery.AndroidBattery.displayPercentage(AndroidBattery.AndroidBattery.sample) : Math.round(root.batteryFraction * 100) + "%") + " " + root.batteryIcon()\n', 1)
-        text = text.replace('      if (!root.batteryPresent) return\n',
-            '      if (!root.androidBattery && !root.batteryPresent) return\n', 1)
-        text = text.replace('    open: root.opened && root.batteryPresent\n',
-            '    open: root.opened && (root.androidBattery || root.batteryPresent)\n', 1)
+            '    if (!batteryPresent) return\n')
+        text = replace_once(text, '  function setProfile(profile) {\n    if (!profile || actionProc.running) return\n',
+            '  function setProfile(profile) {\n    if (androidBattery || !profile || actionProc.running) return\n')
+        # Keep observing presence when the battery disappears. The button and
+        # slot still use batteryPresent, so absence hides UI without stopping
+        # the observation needed to discover a returning battery.
+        text = replace_once(text, '  visible: batteryPresent\n', '  visible: androidBattery || batteryPresent\n')
+        text = replace_once(text, '  BarIconButton {\n    id: button\n',
+            '  BarIconButton {\n    id: button\n    visible: root.batteryPresent\n')
+        text = replace_once(text, '        // ---------- Power profile picker ----------\n        PanelSeparator {\n',
+            '        // ---------- Power profile picker ----------\n        PanelSeparator {\n          visible: !root.androidBattery\n')
+        text = replace_once(text, '        Column {\n          width: parent.width\n          spacing: Style.space(10)\n\n          PanelSectionHeader {\n            text: "POWER PROFILE"',
+            '        Column {\n          visible: !root.androidBattery\n          width: parent.width\n          spacing: Style.space(10)\n\n          PanelSectionHeader {\n            text: "POWER PROFILE"')
+        text = replace_once(text, '            text: root.batteryInfo.percentage || "—"\n',
+            '            text: root.androidBattery ? AndroidBattery.AndroidBattery.displayPercentage(AndroidBattery.AndroidBattery.sample) : (root.batteryInfo.percentage || "—")\n')
+        text = replace_once(text, '      ? Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()\n',
+            '      ? (root.androidBattery ? AndroidBattery.AndroidBattery.displayPercentage(AndroidBattery.AndroidBattery.sample) : Math.round(root.batteryFraction * 100) + "%") + " " + root.batteryIcon()\n')
     else:
         text = text.replace('import Quickshell.Wayland\n',
             'import Quickshell.Wayland\nimport "../omamobile.android" as Android\n', 1)
