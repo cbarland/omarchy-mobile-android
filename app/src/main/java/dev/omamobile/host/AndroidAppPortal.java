@@ -129,6 +129,13 @@ final class AndroidAppPortal implements AutoCloseable {
                                 .put("percentage", snapshot.percentage() == null ? JSONObject.NULL : snapshot.percentage())
                                 .put("plugged", snapshot.plugged() == null ? JSONObject.NULL : snapshot.plugged())
                                 .put("state", snapshot.state());
+                    } else if (op.equals("radio-state")) {
+                        // The host reports Android-owned facts only; the Linux
+                        // client cannot enumerate, pair, or change radio state.
+                        JSONObject state = RadioStateSnapshot.read(context).toJson();
+                        reply.put("network", state.getJSONObject("network"))
+                                .put("wifi", state.getJSONObject("wifi"))
+                                .put("bluetooth", state.getJSONObject("bluetooth"));
                     } else if (op.equals("display-settings")) {
                         // The Linux entry point can reveal only this fixed
                         // host panel, never an arbitrary Android component.
