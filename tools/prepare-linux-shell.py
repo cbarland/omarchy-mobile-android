@@ -59,12 +59,17 @@ def mobile_transform(relative, data):
     text = data.decode("utf-8")
     if relative.endswith("omamobile.bar/Bar.qml"):
         text = text.replace('import "StatusModel.js" as StatusModel\n',
-            'import "StatusModel.js" as StatusModel\nimport "../omamobile.android" as Android\n', 1)
+            'import "StatusModel.js" as StatusModel\nimport "../omamobile.android" as Android\nimport "../omamobile.android" as AndroidBattery\nimport "../omamobile.android/AndroidBatteryModel.js" as AndroidBatteryModel\n', 1)
         text = text.replace('  id: root\n',
             '  id: root\n\n'
             '  Component.onCompleted: Android.AndroidRadio.requestBar(root, Android.AndroidRadio.enabled && root.visible)\n'
             '  onVisibleChanged: if (Android.AndroidRadio.enabled) Android.AndroidRadio.requestBar(root, root.visible)\n'
             '  Component.onDestruction: Android.AndroidRadio.requestBar(root, false)\n', 1)
+        text = text.replace('  Component.onDestruction: Android.AndroidRadio.requestBar(root, false)\n',
+            '  Component.onDestruction: Android.AndroidRadio.requestBar(root, false)\n'
+            '  Component.onCompleted: AndroidBattery.AndroidBattery.requestPanel(root, AndroidBattery.AndroidBattery.enabled && root.visible)\n'
+            '  onVisibleChanged: if (AndroidBattery.AndroidBattery.enabled) AndroidBattery.AndroidBattery.requestPanel(root, root.visible)\n'
+            '  Component.onDestruction: AndroidBattery.AndroidBattery.requestPanel(root, false)\n', 1)
         start = text.index("  readonly property var networkDevices:")
         end = text.index("  // Cellular signal.", start)
         text = text[:start] + '''  readonly property bool androidRadio: Android.AndroidRadio.enabled
@@ -98,13 +103,25 @@ def mobile_transform(relative, data):
       wifiNetwork ? Math.round((wifiNetwork.signalStrength || 0) * 100) : -1)
 
 ''' + text[end:]
+        text = text.replace('  readonly property var battery: UPower.displayDevice\n  readonly property bool hasBattery: !!battery && battery.isPresent === true\n  readonly property int batteryPercent: hasBattery ? Math.round(battery.percentage * 100) : -1\n  readonly property bool charging: hasBattery && !UPower.onBattery\n  readonly property string batteryIcon: StatusModel.batteryIcon(batteryPercent, charging,\n    hasBattery && battery.state === UPowerDeviceState.FullyCharged)\n',
+            '  readonly property var battery: UPower.displayDevice\n'
+            '  readonly property bool androidBattery: AndroidBattery.AndroidBattery.enabled\n'
+            '  readonly property bool hasBattery: androidBattery ? true : !!battery && battery.isPresent === true\n'
+            '  readonly property int batteryPercent: androidBattery\n'
+            '    ? (AndroidBattery.AndroidBattery.sample.present === true && Number.isFinite(AndroidBattery.AndroidBattery.sample.percentage) ? Math.round(AndroidBattery.AndroidBattery.sample.percentage) : -1)\n'
+            '    : (hasBattery ? Math.round(battery.percentage * 100) : -1)\n'
+            '  readonly property bool charging: androidBattery ? AndroidBattery.AndroidBattery.sample.state === "charging" : hasBattery && !UPower.onBattery\n'
+            '  readonly property string batteryIcon: androidBattery ? AndroidBatteryModel.icon(AndroidBattery.AndroidBattery.sample) : StatusModel.batteryIcon(batteryPercent, charging,\n'
+            '    hasBattery && battery.state === UPowerDeviceState.FullyCharged)\n', 1)
+        text = text.replace('            visible: root.hasBattery\n', '            visible: root.androidBattery || root.hasBattery\n', 1)
+        text = text.replace('              text: root.batteryPercent + "%"\n', '              text: root.batteryPercent >= 0 ? root.batteryPercent + "%" : "—"\n', 1)
         text = text.replace('visible: !!root.btAdapter && root.btAdapter.enabled\n            text: root.bluetoothConnected ? "󰂱" : "󰂯"',
             'visible: root.androidRadio ? (Android.AndroidRadio.bluetooth.state === "on" || Android.AndroidRadio.bluetooth.state === "turning-on") : (!!root.btAdapter && root.btAdapter.enabled)\n            text: root.androidRadio ? "󰂯" : (root.bluetoothConnected ? "󰂱" : "󰂯")', 1)
         text = text.replace('            opacity: root.networkKind === "off" || root.networkKind === "disconnected" ? 0.55 : 1',
             '            opacity: root.networkKind === "off" || root.networkKind === "disconnected" || root.networkKind === "unavailable" || root.networkKind === "unknown" ? 0.55 : 1', 1)
     elif relative.endswith("panels/power/Panel.qml"):
         text = text.replace('import "Model.js" as Model\n',
-            'import "Model.js" as Model\nimport "../omamobile.android" as AndroidBattery\nimport "../omamobile.android/AndroidBatteryModel.js" as AndroidBatteryModel\n', 1)
+            'import "Model.js" as Model\nimport "../../omamobile.android" as AndroidBattery\nimport "../../omamobile.android/AndroidBatteryModel.js" as AndroidBatteryModel\n', 1)
         text = text.replace('  id: root\n',
             '  id: root\n\n'
             '  readonly property bool androidBattery: AndroidBattery.AndroidBattery.enabled\n'
@@ -113,7 +130,7 @@ def mobile_transform(relative, data):
             '  Component.onDestruction: AndroidBattery.AndroidBattery.requestPanel(root, false)\n', 1)
         text = text.replace('  readonly property bool batteryPresent: {\n    var device = UPower.displayDevice\n    return !!(device && device.isPresent)\n  }\n',
             '  readonly property bool batteryPresent: androidBattery\n'
-            '    ? AndroidBattery.AndroidBattery.present\n'
+            '    ? true\n'
             '    : !!(UPower.displayDevice && UPower.displayDevice.isPresent)\n', 1)
         text = text.replace('  function batteryIcon() {\n    var device = UPower.displayDevice\n    return Model.batteryIcon(device, root.discharging, upowerStates())\n  }\n',
             '  function batteryIcon() {\n'
@@ -171,6 +188,12 @@ def mobile_transform(relative, data):
             '  implicitHeight: (androidBattery || batteryPresent) ? button.implicitHeight : 0\n', 1)
         text = text.replace('            text: root.batteryInfo.percentage || "—"\n',
             '            text: root.androidBattery ? AndroidBatteryModel.displayPercentage(AndroidBattery.AndroidBattery.sample) : (root.batteryInfo.percentage || "—")\n', 1)
+        text = text.replace('      ? Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()\n',
+            '      ? (root.androidBattery ? AndroidBatteryModel.displayPercentage(AndroidBattery.AndroidBattery.sample) : Math.round(root.batteryFraction * 100) + "%") + " " + root.batteryIcon()\n', 1)
+        text = text.replace('      if (!root.batteryPresent) return\n',
+            '      if (!root.androidBattery && !root.batteryPresent) return\n', 1)
+        text = text.replace('    open: root.opened && root.batteryPresent\n',
+            '    open: root.opened && (root.androidBattery || root.batteryPresent)\n', 1)
     else:
         text = text.replace('import Quickshell.Wayland\n',
             'import Quickshell.Wayland\nimport "../omamobile.android" as Android\n', 1)

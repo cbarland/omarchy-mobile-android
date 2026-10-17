@@ -34,6 +34,7 @@ function label(snapshot) {
   if (snapshot.state === "charging") return "Charging"
   if (snapshot.state === "full") return "Fully charged"
   if (snapshot.state === "discharging") return "On battery"
+  if (snapshot.state === "unknown") return "Battery state unknown"
   return "Not charging"
 }
 
