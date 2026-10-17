@@ -153,8 +153,10 @@ panel opens with **Super + Ctrl + D**; phone/external scale behavior and other
 limits are described in [GRAPHICS.md](GRAPHICS.md).
 
 For optional Android app windows, follow [ANDROID-APPS.md](ANDROID-APPS.md) and
-authorize Shizuku in ADB mode explicitly. No Android root, bootloader unlock,
-flashing, or permission-policy modification is part of the Linux installation.
+authorize Shizuku in ADB mode explicitly. For touch, hardware keys, the phone
+IME and the Escape/Android Back distinction, see [INPUT.md](INPUT.md). No
+Android root, bootloader unlock, flashing, or permission-policy modification is
+part of the Linux installation.
 
 ### Optional Linux browser
 
