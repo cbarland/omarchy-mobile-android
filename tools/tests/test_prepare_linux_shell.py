@@ -109,6 +109,19 @@ def main():
             f"[Desktop Entry]\nName={title}\nType=Application\nExec=/usr/bin/omamobile-android {action}\n"
             f"Terminal=false\nIcon={icon}\nCategories=Settings;HardwareSettings;\n").encode()
     assert required_portal <= before.keys(), f"Access portal payload members missing: {required_portal - before.keys()}"
+    adapter_prefix = "usr/share/omamobile/shell/plugins/omamobile.android/"
+    assert {adapter_prefix + name for name in ("AndroidRadio.qml", "AndroidRadioModel.js", "qmldir")} <= before.keys()
+    bar = member_bytes(directory / "clean.tar.gz", "usr/share/omamobile/shell/plugins/omamobile.bar/Bar.qml").decode()
+    quicksettings = member_bytes(directory / "clean.tar.gz", "usr/share/omamobile/shell/plugins/omamobile.quicksettings/QuickSettings.qml").decode()
+    assert 'import "../omamobile.android" as Android' in bar
+    assert "Android.AndroidRadio.enabled" in bar and "Android.AndroidRadio.network" in bar
+    assert "Android.AndroidRadio.barVisible = true" in bar
+    assert "Android.AndroidRadio.barVisible = false" in bar
+    assert 'import "../omamobile.android" as Android' in quicksettings
+    assert '["omamobile-android", "network-settings"]' in quicksettings
+    assert '["omamobile-android", "bluetooth-settings"]' in quicksettings
+    assert "Android.AndroidRadio.quickSettingsVisible = true" in quicksettings
+    assert "tile-state.sh" in quicksettings
     portal_config = member_bytes(directory / "clean.tar.gz", "etc/xdg/xdg-desktop-portal/hyprland-portals.conf")
     assert portal_config == b"[preferred]\ndefault=*\norg.freedesktop.impl.portal.Access=omamobile\n"
     for profile in ("phone", "desktop"):

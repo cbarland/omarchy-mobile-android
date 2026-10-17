@@ -1,0 +1,2 @@
+module omamobile.android
+singleton AndroidRadio 1.0 AndroidRadio.qml

@@ -15,6 +15,10 @@ import tarfile
 OMARCHY = "e71a816e9032f040225e086c7256f73e8080ae45"
 MOBILE = "953bcb3058347459cdf7faaa1e149f16e0f7cfa6"
 WIDGETS = "b63886b75e02ccef1a8a11baeef2d6eff7a374af"
+MOBILE_TRANSFORM_HASHES = {
+    "packages/omamobile-shell/plugins/omamobile.bar/Bar.qml": "de1f04dd367758032b0d4e8ad09b3aeadcb1d44dde3c910c674b8c3476f849c0",
+    "packages/omamobile-shell/plugins/omamobile.quicksettings/QuickSettings.qml": "db944640ddbcd6dfa736e3059cb2e5aa0c4ce56073fbf31868a91e1887896ff7",
+}
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--omarchy", type=Path, required=True)
 p.add_argument("--mobile", type=Path, required=True)
@@ -43,6 +47,169 @@ def blob(path):
     root = a.omarchy if path.is_relative_to(a.omarchy) else a.mobile
     return canonical[root][path.relative_to(root).as_posix()]
 
+def mobile_transform(relative, data):
+    expected = MOBILE_TRANSFORM_HASHES.get(relative)
+    if expected is None:
+        return data
+    actual = hashlib.sha256(data).hexdigest()
+    if actual != expected:
+        raise SystemExit(f"Pinned mobile transform input changed for {relative}: {actual}")
+    text = data.decode("utf-8")
+    if relative.endswith("omamobile.bar/Bar.qml"):
+        text = text.replace('import "StatusModel.js" as StatusModel\n',
+            'import "StatusModel.js" as StatusModel\nimport "../omamobile.android" as Android\n', 1)
+        text = text.replace('  id: root\n',
+            '  id: root\n\n'
+            '  Component.onCompleted: Android.AndroidRadio.barVisible = true\n'
+            '  Component.onDestruction: Android.AndroidRadio.barVisible = false\n', 1)
+        start = text.index("  readonly property var networkDevices:")
+        end = text.index("  // Cellular signal.", start)
+        text = text[:start] + '''  readonly property bool androidRadio: Android.AndroidRadio.enabled
+  readonly property var networkDevices: Networking.devices ? Networking.devices.values : []
+  readonly property var wifiDevice: StatusModel.findDevice(networkDevices, DeviceType.Wifi)
+  readonly property var wiredDevice: StatusModel.findDevice(networkDevices, DeviceType.Wired)
+  readonly property var wifiNetwork: StatusModel.connectedNetwork(wifiDevice && wifiDevice.networks ? wifiDevice.networks.values : [])
+  readonly property var androidNetwork: Android.AndroidRadio.network
+  readonly property string networkKind: {
+    if (androidRadio) {
+      var transports = androidNetwork.transports || []
+      if (transports.indexOf("wifi") >= 0) return "wifi"
+      if (transports.indexOf("ethernet") >= 0) return "ethernet"
+      return "disconnected"
+    }
+    if (wiredDevice && wiredDevice.connected) return "ethernet"
+    if (wifiNetwork) return "wifi"
+    return wifiDevice && !Networking.wifiEnabled ? "off" : "disconnected"
+  }
+  // Android exposes no RSSI in radio-state; -1 selects the no-signal glyph.
+  readonly property string networkIcon: StatusModel.networkIcon(networkKind,
+    androidRadio ? -1 : (wifiNetwork ? Math.round((wifiNetwork.signalStrength || 0) * 100) : -1))
+
+''' + text[end:]
+        text = text.replace('visible: !!root.btAdapter && root.btAdapter.enabled\n            text: root.bluetoothConnected ? "󰂱" : "󰂯"',
+            'visible: root.androidRadio ? (Android.AndroidRadio.bluetooth.state === "on" || Android.AndroidRadio.bluetooth.state === "turning-on") : (!!root.btAdapter && root.btAdapter.enabled)\n            text: root.androidRadio ? "󰂯" : (root.bluetoothConnected ? "󰂱" : "󰂯")', 1)
+    else:
+        text = text.replace('import Quickshell.Wayland\n',
+            'import Quickshell.Wayland\nimport "../omamobile.android" as Android\n', 1)
+        text = text.replace('  function open(payloadJson) {\n',
+            '  function open(payloadJson) {\n    Android.AndroidRadio.quickSettingsVisible = true\n    Android.AndroidRadio.refresh()\n', 1)
+        text = text.replace('  function close() {\n',
+            '  function close() {\n    Android.AndroidRadio.quickSettingsVisible = false\n', 1)
+        text = text.replace('  function openWifi() {\n    if (!wifi.available) return "unavailable"\n',
+            '  function openWifi() {\n    if (Android.AndroidRadio.enabled) { Quickshell.execDetached(["omamobile-android", "network-settings"]); return "settings-requested" }\n    if (!wifi.available) return "unavailable"\n', 1)
+        text = text.replace('  function openBluetooth() {\n    if (!bluetooth.available) return "unavailable"\n',
+            '  function openBluetooth() {\n    if (Android.AndroidRadio.enabled) { Quickshell.execDetached(["omamobile-android", "bluetooth-settings"]); return "settings-requested" }\n    if (!bluetooth.available) return "unavailable"\n', 1)
+        text = text.replace('  function openWifiPanel() {\n    openPage("wifi")\n',
+            '  function openWifiPanel() {\n    if (Android.AndroidRadio.enabled) { Quickshell.execDetached(["omamobile-android", "network-settings"]); return }\n    openPage("wifi")\n', 1)
+        text = text.replace('  function openBluetoothPanel() {\n    openPage("bluetooth")\n',
+            '  function openBluetoothPanel() {\n    if (Android.AndroidRadio.enabled) { Quickshell.execDetached(["omamobile-android", "bluetooth-settings"]); return }\n    openPage("bluetooth")\n', 1)
+
+        wifi_start = text.index('  QtObject {\n    id: wifi\n')
+        wifi_end = text.index('  // The picker behind the tile', wifi_start)
+        wifi = '''  QtObject {
+    id: wifi
+
+    readonly property bool android: Android.AndroidRadio.enabled
+    readonly property bool backendAvailable: Networking.backend === NetworkBackendType.NetworkManager
+    readonly property var devices: Networking.devices ? Networking.devices.values : []
+    readonly property var device: {
+      for (var i = 0; i < devices.length; i++)
+        if (devices[i] && devices[i].type === DeviceType.Wifi) return devices[i]
+      return null
+    }
+    readonly property var network: {
+      var networks = device && device.networks ? device.networks.values : []
+      for (var i = 0; i < networks.length; i++)
+        if (networks[i] && networks[i].connected) return networks[i]
+      return null
+    }
+    readonly property bool available: android
+      ? (Android.AndroidRadio.wifi.state !== "unsupported" && Android.AndroidRadio.wifi.supported !== false)
+      : (backendAvailable && !!device && Networking.wifiHardwareEnabled !== false)
+    readonly property bool enabled: android ? Android.AndroidRadio.wifi.state === "enabled"
+      : (available && Networking.wifiEnabled)
+    readonly property string icon: enabled ? "󰤨" : "󰤭"
+    readonly property bool details: !android
+    function openDetails() { root.openWifiPanel() }
+    readonly property string status: {
+      if (android) {
+        var state = Android.AndroidRadio.wifi.state
+        if (state === "unknown") return "Unknown"
+        if (state === "unsupported") return "Unsupported"
+        if (state === "enabling") return "Turning on…"
+        if (state === "disabling") return "Turning off…"
+        if (state === "disabled") return "Off · Open Android settings"
+        return "On · Open Android settings"
+      }
+      if (!backendAvailable) return "NetworkManager not running"
+      if (!device) return "No Wi-Fi radio"
+      if (!Networking.wifiEnabled) return "Off"
+      return network ? network.name : "Not connected"
+    }
+
+    function toggle() {
+      if (android) { root.openWifiPanel(); return }
+      if (available) Networking.wifiEnabled = !Networking.wifiEnabled
+    }
+  }
+
+'''
+        text = text[:wifi_start] + wifi + text[wifi_end:]
+
+        bt_start = text.index('  QtObject {\n    id: bluetooth\n')
+        bt_end = text.index('  // The panel behind the Bluetooth tile', bt_start)
+        bt = '''  QtObject {
+    id: bluetooth
+
+    readonly property bool android: Android.AndroidRadio.enabled
+    readonly property var adapter: Bluetooth.defaultAdapter
+    readonly property bool available: android
+      ? (Android.AndroidRadio.bluetooth.state !== "unsupported" && Android.AndroidRadio.bluetooth.supported !== false)
+      : !!adapter
+    readonly property bool enabled: android ? Android.AndroidRadio.bluetooth.state === "on"
+      : (available && adapter.enabled)
+    property bool pending: false
+    readonly property bool busy: pending
+    readonly property string icon: enabled ? (connected ? "󰂱" : "󰂯") : "󰂲"
+    readonly property bool details: !android
+    function openDetails() { root.openBluetoothPanel() }
+    readonly property var connected: {
+      var devices = Bluetooth.devices ? Bluetooth.devices.values : []
+      for (var i = 0; i < devices.length; i++)
+        if (devices[i] && devices[i].connected) return devices[i]
+      return null
+    }
+    readonly property string status: {
+      if (android) {
+        var state = Android.AndroidRadio.bluetooth.state
+        if (state === "unknown") return "Unknown"
+        if (state === "unsupported") return "Unsupported"
+        if (state === "turning-on") return "Turning on…"
+        if (state === "turning-off") return "Turning off…"
+        if (state === "off") return "Off · Open Android settings"
+        return "On · Open Android settings"
+      }
+      if (!available) return "No adapter"
+      if (pending) return enabled ? "Turning off…" : "Turning on…"
+      if (!enabled) return "Off"
+      return connected ? (connected.name || "Connected") : "On"
+    }
+
+    onEnabledChanged: pending = false
+
+    function toggle() {
+      if (android) { root.openBluetoothPanel(); return }
+      if (!available || pending) return
+      pending = true
+      bluetoothPendingTimeout.restart()
+      Quickshell.execDetached(["omarchy-bluetooth-power", enabled ? "off" : "on"])
+    }
+  }
+
+'''
+        text = text[:bt_start] + bt + text[bt_end:]
+    return text.encode("utf-8")
+
 a.output.parent.mkdir(parents=True, exist_ok=True)
 with tarfile.open(a.output, "w:gz") as archive:
     written = set()
@@ -68,6 +235,8 @@ with tarfile.open(a.output, "w:gz") as archive:
                     raise SystemExit("Upstream shell config contract changed")
                 # One shell checkout, shared user plugins/theme, per-display config.
                 data = data.replace(original, b'(Quickshell.env("OMARCHY_SHELL_CONFIG") || home + "/.config/omarchy/shell.json")')
+            if root is a.mobile:
+                data = mobile_transform(relative, data)
             put(target + "/" + name, data, mode)
 
     omarchy = "root/.local/share/omarchy"
@@ -79,6 +248,10 @@ with tarfile.open(a.output, "w:gz") as archive:
     package = a.mobile / "packages/omamobile-shell"
     for folder in ["plugins", "profile"]:
         tree(package / folder, "usr/share/omamobile/shell/" + folder)
+    adapter = Path(__file__).parent / "linux/shell-adapter"
+    for name in ["AndroidRadio.qml", "AndroidRadioModel.js", "qmldir"]:
+        put("usr/share/omamobile/shell/plugins/omamobile.android/" + name,
+            (adapter / name).read_bytes())
     for name in ["template", "examples"]:
         tree(package / "widgets" / name, "usr/share/omamobile/shell/widget-" + name)
     for name in ["WIDGETS.md", "OWL.md"]:
@@ -165,5 +338,5 @@ with tarfile.open(a.output, "w:gz") as archive:
         b"Exec=/usr/bin/omamobile-portal-access\n")
     put("usr/lib/omamobile/session-bin/uwsm-app", (tools / "linux/session-exec").read_bytes(), 0o755)
     put("usr/share/omamobile/android/sources.json", json.dumps({"omarchy": OMARCHY, "omarchy-mobile": MOBILE, "omarchy-widgets": WIDGETS,
-        "adapter": "OMARCHY_SHELL_CONFIG override; Android-session-only uwsm-app argv adapter without systemd scopes; additive theme-set.d hook applies theme IPC to the active peer profile; rootless Android lock-state adapter and canonical omamobile.access D-Bus Access backend; upstream application launch code unchanged; Linux-only setup and launch scripts"}, indent=2) + "\n")
+        "adapter": "OMARCHY_SHELL_CONFIG override; Android-session-only uwsm-app argv adapter without systemd scopes; additive theme-set.d hook applies theme IPC to the active peer profile; rootless Android lock-state adapter and canonical omamobile.access D-Bus Access backend; Android radio-state QML singleton for fresh payloads only; upstream application launch code unchanged; Linux-only setup and launch scripts"}, indent=2) + "\n")
 print(a.output, a.output.stat().st_size)
