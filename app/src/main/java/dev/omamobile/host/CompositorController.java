@@ -80,8 +80,9 @@ final class CompositorController {
         thread = new Thread(() -> {
             try {
                 if (!NativeCompositor.AVAILABLE) throw new IllegalStateException("This APK has no Hyprland backend for this device ABI");
-                installationLease = InstallationLease.acquire(context.getFilesDir().toPath().resolve("linux"),
-                        InstallationLease.Mode.SHARED_USE);
+                installationLease = InstallAssets.runtimeLease(context,
+                        message -> android.util.Log.i("OmamobileHyprland", message));
+                if (stopping) return;
                 session = new GraphicalSession(context, phone, androidDisplayId);
                 if (stopping) return;
                 NativeCompositor.listener = (display, signature) -> {

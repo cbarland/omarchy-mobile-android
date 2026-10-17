@@ -19,6 +19,10 @@ final class InstallAssets {
     }
 
     static void stage(Context context, Path destination) throws Exception {
+        stage(context, destination, manifest(context));
+    }
+
+    private static JSONObject manifest(Context context) throws Exception {
         JSONObject manifest;
         try (var in = context.getAssets().open("install/install-manifest.json")) {
             var bytes = new java.io.ByteArrayOutputStream();
@@ -31,6 +35,41 @@ final class InstallAssets {
             manifest = new JSONObject(bytes.toString(StandardCharsets.UTF_8.name()));
         }
         if (manifest.getInt("format") != 1) throw new IOException("Unsupported installer payload");
+        return manifest;
+    }
+
+    static InstallationLease runtimeLease(Context context, java.util.function.Consumer<String> log) throws Exception {
+        AdapterRefresh.Source source = new AdapterRefresh.Source() {
+            private JSONObject manifest;
+            @Override public AdapterRefresh.Desired desired() throws Exception {
+                if (!available(context)) return null; // Contributor command-only APK.
+                manifest = manifest(context);
+                var members = manifest.getJSONArray("payloadMembers");
+                AdapterRefresh.Desired desired = null;
+                for (int i = 0; i < members.length(); i++) {
+                    var member = members.getJSONObject(i);
+                    if (!member.getString("path").equals(AdapterRefresh.MEMBER)) continue;
+                    if (desired != null) throw new IOException("Duplicate APK Android helper metadata");
+                    desired = new AdapterRefresh.Desired(member.getString("sha256"), member.getLong("bytes"));
+                }
+                if (desired == null) throw new IOException("APK Android helper metadata missing");
+                return desired;
+            }
+            @Override public Path stage(Path directory) throws Exception {
+                InstallAssets.stage(context, directory, manifest);
+                return directory.resolve("linux-shell.tgz");
+            }
+        };
+        return AdapterRefresh.acquire(context.getFilesDir().toPath(), source, new AdapterRefresh.Modes() {
+            @Override public int read(Path path) throws IOException {
+                try { return android.system.Os.lstat(path.toString()).st_mode & 07777; }
+                catch (android.system.ErrnoException error) { throw new IOException(error); }
+            }
+            @Override public void write(Path path, int mode) throws IOException { HostRuntime.chmod(path, mode); }
+        }, log);
+    }
+
+    private static void stage(Context context, Path destination, JSONObject manifest) throws Exception {
         var entries = manifest.getJSONArray("files");
         var remaining = new java.util.HashSet<>(FILES);
         for (int i = 0; i < entries.length(); i++) {
