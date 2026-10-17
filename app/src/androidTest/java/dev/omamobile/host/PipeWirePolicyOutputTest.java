@@ -7,6 +7,7 @@ import android.os.SystemClock;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.system.OsConstants;
+import android.system.StructStat;
 import androidx.test.platform.app.InstrumentationRegistry;
 import java.io.File;
 import java.io.FileDescriptor;
@@ -47,16 +48,25 @@ public class PipeWirePolicyOutputTest {
         Path root = context.getFilesDir().toPath().resolve("linux/rootfs");
         assertTrue("Prepared Linux required for opted-in policy test", Files.isDirectory(root));
         String name = "pol-" + UUID.randomUUID().toString().substring(0, 8);
-        Path directory = Files.createDirectory(root.resolve("tmp").resolve(name));
-        Os.chmod(directory.toString(), 0700);
+        Path directory = root.resolve("tmp").resolve(name);
         Path fifo = directory.resolve("out.pcm");
-        Os.mkfifo(fifo.toString(), 0600);
-        var fifoIdentity = Os.lstat(fifo.toString());
+        Path source = directory.resolve("source.pcm");
         Path evidence = context.getCacheDir().toPath().resolve("pipewire-policy-proof").resolve(name);
-        Files.createDirectories(evidence);
+        StructStat fifoIdentity = null;
+        StructStat sourceIdentity = null;
         Process helper = null;
         AndroidPcmOutput output = null;
+        boolean createdDirectory = false;
+        Throwable failure = null;
         try {
+            Files.createDirectory(directory);
+            createdDirectory = true;
+            Os.chmod(directory.toString(), 0700);
+            Os.mkfifo(fifo.toString(), 0600);
+            fifoIdentity = Os.lstat(fifo.toString());
+            Os.mkfifo(source.toString(), 0600);
+            sourceIdentity = Os.lstat(source.toString());
+            Files.createDirectories(evidence);
             Path script = directory.resolve("fixture.py");
             try (var asset = InstrumentationRegistry.getInstrumentation().getContext().getAssets()
                     .open("pipewire_policy_fixture.py")) {
@@ -77,7 +87,7 @@ public class PipeWirePolicyOutputTest {
             waitForFile(directory.resolve("ready"), helper, 20000);
             assertTrue(read(directory.resolve("pactl-info.stdout")).contains("Default Sink: oa-sink"));
             if (killHelper) {
-                assertEquals(3, new JSONArray(read(directory.resolve("children.json"))).length());
+                assertEquals(4, new JSONArray(read(directory.resolve("children.json"))).length());
                 killOwnedHelper(directory, helper);
                 assertTrue("Forced helper did not exit", helper.waitFor(8, TimeUnit.SECONDS));
                 assertNotEquals(0, helper.exitValue());
@@ -103,7 +113,7 @@ public class PipeWirePolicyOutputTest {
                 assertTrue(receipt.toString(), receipt.isNull("error"));
                 assertTrue(receipt.toString(), receipt.getBoolean("allChildrenReaped"));
                 assertEquals(receipt.toString(), 0, receipt.getJSONArray("cleanupErrors").length());
-                assertEquals(6, receipt.getJSONArray("children").length());
+                assertEquals(7, receipt.getJSONArray("children").length());
                 assertChildrenGone(directory);
             }
             if (!killHelper) {
@@ -116,38 +126,77 @@ public class PipeWirePolicyOutputTest {
             assertReleased(output);
             assertEquals(0, output.partialBytes());
             assertEquals(output.bytesRead(), output.framesSubmitted() * 4);
+        } catch (Throwable error) {
+            failure = error;
         } finally {
-            Exception shutdownError = null;
-            try {
-                if (helper != null) {
-                    try { helper.getOutputStream().close(); } catch (java.io.IOException alreadyExited) { }
-                    if (!helper.waitFor(10, TimeUnit.SECONDS)) {
-                        helper.destroy();
-                        if (!helper.waitFor(4, TimeUnit.SECONDS)) {
-                            killOwnedHelper(directory, helper);
-                            helper.waitFor(3, TimeUnit.SECONDS);
-                        }
+            Throwable cleanup = cleanup(directory, createdDirectory, fifo, fifoIdentity, source, sourceIdentity,
+                    evidence, helper, output);
+            if (cleanup != null) {
+                if (failure == null) failure = cleanup;
+                else failure.addSuppressed(cleanup);
+            }
+        }
+        if (failure instanceof Exception) throw (Exception) failure;
+        if (failure instanceof Error) throw (Error) failure;
+        if (failure != null) throw new RuntimeException(failure);
+    }
+
+    private static Throwable cleanup(Path directory, boolean createdDirectory,
+                                     Path fifo, StructStat fifoIdentity,
+                                     Path source, StructStat sourceIdentity, Path evidence,
+                                     Process helper, AndroidPcmOutput output) {
+        Throwable error = null;
+        boolean helperGone = helper == null;
+        try {
+            if (helper != null) {
+                try { helper.getOutputStream().close(); } catch (java.io.IOException alreadyExited) { }
+                if (!helper.waitFor(10, TimeUnit.SECONDS)) {
+                    helper.destroy();
+                    if (!helper.waitFor(4, TimeUnit.SECONDS)) {
+                        killOwnedHelper(directory, helper);
+                        helper.waitFor(3, TimeUnit.SECONDS);
                     }
                 }
-            } catch (Exception error) {
-                shutdownError = error;
+                helperGone = !helper.isAlive();
             }
-            try { if (output != null) output.close(); }
-            catch (Exception error) { if (shutdownError == null) shutdownError = error; }
-            // Preserve all top-level regular evidence before removing the private run tree.
+        } catch (Throwable problem) { error = add(error, problem); }
+        boolean outputClosed = output == null;
+        try {
+            if (output != null) output.close();
+            outputClosed = output == null || !output.workerAlive();
+        } catch (Throwable problem) { error = add(error, problem); }
+        if (!createdDirectory) return error;
+        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS))
+            return add(error, new AssertionError("Owned run directory missing during cleanup"));
+        boolean copied = false;
+        try {
+            Files.createDirectories(evidence);
             try (var paths = Files.list(directory)) {
                 for (Path path : paths.collect(java.util.stream.Collectors.toList()))
                     if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
                         Files.copy(path, evidence.resolve(path.getFileName()));
             }
-            if (shutdownError != null) throw shutdownError;
-            if (helper != null) assertFalse("Owned fixture survived cleanup", helper.isAlive());
-            if (Files.exists(directory.resolve("children.json"))) assertChildrenGone(directory);
-            var actual = Os.lstat(fifo.toString());
-            assertTrue(OsConstants.S_ISFIFO(actual.st_mode));
-            assertEquals(fifoIdentity.st_dev, actual.st_dev);
-            assertEquals(fifoIdentity.st_ino, actual.st_ino);
-            Files.delete(fifo);
+            copied = true;
+        } catch (Throwable problem) { error = add(error, problem); }
+        boolean childrenGone = helper == null;
+        try {
+            if (Files.exists(directory.resolve("children.json"))) {
+                assertChildrenGone(directory);
+                childrenGone = true;
+            } else if (helper != null && Files.exists(directory.resolve("receipt.json"))) {
+                JSONObject receipt = new JSONObject(read(directory.resolve("receipt.json")));
+                childrenGone = receipt.getBoolean("allChildrenReaped")
+                        && receipt.getJSONArray("children").length() == 0;
+            }
+        } catch (Throwable problem) { error = add(error, problem); }
+        if (!helperGone || !childrenGone || !outputClosed || !copied) {
+            return add(error, new AssertionError("Private run retained: helperGone=" + helperGone
+                    + " childrenGone=" + childrenGone + " outputClosed=" + outputClosed
+                    + " evidenceCopied=" + copied));
+        }
+        try {
+            removeOwnedFifo(fifo, fifoIdentity);
+            removeOwnedFifo(source, sourceIdentity);
             try (var paths = Files.walk(directory)) {
                 for (Path path : paths.sorted(Comparator.reverseOrder())
                         .collect(java.util.stream.Collectors.toList())) Files.delete(path);
@@ -155,7 +204,26 @@ public class PipeWirePolicyOutputTest {
             Files.write(evidence.resolve("cleanup.json"),
                     "{\"fifoRemoved\":true,\"runDirectoryRemoved\":true}"
                             .getBytes(StandardCharsets.UTF_8));
+        } catch (Throwable problem) { error = add(error, problem); }
+        return error;
+    }
+
+    private static void removeOwnedFifo(Path fifo, StructStat expected) throws Exception {
+        if (!Files.exists(fifo, LinkOption.NOFOLLOW_LINKS)) return;
+        StructStat actual = Os.lstat(fifo.toString());
+        assertTrue(OsConstants.S_ISFIFO(actual.st_mode));
+        assertEquals(android.os.Process.myUid(), actual.st_uid);
+        if (expected != null) {
+            assertEquals(expected.st_dev, actual.st_dev);
+            assertEquals(expected.st_ino, actual.st_ino);
         }
+        Files.delete(fifo);
+    }
+
+    private static Throwable add(Throwable first, Throwable next) {
+        if (first == null) return next;
+        first.addSuppressed(next);
+        return first;
     }
 
     private static JSONObject playPhase(Path directory, Process helper, AndroidPcmOutput output,
@@ -184,12 +252,47 @@ public class PipeWirePolicyOutputTest {
         JSONObject result = new JSONObject(read(directory.resolve(phase + ".done.json")));
         assertTrue(result.toString(), result.getBoolean("activeLinkObserved"));
         assertEquals(result.toString(), 0, result.getInt("clientReturnCode"));
+        long captureStart = result.getLong("captureStart");
+        long captureEnd = result.getLong("captureEnd");
+        double toneAmplitude = assertCapturedTone(directory.resolve("capture.pcm"),
+                captureStart, captureEnd);
+        long catchup = SystemClock.elapsedRealtime() + 3000;
+        while ((output.bytesRead() < captureEnd || output.framesSubmitted() * 4 < captureEnd)
+                && output.failure() == null && SystemClock.elapsedRealtime() < catchup)
+            Thread.sleep(20);
         assertNull(output.failure());
+        assertTrue("Captured PCM did not all traverse Android FIFO in " + phase,
+                output.bytesRead() >= captureEnd && output.framesSubmitted() * 4 >= captureEnd);
         return new JSONObject().put("phase", phase).put("bytesBefore", beforeBytes)
                 .put("bytesAfter", output.bytesRead()).put("framesBefore", beforeFrames)
                 .put("framesAfter", output.framesSubmitted()).put("headBefore", beforeHead)
                 .put("headAfter", output.playbackHeadFrames())
+                .put("captureStart", captureStart).put("captureEnd", captureEnd)
+                .put("toneAmplitude", toneAmplitude)
                 .put("progressedWhileClientActive", progressedWhileActive);
+    }
+
+    private static double assertCapturedTone(Path capture, long start, long end) throws Exception {
+        assertTrue("Capture segment must contain at least one second of PCM", end - start >= 192000);
+        assertEquals(0, start % 4);
+        assertEquals(0, end % 4);
+        byte[] pcm = Files.readAllBytes(capture);
+        assertTrue("Captured segment exceeds file", end <= pcm.length);
+        int frames = (int) ((end - start) / 4);
+        double sine = 0, cosine = 0, power = 0;
+        for (int i = 0; i < frames; i++) {
+            int offset = (int) start + i * 4;
+            int sample = (short) ((pcm[offset] & 0xff) | ((pcm[offset + 1] & 0xff) << 8));
+            double angle = 2 * Math.PI * 440 * i / 48000;
+            sine += sample * Math.sin(angle);
+            cosine += sample * Math.cos(angle);
+            power += (double) sample * sample;
+        }
+        double rms = Math.sqrt(power / frames);
+        double amplitude = 2 * Math.hypot(sine, cosine) / frames;
+        assertTrue("Capture lacks the generated 440 Hz tone: rms=" + rms + " amplitude=" + amplitude,
+                rms > 200 && amplitude > 300 && amplitude > rms * 0.9);
+        return amplitude;
     }
 
     private static void control(Process helper, String text) throws Exception {

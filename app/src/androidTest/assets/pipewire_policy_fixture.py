@@ -14,6 +14,8 @@ import time
 import wave
 
 R, FIFO = Path(sys.argv[1]), Path(sys.argv[2])
+SOURCE = R / 'source.pcm'
+CAPTURE = R / 'capture.pcm'
 WP_CONFIG = Path('/usr/share/wireplumber/wireplumber.conf')
 WP_SHA256 = '704605702bb4cee39d99bf0da838ebe6a4f0510d861e1e244ce7bd2c8d7d8d34'
 CHILDREN = []
@@ -92,8 +94,9 @@ def active_link(objects, pid):
 def wait_for(check, seconds, label):
     end = time.monotonic() + seconds
     while time.monotonic() < end:
-        for child, identity, _ in CHILDREN[:3]:
-            if child.poll() is not None:
+        for child, identity, _ in CHILDREN:
+            if identity['name'] in ('relay', 'pipewire', 'wireplumber', 'pipewire-pulse') \
+                    and child.poll() is not None:
                 raise RuntimeError(identity['name'] + ' exited during ' + label)
         if check():
             return
@@ -145,7 +148,7 @@ context.modules = [
  { name = libpipewire-module-metadata }
  { name = libpipewire-module-session-manager }
  { name = libpipewire-module-pipe-tunnel args = {
-   tunnel.mode = sink tunnel.may-pause = false pipe.filename = "''' + str(FIFO) + '''"
+   tunnel.mode = sink tunnel.may-pause = false pipe.filename = "''' + str(SOURCE) + '''"
    node.name = oa-sink media.class = Audio/Sink
    node.always-process = true
    audio.format = S16LE audio.rate = 48000
@@ -163,9 +166,10 @@ context.objects = [
 
 
 def run():
-    if not R.is_dir() or not FIFO.is_fifo() or FIFO.parent != R:
-        raise RuntimeError('existing app-owned FIFO in private run directory required')
-    packages = query('packages', ['/usr/bin/pacman', '-Q', 'pipewire', 'libpipewire',
+    if not R.is_dir() or not FIFO.is_fifo() or not SOURCE.is_fifo() \
+            or FIFO.parent != R or SOURCE.parent != R:
+        raise RuntimeError('existing app-owned source and Android FIFOs required')
+    packages = query('packages', ['/usr/bin/pacman', '-Q', 'coreutils', 'pipewire', 'libpipewire',
                                    'pipewire-audio', 'pipewire-pulse', 'wireplumber',
                                    'libpulse'], os.environ.copy())
     expected = {'pipewire 1:1.6.9-1', 'libpipewire 1:1.6.9-1',
@@ -177,12 +181,13 @@ def run():
         raise RuntimeError('WirePlumber 0.5 policy config changed; inspect before running')
     if Path('/etc/wireplumber').exists():
         raise RuntimeError('system WirePlumber override requires inspection')
-    for binary in ('pipewire', 'wireplumber', 'pipewire-pulse', 'pw-play', 'paplay',
+    for binary in ('tee', 'bash', 'pipewire', 'wireplumber', 'pipewire-pulse', 'pw-play', 'paplay',
                    'pw-dump', 'pactl'):
         if not (Path('/usr/bin') / binary).is_file():
             raise RuntimeError('missing /usr/bin/' + binary)
     (R / 'pipewire.conf').write_text(config())
     wav(R / 'tone.wav')
+    CAPTURE.touch(exist_ok=False)
     for name in ('home', 'config', 'cache', 'state'):
         (R / name).mkdir(mode=0o700)
     pulse = R / 'config/pipewire/pipewire-pulse.conf.d'
@@ -197,6 +202,12 @@ def run():
                XDG_CACHE_HOME=str(R / 'cache'), XDG_STATE_HOME=str(R / 'state'),
                XDG_RUNTIME_DIR=str(R), PIPEWIRE_RUNTIME_DIR=str(R),
                PIPEWIRE_REMOTE='oa', PULSE_SERVER='unix:' + str(R / 'pulse/native'))
+    # One owned foreground relay is the only source-FIFO reader. GNU tee sends
+    # each buffer to Android's FIFO and the regular capture; the shell execs it
+    # after opening both FIFOs, retaining the armed parent-death signal.
+    spawn('relay', ['/usr/bin/bash', '-c',
+                    'exec /usr/bin/tee "$1" < "$2" > "$3"', 'oa-relay',
+                    str(CAPTURE), str(SOURCE), str(FIFO)], env)
     spawn('pipewire', ['/usr/bin/pipewire', '-c', str(R / 'pipewire.conf')], env)
     wait_for(lambda: (R / 'oa').exists(), 5, 'native socket')
     spawn('wireplumber', ['/usr/bin/wireplumber', '--profile', 'policy'], env)
@@ -220,6 +231,7 @@ def run():
     for phase, client in (('native1', 'pw-play'), ('native2', 'pw-play'), ('pulse', 'paplay')):
         if command_line() != 'start ' + phase:
             raise RuntimeError('expected start ' + phase)
+        capture_start = CAPTURE.stat().st_size // 4 * 4
         process = spawn(phase, ['/usr/bin/' + client, str(R / 'tone.wav')], env)
         def linked():
             return active_link(graph(phase + '-graph', env), process.pid)
@@ -229,10 +241,26 @@ def run():
             rc = process.wait(timeout=8)
         except subprocess.TimeoutExpired:
             raise RuntimeError(phase + ' client did not complete')
+        # The client may finish before PipeWire's final queued buffer reaches
+        # tee. Keep the phase boundary behind a short stable-file observation.
+        stable = 0
+        previous = -1
+        end = time.monotonic() + 2
+        while stable < 4 and time.monotonic() < end:
+            current = CAPTURE.stat().st_size
+            stable = stable + 1 if current == previous else 0
+            previous = current
+            time.sleep(.05)
+        if stable < 4:
+            raise TimeoutError(phase + ' capture did not settle')
         result = {'phase': phase, 'clientPid': process.pid, 'activeLinkObserved': True,
-                  'clientReturnCode': rc}
+                  'clientReturnCode': rc, 'captureStart': capture_start,
+                  'captureEnd': previous // 4 * 4}
         RECEIPT['phases'].append(result)
-        (R / (phase + '.done.json')).write_text(json.dumps(result))
+        marker = R / (phase + '.done.json')
+        pending = R / (phase + '.done.json.tmp')
+        pending.write_text(json.dumps(result))
+        os.replace(pending, marker)
         if rc:
             raise RuntimeError(phase + ' client rc=' + str(rc))
     if command_line() != 'stop':

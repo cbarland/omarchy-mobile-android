@@ -94,14 +94,19 @@ and class `dev.omamobile.host.PipeWirePolicyOutputTest`.
 
 Its private foreground fixture uses WirePlumber's installed policy profile,
 PipeWire's internal software driver and a pipe-tunnel sink connected to a real
-app-owned FIFO. It disables Pulse's fallback sink in a private XDG config. A
+app-owned source FIFO. One owned foreground GNU `tee` relay copies those PCM
+bytes to the Android FIFO and a regular capture file; it is the source FIFO's
+only reader. It disables Pulse's fallback sink in a private XDG config. A
 normal native `pw-play` stream, a second native stream after idle, and a normal
 Pulse `paplay` stream must each automatically link to that default sink and
 produce complete frames plus an advancing Android playback head while the
-client is active. There is no synthetic test source or manual link. The test
+client is active. Each captured segment must contain the generated 440 Hz tone,
+and Android's read/submitted byte counts must catch up to the capture length.
+The relay requires the installed signed Arch `coreutils` package. There is no
+synthetic test source or manual link. The test
 also checks that the Android worker survives idle, that all exact foreground
 children are gone after normal stop or forced helper death, and that the track,
-descriptors, FIFO and run directory are released. Raw logs, graph snapshots,
+descriptors, both FIFOs and run directory are released. Raw logs, graph snapshots,
 identities and receipts remain under the app's private
 `cache/pipewire-policy-proof/<run>` directory.
 
