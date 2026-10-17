@@ -31,6 +31,24 @@ NDK, and CMake packages were present in Google's SDK catalog on 2026-10-15. The
 `platforms;android-37.0` package is required by the resolved `zstd-jni:1.5.7-23`
 Android archive; target 35 and minimum API 29 remain the app compatibility policy.
 
+### Build identity
+
+The host controls show the app version (`versionName` and `versionCode`) and source
+revision, and the command log repeats that identity at startup. A normal Git checkout
+uses the short 12-character `HEAD`; tracked working-tree changes add `-dirty`.
+Supply a commit revision explicitly when building an archive or from CI:
+
+```sh
+bash ./gradlew -PsourceRevision=0123456789abcdef0123456789abcdef01234567 :app:assembleDebug
+```
+
+The explicit `sourceRevision` property takes precedence, followed by `GITHUB_SHA`.
+If those inputs and usable Git metadata are unavailable, the build displays `unknown`.
+Revision values must be 7–64 hexadecimal characters. The fallback keeps source
+archives buildable without Git and does not embed a local checkout path. This identity
+describes the build input; it is not a cryptographic attestation. Bug reports should
+copy it from the displayed controls along with the focused log excerpt.
+
 ## Core APK from a clean checkout
 
 Run from the repository root, using a fresh checkout with no staged `.so` files:

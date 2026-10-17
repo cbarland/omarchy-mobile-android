@@ -53,6 +53,7 @@ public final class MainActivity extends Activity {
         attribution.setOnClickListener(v -> showCredits());
         layout.addView(attribution);
         status = text("", 14);
+        status.setTextIsSelectable(true);
         layout.addView(status);
         downloadInstall = new Button(this);
         downloadInstall.setText("Download and install authenticated Arch base");
@@ -199,8 +200,10 @@ public final class MainActivity extends Activity {
     private void render() {
         StringBuilder info = new StringBuilder(runtime.graphicsReady() ? "Omarchy is installed" : runtime.installed()
                 ? "Linux imported · Omarchy setup not complete" : "Ready for first installation");
-        if (!runtime.installerAvailable()) info.append("\nFull graphical APK required for Omarchy installation");
-        info.append(" · ").append(Build.SUPPORTED_ABIS[0]).append(runtime.busy() ? " · busy\n" : " · idle\n");
+        info.append("\nVersion ").append(BuildConfig.VERSION_NAME).append(" (").append(BuildConfig.VERSION_CODE)
+                .append(")\nSource revision: ").append(BuildConfig.SOURCE_REVISION).append("\n");
+        if (!runtime.installerAvailable()) info.append("Full graphical APK required for Omarchy installation\n");
+        info.append("ABI: ").append(Build.SUPPORTED_ABIS[0]).append(runtime.busy() ? " · busy\n" : " · idle\n");
         runtime.displays.snapshot().values().forEach(output -> info.append("Display ").append(output.id()).append(": ").append(output.profile()).append("\n"));
         info.append("All displays share one Linux installation.\nShared folder: ").append(runtime.shared);
         info.append("\n").append(AndroidShell.get(this).state());
