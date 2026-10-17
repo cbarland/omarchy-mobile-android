@@ -267,3 +267,57 @@ Unix-domain socket paths short while making absolute links such as
 Quickshell's `by-pid` records resolve inside the same runtime tree. Existing
 `files/r` data is left untouched as private legacy state and is never retargeted
 or migrated. Android-owned bind semantics are unchanged.
+
+## Native guest dialogs
+
+Android's native compositor cannot find guest programs by searching its own
+`PATH`. The compositor warning, dialog creation, and ANR manager use one guest
+availability probe through the session wrapper. The probe invokes a fixed
+`/bin/sh` command with the executable name as a separate argument and waits for
+up to one second before terminating and reaping that specific probe child.
+
+Android dialog launch uses `posix_spawn` with `/system/bin/sh`, the wrapper,
+`--argv`, and separate guest arguments. Titles, text, and buttons are never
+reconstructed into shell command text. The wrapper retains legacy command-string
+launches by adapting them to `/bin/bash -c "$1"`; both modes then execute the
+guest argv through the existing tawcroot/environment boundary. Exec-rule tokens
+are child-only; the native compositor's environment and Hyprutils remain intact.
+
+The stdout pipe uses close-on-exec descriptors and handles absent standard FDs.
+Stderr inherits the native compositor's log sink (with a null fallback only if
+the parent stderr was absent).
+The event loop owns the dialog's PID, pipe, source, and promise. It drains the
+button response, clears running/PID registration, and resolves the promise before
+releasing the child owner. That owner alone reaps the PID; if closing stdout did
+not end the child, cleanup allows brief exit/TERM intervals, then sends KILL and
+waits for exit. It never signals a PID after reaping it or changes SIGCHLD policy.
+Android permission-dialog creation, open, or response failures deny the request
+and complete its pending permission promise. The other platforms retain their
+existing missing-utility fallback.
+
+Rerunnable source and Linux host checks:
+
+```sh
+python3 tools/native/check_guest_dialog_source.py --port-repository /path/to/anhyprland --output /task/proof/generated
+python3 -m unittest discover -s tools/tests -p test_guest_dialog.py -v
+```
+
+The source check reads pristine pinned Git objects without trusting cache edits,
+generates the patches twice, and records matching hashes. The host harness uses
+the actual wrapper argument protocol and spawn helper under a seccomp no-fork
+gate; it checks argv, stdout, token isolation, signal mask, PID preservation,
+availability, timeout, FD cleanup, and targeted child reaping. It does not prove
+Android ART, tawcroot, Wayland dialog mapping, or startup latency.
+
+The remaining runtime check uses the existing native ANR flow, without a test
+hook: launch an owned Foot window, record its PID/starttime and current profile,
+and STOP only that identified process. Wait for Hyprland's real ANR dialog, record
+its native-log PID and Wayland client PID, then click **Wait**. Confirm the Foot
+process remains owned/alive and the dialog is gone; CONT the same Foot process
+in guaranteed cleanup and confirm it responds again. Capture artifact/source
+identities, both PID identities, raw dialog output evidence and timing, and verify
+no dialog zombie remains. Run independently on phone/external owners. Measure
+normal guest-probe/dialog latency there; the host test is not an ART performance
+claim. Do not freeze an unrelated process or weaken the existing graphics smoke
+deadline. Native build and Android runtime validation remain required before
+claiming this path works on a device.

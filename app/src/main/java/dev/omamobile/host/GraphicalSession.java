@@ -148,7 +148,7 @@ final class GraphicalSession {
     private static String quote(String value) { return "'" + value.replace("'", "'\\''") + "'"; }
     private String wrapperText() throws IOException {
         StringBuilder shell = new StringBuilder("#!/system/bin/sh\ncd ").append(quote(GuestPaths.resolve(root, "/root").toString()))
-                .append(" || exit 1\nexec ");
+                .append(" || exit 1\n").append(wrapperArguments()).append("exec ");
         String binary = new File(context.getApplicationInfo().nativeLibraryDir, "libtawcroot.so").toString();
         shell.append(quote(binary)).append(" -s -r ").append(quote(root.toString()));
         for (RuntimeSpec.Bind bind : binds()) shell.append(" -b ").append(quote(bind.argument()));
@@ -159,8 +159,12 @@ final class GraphicalSession {
         shell.append("WAYLAND_DISPLAY=\"$WAYLAND_DISPLAY\" ")
                 .append("HYPRLAND_INSTANCE_SIGNATURE=\"$HYPRLAND_INSTANCE_SIGNATURE\" ")
                 .append("HL_INITIAL_WORKSPACE_TOKEN=\"$HL_INITIAL_WORKSPACE_TOKEN\" HL_EXEC_RULE_TOKEN=\"$HL_EXEC_RULE_TOKEN\" ")
-                .append("/bin/bash -c \"$1\"\n");
+                .append("\"$@\"\n");
         return shell.toString();
+    }
+
+    static String wrapperArguments() {
+        return "if [ \"$1\" = --argv ]; then\n  shift\n  [ \"$#\" -gt 0 ] || exit 64\nelse\n  set -- /bin/bash -c \"$1\"\nfi\n";
     }
 
     String guestRuntime() { return "/run/omamobile/" + (profile.equals("phone") ? "p" : "d"); }
