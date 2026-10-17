@@ -89,6 +89,31 @@ committed.
 
 ## Scope and cleanup
 
+After an APK update, new graphical sessions (including HOME and external displays)
+and ordinary Linux commands check `/usr/bin/omamobile-android` on their worker.
+The host replaces only exact 0755 helpers from the audited Git revisions
+`09b3109`, `636daa9`, `990c260`, `3fd49b6`, and `1c9bdca`.
+Each preimage has an explicit SHA-256 and byte length in `AdapterRefresh`.
+When changing the shipped helper, enroll its exact bytes there for future APKs.
+It authenticates the APK's installer assets and the selected `payloadMembers`
+entry, then atomically publishes only that regular 0755 member. It does not rerun
+setup or extract the source archive into the installed Linux tree.
+
+An already current helper is a no-op. Missing helpers, links, changed modes, and
+unknown/user-edited contents stay untouched and are logged. Symlink ancestors
+below Android's authoritative files directory are rejected. Contributor APKs
+without installer assets leave the helper unchanged.
+
+Refresh releases its inspection lease before claiming exclusive installation
+ownership, rechecks before replacement, and reacquires shared use before launch.
+Busy ownership is retried interruptibly for up to 15 seconds; a still-busy
+installation fails with a stop-and-retry message. Shared ownership lasts through
+the existing child/session cleanup boundary. The lease serializes cooperating
+Android owners; it cannot make rename a compare-and-swap against arbitrary
+same-UID guest editors. The host rechecks file identity, contents, and mode
+immediately before rename. Interruption before rename preserves the old helper;
+a restart after rename recognizes the desired hash without a receipt or journal.
+
 - The Unix socket is private, mode 0600, and checks SO_PEERCRED against the
   application UID. It listens on no network port.
 - One connection owns one display. It cannot choose an arbitrary display ID

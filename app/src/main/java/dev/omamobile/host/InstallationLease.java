@@ -13,6 +13,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** Cross-process ownership of the app's Linux installation directory. */
 final class InstallationLease implements AutoCloseable {
     enum Mode { SHARED_USE, EXCLUSIVE_INSTALL }
+    static final class BusyException extends IOException {
+        BusyException() { super("Linux installation is busy"); }
+        BusyException(Throwable cause) { super("Linux installation is busy", cause); }
+    }
 
     private final FileChannel channel;
     private final FileLock lock;
@@ -32,7 +36,7 @@ final class InstallationLease implements AutoCloseable {
         Files.createDirectories(linux);
         Path ownerKey = linux.toRealPath();
         Object owner = new Object();
-        if (OWNERS.putIfAbsent(ownerKey, owner) != null) throw new IOException("Linux installation is busy");
+        if (OWNERS.putIfAbsent(ownerKey, owner) != null) throw new BusyException();
         FileChannel channel = null;
         try {
             channel = FileChannel.open(ownerKey.resolve(".installation-lease"),
@@ -41,9 +45,9 @@ final class InstallationLease implements AutoCloseable {
             try {
                 lock = channel.tryLock(0, Long.MAX_VALUE, mode == Mode.SHARED_USE);
             } catch (OverlappingFileLockException busy) {
-                throw new IOException("Linux installation is busy", busy);
+                throw new BusyException(busy);
             }
-            if (lock == null) throw new IOException("Linux installation is busy");
+            if (lock == null) throw new BusyException();
             return new InstallationLease(channel, lock, ownerKey, owner);
         } catch (IOException | RuntimeException error) {
             if (channel != null) try { channel.close(); } catch (IOException ignored) { }

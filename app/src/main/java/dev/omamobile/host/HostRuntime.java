@@ -437,7 +437,7 @@ final class HostRuntime {
     }
 
     private void run(String command, boolean ando, boolean androidDns) throws Exception {
-        try (InstallationLease ignored = InstallationLease.acquire(linux, InstallationLease.Mode.SHARED_USE)) {
+        try (InstallationLease ignored = InstallAssets.runtimeLease(context, this::appendLine)) {
             runOwned(command, ando, androidDns);
         }
     }
