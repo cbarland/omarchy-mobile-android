@@ -13,6 +13,7 @@ export NO_AT_BRIDGE=1
 export GSETTINGS_BACKEND=${GSETTINGS_BACKEND:-keyfile}
 export OMARCHY_SHELL_CONFIG=$HOME/.local/share/omamobile/profiles/$profile.json
 export PATH=/usr/lib/omamobile/session-bin:$OMARCHY_PATH/bin:${PATH:-/usr/local/bin:/usr/bin:/bin}
+export QML_IMPORT_PATH=/usr/share/omamobile/shell/plugins${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}
 export OMARCHY_STARTUP_BACKGROUND=$HOME/.local/state/omarchy/current/background
 export QS_DISABLE_FILE_WATCHER=1 QS_NO_RELOAD_POPUP=1
 # Android's Surface renderer owns GPU presentation. Standard Linux Qt clients

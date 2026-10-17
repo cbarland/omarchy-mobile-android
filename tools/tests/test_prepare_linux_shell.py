@@ -142,10 +142,11 @@ def main():
     assert 'root.androidBattery || root.hasBattery' in bar
     assert 'root.batteryPercent >= 0 ? root.batteryPercent + "%" : "—"' in bar
     power = member_bytes(directory / "clean.tar.gz", "root/.local/share/omarchy/shell/plugins/panels/power/Panel.qml").decode()
-    assert 'import "../../omamobile.android" as AndroidBattery' in power
+    assert 'import omamobile.android 1.0 as AndroidBattery' in power
+    assert power.count('Component.onCompleted:') == 1
     assert 'AndroidBattery.AndroidBattery.requestPanel' in power
     assert 'androidBattery || batteryPresent' in power
-    assert 'AndroidBatteryModel.displayPercentage(AndroidBattery.AndroidBattery.sample)' in power
+    assert 'AndroidBattery.AndroidBattery.displayPercentage(AndroidBattery.AndroidBattery.sample)' in power
     assert 'import "../omamobile.android" as Android' in quicksettings
     assert 'function openAndroidSettings(page)' in quicksettings
     assert quicksettings.index('function openAndroidSettings(page)') < quicksettings.index('function openPage(page)')

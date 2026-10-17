@@ -62,14 +62,18 @@ def mobile_transform(relative, data):
             'import "StatusModel.js" as StatusModel\nimport "../omamobile.android" as Android\nimport "../omamobile.android" as AndroidBattery\nimport "../omamobile.android/AndroidBatteryModel.js" as AndroidBatteryModel\n', 1)
         text = text.replace('  id: root\n',
             '  id: root\n\n'
-            '  Component.onCompleted: Android.AndroidRadio.requestBar(root, Android.AndroidRadio.enabled && root.visible)\n'
-            '  onVisibleChanged: if (Android.AndroidRadio.enabled) Android.AndroidRadio.requestBar(root, root.visible)\n'
-            '  Component.onDestruction: Android.AndroidRadio.requestBar(root, false)\n', 1)
-        text = text.replace('  Component.onDestruction: Android.AndroidRadio.requestBar(root, false)\n',
-            '  Component.onDestruction: Android.AndroidRadio.requestBar(root, false)\n'
-            '  Component.onCompleted: AndroidBattery.AndroidBattery.requestPanel(root, AndroidBattery.AndroidBattery.enabled && root.visible)\n'
-            '  onVisibleChanged: if (AndroidBattery.AndroidBattery.enabled) AndroidBattery.AndroidBattery.requestPanel(root, root.visible)\n'
-            '  Component.onDestruction: AndroidBattery.AndroidBattery.requestPanel(root, false)\n', 1)
+            '  Component.onCompleted: {\n'
+            '    Android.AndroidRadio.requestBar(root, Android.AndroidRadio.enabled && root.visible)\n'
+            '    AndroidBattery.AndroidBattery.requestPanel(root, AndroidBattery.AndroidBattery.enabled && root.visible)\n'
+            '  }\n'
+            '  onVisibleChanged: {\n'
+            '    if (Android.AndroidRadio.enabled) Android.AndroidRadio.requestBar(root, root.visible)\n'
+            '    if (AndroidBattery.AndroidBattery.enabled) AndroidBattery.AndroidBattery.requestPanel(root, root.visible)\n'
+            '  }\n'
+            '  Component.onDestruction: {\n'
+            '    Android.AndroidRadio.requestBar(root, false)\n'
+            '    AndroidBattery.AndroidBattery.requestPanel(root, false)\n'
+            '  }\n', 1)
         start = text.index("  readonly property var networkDevices:")
         end = text.index("  // Cellular signal.", start)
         text = text[:start] + '''  readonly property bool androidRadio: Android.AndroidRadio.enabled
@@ -121,7 +125,7 @@ def mobile_transform(relative, data):
             '            opacity: root.networkKind === "off" || root.networkKind === "disconnected" || root.networkKind === "unavailable" || root.networkKind === "unknown" ? 0.55 : 1', 1)
     elif relative.endswith("panels/power/Panel.qml"):
         text = text.replace('import "Model.js" as Model\n',
-            'import "Model.js" as Model\nimport "../../omamobile.android" as AndroidBattery\nimport "../../omamobile.android/AndroidBatteryModel.js" as AndroidBatteryModel\n', 1)
+            'import "Model.js" as Model\nimport omamobile.android 1.0 as AndroidBattery\n', 1)
         text = text.replace('  id: root\n',
             '  id: root\n\n'
             '  readonly property bool androidBattery: AndroidBattery.AndroidBattery.enabled\n'
@@ -134,13 +138,13 @@ def mobile_transform(relative, data):
             '    : !!(UPower.displayDevice && UPower.displayDevice.isPresent)\n', 1)
         text = text.replace('  function batteryIcon() {\n    var device = UPower.displayDevice\n    return Model.batteryIcon(device, root.discharging, upowerStates())\n  }\n',
             '  function batteryIcon() {\n'
-            '    if (androidBattery) return AndroidBatteryModel.icon(AndroidBattery.AndroidBattery.sample)\n'
+            '    if (androidBattery) return AndroidBattery.AndroidBattery.icon(AndroidBattery.AndroidBattery.sample)\n'
             '    var device = UPower.displayDevice\n'
             '    return Model.batteryIcon(device, root.discharging, upowerStates())\n'
             '  }\n', 1)
         text = text.replace('  function modeLabel() {\n    var device = UPower.displayDevice\n    return Model.modeLabel(device, root.discharging, upowerStates())\n  }\n',
             '  function modeLabel() {\n'
-            '    if (androidBattery) return AndroidBatteryModel.label(AndroidBattery.AndroidBattery.sample)\n'
+            '    if (androidBattery) return AndroidBattery.AndroidBattery.label(AndroidBattery.AndroidBattery.sample)\n'
             '    var device = UPower.displayDevice\n'
             '    return Model.modeLabel(device, root.discharging, upowerStates())\n'
             '  }\n', 1)
@@ -187,9 +191,9 @@ def mobile_transform(relative, data):
         text = text.replace('  implicitHeight: batteryPresent ? button.implicitHeight : 0\n',
             '  implicitHeight: (androidBattery || batteryPresent) ? button.implicitHeight : 0\n', 1)
         text = text.replace('            text: root.batteryInfo.percentage || "—"\n',
-            '            text: root.androidBattery ? AndroidBatteryModel.displayPercentage(AndroidBattery.AndroidBattery.sample) : (root.batteryInfo.percentage || "—")\n', 1)
+            '            text: root.androidBattery ? AndroidBattery.AndroidBattery.displayPercentage(AndroidBattery.AndroidBattery.sample) : (root.batteryInfo.percentage || "—")\n', 1)
         text = text.replace('      ? Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()\n',
-            '      ? (root.androidBattery ? AndroidBatteryModel.displayPercentage(AndroidBattery.AndroidBattery.sample) : Math.round(root.batteryFraction * 100) + "%") + " " + root.batteryIcon()\n', 1)
+            '      ? (root.androidBattery ? AndroidBattery.AndroidBattery.displayPercentage(AndroidBattery.AndroidBattery.sample) : Math.round(root.batteryFraction * 100) + "%") + " " + root.batteryIcon()\n', 1)
         text = text.replace('      if (!root.batteryPresent) return\n',
             '      if (!root.androidBattery && !root.batteryPresent) return\n', 1)
         text = text.replace('    open: root.opened && root.batteryPresent\n',

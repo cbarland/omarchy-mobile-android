@@ -22,6 +22,10 @@ QtObject {
   readonly property bool present: sample.present === true
   readonly property real fraction: Model.fraction(sample)
 
+  function icon(snapshot) { return Model.icon(snapshot) }
+  function label(snapshot) { return Model.label(snapshot) }
+  function displayPercentage(snapshot) { return Model.displayPercentage(snapshot) }
+
   function accept(text) {
     var value = null
     try { value = JSON.parse(String(text || "").trim()) } catch (error) {}
