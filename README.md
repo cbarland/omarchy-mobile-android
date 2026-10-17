@@ -65,13 +65,17 @@ image downloading and user-data export/recovery have x86_64 emulator verificatio
 wider ARM64 installation, download, and recovery testing remain open.
 Work-profile and Wallet compatibility have not been established for this host.
 
-The read-only Android battery API is available; see [Android battery state](docs/ANDROID-BATTERY-STATE.md).
-Linux can request Android's network and Bluetooth settings panels; see
+The read-only Android battery API is integrated into the phone and desktop
+widgets, including charging, discharging, full, unknown, and absent states;
+see [Android battery state](docs/ANDROID-BATTERY-STATE.md) and
+[Android battery UI](docs/ANDROID-BATTERY-UI.md). Wi-Fi and Bluetooth radio
+tiles expose Android's fixed settings panels; see
+[Android radio UI](docs/ANDROID-RADIO-UI.md) and
 [Android network and Bluetooth settings](docs/ANDROID-SETTINGS.md).
 Real PipeWire-to-Android transport has passed opt-in emulator tests, but a normal shared audio
 owner, default device, volume, and focus integration is still pending; [AUDIO.md](docs/AUDIO.md)
-documents that foundation. These are service foundations, not claims of working default audio
-or battery-widget integration.
+documents that foundation. Physical Bluetooth pairing, raw-radio access, and
+ordinary application audio routing remain pending.
 
 ## Develop
 
