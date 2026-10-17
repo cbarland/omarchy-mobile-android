@@ -110,7 +110,8 @@ def main():
             f"Terminal=false\nIcon={icon}\nCategories=Settings;HardwareSettings;\n").encode()
     assert required_portal <= before.keys(), f"Access portal payload members missing: {required_portal - before.keys()}"
     adapter_prefix = "usr/share/omamobile/shell/plugins/omamobile.android/"
-    assert {adapter_prefix + name for name in ("AndroidRadio.qml", "AndroidRadioModel.js", "qmldir")} <= before.keys()
+    assert {adapter_prefix + name for name in ("AndroidRadio.qml", "AndroidRadioModel.js", "AndroidBattery.qml", "AndroidBatteryModel.js", "qmldir")} <= before.keys()
+    assert 'battery-state' in member_bytes(directory / "clean.tar.gz", adapter_prefix + "AndroidBattery.qml").decode()
     desktop_radio_prefix = "usr/share/omamobile/shell/plugins/omamobile.desktop-radio/"
     assert {desktop_radio_prefix + name for name in ("RadioBar.qml", "manifest.json")} <= before.keys()
     desktop_manifest = json.loads(member_bytes(directory / "clean.tar.gz", desktop_radio_prefix + "manifest.json"))
@@ -136,6 +137,11 @@ def main():
     assert 'networkKind === "cellular" ? "CELL"' in bar
     assert 'networkKind === "connected" ? "NET"' in bar
     assert 'StatusModel.cellularIcon(-1)' not in bar
+    power = member_bytes(directory / "clean.tar.gz", "root/.local/share/omarchy/shell/plugins/panels/power/Panel.qml").decode()
+    assert 'import "../omamobile.android" as AndroidBattery' in power
+    assert 'AndroidBattery.AndroidBattery.requestPanel' in power
+    assert 'androidBattery || batteryPresent' in power
+    assert 'AndroidBatteryModel.displayPercentage(AndroidBattery.AndroidBattery.sample)' in power
     assert 'import "../omamobile.android" as Android' in quicksettings
     assert 'function openAndroidSettings(page)' in quicksettings
     assert quicksettings.index('function openAndroidSettings(page)') < quicksettings.index('function openPage(page)')
