@@ -19,8 +19,8 @@ when that service tears down.
 
 Use `omamobile-android device-state` from Linux. Freshly prepared images include
 the CLI. On an existing installation, an authenticated APK update may
-atomically refresh this one helper at the ordinary-command or new-graphical-
-session gate when the existing file is an exact audited 0755 preimage. Missing,
+atomically refresh this one helper when starting an ordinary command or new
+graphical session if the existing file is an exact audited 0755 preimage. Missing,
 mode-customized, symlinked, unknown, or user-edited helpers stay unchanged.
 The update does not rerun setup or refresh the full Linux payload, packages, or
 desktop entries; see [Android app integration](ANDROID-APPS.md#scope-and-cleanup)
