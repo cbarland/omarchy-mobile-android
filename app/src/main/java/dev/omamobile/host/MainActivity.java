@@ -201,9 +201,9 @@ public final class MainActivity extends Activity {
         StringBuilder info = new StringBuilder(runtime.graphicsReady() ? "Omarchy is installed" : runtime.installed()
                 ? "Linux imported · Omarchy setup not complete" : "Ready for first installation");
         info.append("\nVersion ").append(BuildConfig.VERSION_NAME).append(" (").append(BuildConfig.VERSION_CODE)
-                .append(")\nSource revision: ").append(BuildConfig.SOURCE_REVISION);
-        if (!runtime.installerAvailable()) info.append("\nFull graphical APK required for Omarchy installation");
-        info.append(" · ").append(Build.SUPPORTED_ABIS[0]).append(runtime.busy() ? " · busy\n" : " · idle\n");
+                .append(")\nSource revision: ").append(BuildConfig.SOURCE_REVISION).append("\n");
+        if (!runtime.installerAvailable()) info.append("Full graphical APK required for Omarchy installation\n");
+        info.append("ABI: ").append(Build.SUPPORTED_ABIS[0]).append(runtime.busy() ? " · busy\n" : " · idle\n");
         runtime.displays.snapshot().values().forEach(output -> info.append("Display ").append(output.id()).append(": ").append(output.profile()).append("\n"));
         info.append("All displays share one Linux installation.\nShared folder: ").append(runtime.shared);
         info.append("\n").append(AndroidShell.get(this).state());
