@@ -260,8 +260,13 @@ public class AndroidAppPortalTest {
                         String packageName = name == null ? "" : name.toString();
                         observed = "activeWindow=" + packageName + " display=" + window.getDisplayId();
                         if (packageName.toLowerCase(java.util.Locale.ROOT).contains("settings")
-                                && resumed.lines().anyMatch(line -> line.contains("mResumedActivity")
-                                        && line.contains(packageName + "/"))) return;
+                                && resumed.lines().anyMatch(line -> {
+                                    String activityLine = line.trim();
+                                    boolean resumedActivity = activityLine.startsWith("mResumedActivity:")
+                                            || activityLine.startsWith("topResumedActivity=")
+                                            || activityLine.startsWith("ResumedActivity:");
+                                    return resumedActivity && activityLine.contains(packageName + "/");
+                                })) return;
                     } finally { root.recycle(); }
                 } finally { window.recycle(); }
             }
