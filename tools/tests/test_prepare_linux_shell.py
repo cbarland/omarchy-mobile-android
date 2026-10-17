@@ -117,6 +117,9 @@ def main():
     assert "Android.AndroidRadio.enabled" in bar and "Android.AndroidRadio.network" in bar
     assert "Android.AndroidRadio.barVisible = true" in bar
     assert "Android.AndroidRadio.barVisible = false" in bar
+    assert 'networkKind === "cellular" ? "CELL"' in bar
+    assert 'networkKind === "connected" ? "NET"' in bar
+    assert 'StatusModel.cellularIcon(-1)' not in bar
     assert 'import "../omamobile.android" as Android' in quicksettings
     assert 'function openAndroidSettings(page)' in quicksettings
     assert quicksettings.index('function openAndroidSettings(page)') < quicksettings.index('function openPage(page)')

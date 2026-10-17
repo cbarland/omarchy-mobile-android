@@ -88,8 +88,8 @@ def mobile_transform(relative, data):
   // Android exposes no RSSI in radio-state; -1 selects the no-signal glyph.
   readonly property string networkIcon: androidRadio
     ? (networkKind === "unknown" ? "?"
-      : networkKind === "cellular" ? StatusModel.cellularIcon(-1)
-      : networkKind === "connected" ? "󰈀"
+      : networkKind === "cellular" ? "CELL"
+      : networkKind === "connected" ? "NET"
       : StatusModel.networkIcon(networkKind, -1))
     : StatusModel.networkIcon(networkKind,
       wifiNetwork ? Math.round((wifiNetwork.signalStrength || 0) * 100) : -1)
