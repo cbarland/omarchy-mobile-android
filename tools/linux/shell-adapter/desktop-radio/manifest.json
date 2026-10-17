@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "omamobile.desktop-radio",
+  "name": "Android radio",
+  "version": "1.0.0",
+  "author": "Omarchy Mobile",
+  "description": "Android Wi-Fi and Bluetooth settings shortcuts",
+  "kinds": ["bar-widget"],
+  "entryPoints": {"barWidget": "RadioBar.qml"},
+  "barWidget": {
+    "displayName": "Android radio",
+    "description": "Android Wi-Fi and Bluetooth settings shortcuts",
+    "category": "Network",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

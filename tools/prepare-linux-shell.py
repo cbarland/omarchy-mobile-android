@@ -15,6 +15,7 @@ import tarfile
 OMARCHY = "e71a816e9032f040225e086c7256f73e8080ae45"
 MOBILE = "953bcb3058347459cdf7faaa1e149f16e0f7cfa6"
 WIDGETS = "b63886b75e02ccef1a8a11baeef2d6eff7a374af"
+OMARCHY_DESKTOP_SHELL_HASH = "64f80ae8e7877018c20e9f0de65fa9c0a39311470b456209c52ed7f232c48f94"
 MOBILE_TRANSFORM_HASHES = {
     "packages/omamobile-shell/plugins/omamobile.bar/Bar.qml": "de1f04dd367758032b0d4e8ad09b3aeadcb1d44dde3c910c674b8c3476f849c0",
     "packages/omamobile-shell/plugins/omamobile.quicksettings/QuickSettings.qml": "db944640ddbcd6dfa736e3059cb2e5aa0c4ce56073fbf31868a91e1887896ff7",
@@ -267,6 +268,10 @@ with tarfile.open(a.output, "w:gz") as archive:
     for name in ["AndroidRadio.qml", "AndroidRadioModel.js", "qmldir"]:
         put("usr/share/omamobile/shell/plugins/omamobile.android/" + name,
             (adapter / name).read_bytes())
+    desktop_radio = adapter / "desktop-radio"
+    for name in ["RadioBar.qml", "manifest.json"]:
+        put("usr/share/omamobile/shell/plugins/omamobile.desktop-radio/" + name,
+            (desktop_radio / name).read_bytes())
     for name in ["template", "examples"]:
         tree(package / "widgets" / name, "usr/share/omamobile/shell/widget-" + name)
     for name in ["WIDGETS.md", "OWL.md"]:
@@ -294,16 +299,32 @@ with tarfile.open(a.output, "w:gz") as archive:
     put("usr/share/licenses/omamobile-owl-widgets/LICENSE", store["LICENSE"][0])
 
     disabled = ["omarchy.idle", "omarchy.lock", "omarchy.polkit", "omarchy.nightlight", "omarchy.remote-session"]
-    desktop = json.loads(blob(a.omarchy / "config/omarchy/shell.json")[0])
+    desktop_source = blob(a.omarchy / "config/omarchy/shell.json")[0]
+    if hashlib.sha256(desktop_source).hexdigest() != OMARCHY_DESKTOP_SHELL_HASH:
+        raise SystemExit("Pinned desktop shell config contract changed")
+    desktop = json.loads(desktop_source)
+    right_layout = desktop.get("bar", {}).get("layout", {}).get("right")
+    if not isinstance(right_layout, list):
+        raise SystemExit("Pinned desktop bar right layout contract changed")
+    radio_ids = [entry.get("id") for entry in right_layout if isinstance(entry, dict)]
+    if radio_ids.count("omarchy.network") != 1 or radio_ids.count("omarchy.bluetooth") != 1:
+        raise SystemExit("Pinned desktop radio entries contract changed")
+    if "omamobile.desktop-radio" in radio_ids:
+        raise SystemExit("Pinned desktop profile already contains Android radio")
+    first_radio = min(radio_ids.index("omarchy.network"), radio_ids.index("omarchy.bluetooth"))
+    right_layout = [entry for entry in right_layout
+                    if not (isinstance(entry, dict) and entry.get("id") in {"omarchy.network", "omarchy.bluetooth"})]
+    right_layout.insert(first_radio, {"id": "omamobile.desktop-radio"})
+    desktop["bar"]["layout"]["right"] = right_layout
     desktop["idle"] = {"screensaver": 0, "lock": 0}
-    desktop["disabledPlugins"] = disabled
+    desktop["disabledPlugins"] = disabled + ["omarchy.network", "omarchy.bluetooth"]
     phone = json.loads(blob(package / "profile/shell.json")[0])
     phone["plugins"] = [{"id": x} for x in ["omamobile.home", "omamobile.launcher", "omamobile.switcher", "omamobile.quicksettings", "omamobile.access"]]
     desktop_plugins = desktop.setdefault("plugins", [])
     if not any(isinstance(plugin, dict) and plugin.get("id") == "omamobile.access" for plugin in desktop_plugins):
         desktop_plugins.append({"id": "omamobile.access"})
     phone["idle"] = desktop["idle"]
-    phone["disabledPlugins"] = disabled
+    phone["disabledPlugins"] = list(disabled)
     for profile, config in [("phone", phone), ("desktop", desktop)]:
         put("usr/share/omamobile/android/" + profile + ".json", json.dumps(config, indent=2) + "\n")
 

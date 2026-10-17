@@ -20,7 +20,10 @@ Bar and QuickSettings input hashes before changing them. The added mapping
 module is pure and has fixture coverage in
 `tools/tests/test_android_radio_ui.py`.
 
-This is a fresh-payload feature. An APK update's existing `AdapterRefresh`
+The phone Bar and QuickSettings integration remains a fresh-payload feature.
+The desktop profile now also seeds an Android-session-only
+`omamobile.desktop-radio` bar widget that replaces the canonical desktop
+NetworkManager/BlueZ bar entries in new payloads. An APK update's existing `AdapterRefresh`
 path updates only the exact `/usr/bin/omamobile-android` helper; it does not
 overwrite `/usr/share/omamobile/shell`, user plugins, profiles, themes, home,
 or quick-settings configuration. Existing installations need a future
