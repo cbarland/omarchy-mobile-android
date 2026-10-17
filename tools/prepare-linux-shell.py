@@ -72,37 +72,52 @@ def mobile_transform(relative, data):
   readonly property var androidNetwork: Android.AndroidRadio.network
   readonly property string networkKind: {
     if (androidRadio) {
+      if (androidNetwork.state === "unknown") return "unknown"
+      if (androidNetwork.state !== "available") return "unavailable"
       var transports = androidNetwork.transports || []
       if (transports.indexOf("wifi") >= 0) return "wifi"
       if (transports.indexOf("ethernet") >= 0) return "ethernet"
-      return "disconnected"
+      if (transports.indexOf("cellular") >= 0) return "cellular"
+      if (transports.length > 0) return "connected"
+      return "unavailable"
     }
     if (wiredDevice && wiredDevice.connected) return "ethernet"
     if (wifiNetwork) return "wifi"
     return wifiDevice && !Networking.wifiEnabled ? "off" : "disconnected"
   }
   // Android exposes no RSSI in radio-state; -1 selects the no-signal glyph.
-  readonly property string networkIcon: StatusModel.networkIcon(networkKind,
-    androidRadio ? -1 : (wifiNetwork ? Math.round((wifiNetwork.signalStrength || 0) * 100) : -1))
+  readonly property string networkIcon: androidRadio
+    ? (networkKind === "unknown" ? "?"
+      : networkKind === "cellular" ? StatusModel.cellularIcon(-1)
+      : networkKind === "connected" ? "󰈀"
+      : StatusModel.networkIcon(networkKind, -1))
+    : StatusModel.networkIcon(networkKind,
+      wifiNetwork ? Math.round((wifiNetwork.signalStrength || 0) * 100) : -1)
 
 ''' + text[end:]
         text = text.replace('visible: !!root.btAdapter && root.btAdapter.enabled\n            text: root.bluetoothConnected ? "󰂱" : "󰂯"',
             'visible: root.androidRadio ? (Android.AndroidRadio.bluetooth.state === "on" || Android.AndroidRadio.bluetooth.state === "turning-on") : (!!root.btAdapter && root.btAdapter.enabled)\n            text: root.androidRadio ? "󰂯" : (root.bluetoothConnected ? "󰂱" : "󰂯")', 1)
+        text = text.replace('            opacity: root.networkKind === "off" || root.networkKind === "disconnected" ? 0.55 : 1',
+            '            opacity: root.networkKind === "off" || root.networkKind === "disconnected" || root.networkKind === "unavailable" || root.networkKind === "unknown" ? 0.55 : 1', 1)
     else:
         text = text.replace('import Quickshell.Wayland\n',
             'import Quickshell.Wayland\nimport "../omamobile.android" as Android\n', 1)
         text = text.replace('  function open(payloadJson) {\n',
             '  function open(payloadJson) {\n    Android.AndroidRadio.quickSettingsVisible = true\n    Android.AndroidRadio.refresh()\n', 1)
+        text = text.replace('    if (payload.page === "wifi" || payload.page === "bluetooth") {\n      openPage(payload.page)\n',
+            '    if (payload.page === "wifi" || payload.page === "bluetooth") {\n      if (openAndroidSettings(payload.page)) { Qt.callLater(root.dismiss); return }\n      openPage(payload.page)\n', 1)
         text = text.replace('  function close() {\n',
             '  function close() {\n    Android.AndroidRadio.quickSettingsVisible = false\n', 1)
-        text = text.replace('  function openWifi() {\n    if (!wifi.available) return "unavailable"\n',
-            '  function openWifi() {\n    if (Android.AndroidRadio.enabled) { Quickshell.execDetached(["omamobile-android", "network-settings"]); return "settings-requested" }\n    if (!wifi.available) return "unavailable"\n', 1)
         text = text.replace('  function openBluetooth() {\n    if (!bluetooth.available) return "unavailable"\n',
-            '  function openBluetooth() {\n    if (Android.AndroidRadio.enabled) { Quickshell.execDetached(["omamobile-android", "bluetooth-settings"]); return "settings-requested" }\n    if (!bluetooth.available) return "unavailable"\n', 1)
+            '  function openBluetooth() {\n    if (openAndroidSettings("bluetooth")) return "settings-requested"\n    if (!bluetooth.available) return "unavailable"\n', 1)
+        text = text.replace('  function openWifi() {\n    if (!wifi.available) return "unavailable"\n',
+            '  function openWifi() {\n    if (openAndroidSettings("wifi")) return "settings-requested"\n    if (!wifi.available) return "unavailable"\n', 1)
+        text = text.replace('  // One page at a time.\n  function openPage(page) {\n',
+            '  function openAndroidSettings(page) {\n    if (!Android.AndroidRadio.enabled) return false\n    var action = page === "wifi" ? "network-settings" : page === "bluetooth" ? "bluetooth-settings" : ""\n    if (!action) return false\n    Quickshell.execDetached(["omamobile-android", action])\n    return true\n  }\n\n  // One page at a time.\n  function openPage(page) {\n    if (openAndroidSettings(page)) return\n', 1)
         text = text.replace('  function openWifiPanel() {\n    openPage("wifi")\n',
-            '  function openWifiPanel() {\n    if (Android.AndroidRadio.enabled) { Quickshell.execDetached(["omamobile-android", "network-settings"]); return }\n    openPage("wifi")\n', 1)
+            '  function openWifiPanel() {\n    if (openAndroidSettings("wifi")) return\n    openPage("wifi")\n', 1)
         text = text.replace('  function openBluetoothPanel() {\n    openPage("bluetooth")\n',
-            '  function openBluetoothPanel() {\n    if (Android.AndroidRadio.enabled) { Quickshell.execDetached(["omamobile-android", "bluetooth-settings"]); return }\n    openPage("bluetooth")\n', 1)
+            '  function openBluetoothPanel() {\n    if (openAndroidSettings("bluetooth")) return\n    openPage("bluetooth")\n', 1)
 
         wifi_start = text.index('  QtObject {\n    id: wifi\n')
         wifi_end = text.index('  // The picker behind the tile', wifi_start)

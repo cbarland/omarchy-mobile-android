@@ -16,10 +16,14 @@ function project(packet) {
 }
 
 function networkKind(network) {
+  if (!network || network.state === "unknown") return "unknown"
+  if (network.state !== "available") return "unavailable"
   var transports = network && Array.isArray(network.transports) ? network.transports : []
   if (transports.indexOf("wifi") >= 0) return "wifi"
   if (transports.indexOf("ethernet") >= 0) return "ethernet"
-  return "disconnected"
+  if (transports.indexOf("cellular") >= 0) return "cellular"
+  if (transports.length > 0) return "connected"
+  return "unavailable"
 }
 
 function radioAvailable(radio) {

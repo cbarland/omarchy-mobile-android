@@ -118,6 +118,14 @@ def main():
     assert "Android.AndroidRadio.barVisible = true" in bar
     assert "Android.AndroidRadio.barVisible = false" in bar
     assert 'import "../omamobile.android" as Android' in quicksettings
+    assert 'function openAndroidSettings(page)' in quicksettings
+    assert quicksettings.index('function openAndroidSettings(page)') < quicksettings.index('function openPage(page)')
+    for entry in ('function open(payloadJson)', 'function openWifi()', 'function openBluetooth()',
+                  'function openWifiPanel()', 'function openBluetoothPanel()'):
+        entry_start = quicksettings.index(entry)
+        entry_end = quicksettings.find('\n  function ', entry_start + len(entry))
+        body = quicksettings[entry_start:entry_end if entry_end >= 0 else None]
+        assert 'openAndroidSettings' in body, entry
     assert '["omamobile-android", "network-settings"]' in quicksettings
     assert '["omamobile-android", "bluetooth-settings"]' in quicksettings
     assert "Android.AndroidRadio.quickSettingsVisible = true" in quicksettings

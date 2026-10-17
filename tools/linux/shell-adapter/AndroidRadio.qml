@@ -48,8 +48,7 @@ QtObject {
     radio.running = true
   }
 
-  Process {
-    id: radio
+  property Process radio: Process {
     command: ["omamobile-android", "radio-state"]
     stdout: StdioCollector {
       waitForEnd: true
@@ -60,7 +59,7 @@ QtObject {
     }
   }
 
-  Timer {
+  property Timer pollTimer: Timer {
     interval: root.quickSettingsVisible ? 1000 : 5000
     repeat: true
     running: root.polling

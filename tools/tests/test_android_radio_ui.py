@@ -37,9 +37,13 @@ def main():
         "network": {"state": "unknown", "transports": None},
         "wifi": {"supported": None, "state": "unknown"},
         "bluetooth": {"supported": False, "state": "unsupported"},
-    }) == {"networkKind": "disconnected", "wifiAvailable": True, "bluetoothAvailable": False,
+    }) == {"networkKind": "unknown", "wifiAvailable": True, "bluetoothAvailable": False,
             "wifiState": "unknown", "bluetoothState": "unsupported"}
-    assert run_model({}) == {"networkKind": "disconnected", "wifiAvailable": True,
+    assert run_model({"network": {"state": "available", "transports": ["cellular"]}})["networkKind"] == "cellular"
+    assert run_model({"network": {"state": "available", "transports": ["ethernet"]}})["networkKind"] == "ethernet"
+    assert run_model({"network": {"state": "available", "transports": ["vpn"]}})["networkKind"] == "connected"
+    assert run_model({"network": {"state": "unavailable", "transports": []}})["networkKind"] == "unavailable"
+    assert run_model({}) == {"networkKind": "unknown", "wifiAvailable": True,
                              "bluetoothAvailable": True, "wifiState": "unknown",
                              "bluetoothState": "unknown"}
     print("android radio presentation mapping passed")
