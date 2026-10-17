@@ -13,6 +13,22 @@ CMake `4.1.2`. The NDK package identifies itself as r30-beta1. The Gradle wrappe
 pins its distribution checksum. Keep these versions consistent when proposing
 toolchain changes.
 
+### Build identity
+
+The host controls show the app version (`versionName` and `versionCode`) and source
+revision, and the command log repeats that identity at startup. Supply a commit
+revision explicitly when building an archive or from CI:
+
+```sh
+bash ./gradlew -PsourceRevision=0123456789abcdef0123456789abcdef01234567 :app:assembleDebug
+```
+
+When `sourceRevision` is omitted, the build uses `GITHUB_SHA` when it is present;
+otherwise it displays `unknown`. Revision values must be 7–64 hexadecimal characters.
+The fallback keeps source archives buildable without Git and does not embed a local
+checkout path. Bug reports should copy this displayed build identity along with the
+focused log excerpt.
+
 Install Android SDK command-line tools and set `ANDROID_HOME` to that SDK, or use
 Android Studio's SDK Manager. From the SDK's command-line-tools `bin` directory:
 

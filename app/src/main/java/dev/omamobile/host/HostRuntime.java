@@ -78,7 +78,9 @@ final class HostRuntime {
             public void onDisplayRemoved(int id) { displays.disconnect(id); changed(); }
             public void onDisplayChanged(int id) { changed(); }
         }, main);
-        append("Native runtime: TAWC/tawcroot (no PRoot).\nGraphics: dedicated Hyprland display sessions share this rootfs.\n");
+        append("Build identity: version " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE
+                + "), source revision " + BuildConfig.SOURCE_REVISION + ".\n"
+                + "Native runtime: TAWC/tawcroot (no PRoot).\nGraphics: dedicated Hyprland display sessions share this rootfs.\n");
     }
 
     boolean busy() { return busy; }

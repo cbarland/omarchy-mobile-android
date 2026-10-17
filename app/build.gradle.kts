@@ -1,4 +1,12 @@
 plugins { id("com.android.application") }
+
+val sourceRevision = providers.gradleProperty("sourceRevision")
+    .orElse(providers.environmentVariable("GITHUB_SHA"))
+    .map { revision ->
+        revision.trim().takeIf { it.matches(Regex("[0-9a-fA-F]{7,64}")) } ?: "unknown"
+    }
+    .orElse("unknown")
+
 abstract class AttributionAssets : DefaultTask() {
     @get:InputFile abstract val credits: org.gradle.api.file.RegularFileProperty
     @get:InputFile abstract val provenance: org.gradle.api.file.RegularFileProperty
@@ -21,6 +29,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0-dev"
+        buildConfigField("String", "SOURCE_REVISION", sourceRevision.map { "\"$it\"" }.get())
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=c++_shared" } }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

@@ -10,7 +10,7 @@ body:
     id: revision
     attributes:
       label: Build revision
-      description: Git commit or APK version, and whether the APK came from your build or a provided artifact.
+      description: Copy the version and source revision from the host controls, and say whether the APK came from your build or a provided artifact.
     validations:
       required: true
   - type: dropdown
