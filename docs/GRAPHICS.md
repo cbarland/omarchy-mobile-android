@@ -276,6 +276,28 @@ availability probe through the session wrapper. The probe invokes a fixed
 `/bin/sh` command with the executable name as a separate argument and waits for
 up to one second before terminating and reaping that specific probe child.
 
+Android sessions select an APK-owned software dialog frontend from the existing
+profile-owned `/opt/omamobile/bin` read-only bind. Each session construction copies
+`runtime-dialog/hyprland-dialog` (0755) and `runtime-dialog/dialog.qml` (0644) into
+that staging directory. The original Linux `/usr/bin/hyprland-dialog` and packages
+remain untouched. This dialog-only adapter uses installed Quickshell/Qt software
+Wayland rendering; it does not add a dmabuf backend or fix general Hyprtoolkit
+applications.
+
+The frontend preserves the guiutils 0.2.2 title/apptitle/text/buttons CLI, including
+button trimming and text newline normalization. Heading, message, and labels are
+displayed as plain text. It passes data in child-only `OMAMOBILE_DIALOG_SPEC` JSON
+and execs foreground `qs --path`, preserving the native-owned Wayland client PID.
+It sets the child app ID to `hyprland-dialog`, disables that child's crash restart
+and file watching, and uses independent instances. Quickshell diagnostics use the
+inherited stderr sink. A saved stdout FD3 carries only the selected label plus
+newline: a fixed shell/printf command receives the label as one argument and writes
+directly to that descriptor, without reopening or truncating it. Closing the
+window or failing to launch/respond returns no choice; Android permission policy
+denies an empty/unrecognized response. The scrolling window fits the current
+screen and supports pointer, Tab focus, and Escape/close. Equal capped minimum
+and maximum size hints retain guiutils' fixed-size floating-dialog contract.
+
 Android dialog launch uses `posix_spawn` with `/system/bin/sh`, the wrapper,
 `--argv`, and separate guest arguments. Titles, text, and buttons are never
 reconstructed into shell command text. The wrapper retains legacy command-string
@@ -305,6 +327,7 @@ Rerunnable source and Linux host checks:
 ```sh
 python3 tools/native/check_guest_dialog_source.py --port-repository /path/to/anhyprland --output /task/proof/generated
 python3 -m unittest discover -s tools/tests -p test_guest_dialog.py -v
+python3 -m unittest discover -s tools/tests -p test_software_dialog.py -v
 ```
 
 The source check reads pristine pinned Git objects without trusting cache edits,
@@ -313,6 +336,12 @@ the actual wrapper argument protocol and spawn helper under a seccomp no-fork
 gate; it checks argv, stdout, token isolation, signal mask, PID preservation,
 availability, timeout, FD cleanup, and targeted child reaping. It does not prove
 Android ART, tawcroot, Wayland dialog mapping, or startup latency.
+The software frontend check exercises its actual parser and fixed QML response
+command under real Linux pipe/socket/file descriptors, including preserved file
+offsets, exec PID, hostile label arguments, missing standard FDs, independent
+invocations, and failure/empty-response paths. It substitutes a process fixture
+for Quickshell; visible QML layout, input, and actual native-child interaction
+still require the runtime checks below.
 
 Add `--check-anr-owner --hyprutils-include /path/to/hyprutils/include` to the
 source check to compile the emitted ANR callback against the real pointer types

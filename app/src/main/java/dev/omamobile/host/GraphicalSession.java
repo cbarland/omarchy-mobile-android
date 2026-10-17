@@ -48,6 +48,12 @@ final class GraphicalSession {
         Files.copy(new File(context.getApplicationInfo().nativeLibraryDir, "libando.so").toPath(),
                 androidBin.resolve("ando"), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         HostRuntime.chmod(androidBin.resolve("ando"), 0755);
+        for (String asset : List.of("hyprland-dialog", "dialog.qml")) {
+            try (var in = context.getAssets().open("runtime-dialog/" + asset)) {
+                Files.copy(in, androidBin.resolve(asset), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+            HostRuntime.chmod(androidBin.resolve(asset), asset.equals("hyprland-dialog") ? 0755 : 0644);
+        }
         Files.createDirectories(GuestPaths.resolve(root, "/opt/omamobile/bin"));
         config = home.resolve("hyprland.lua");
         wrapper = home.resolve("linux-exec.sh");
