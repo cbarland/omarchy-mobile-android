@@ -109,11 +109,60 @@ def main():
             f"[Desktop Entry]\nName={title}\nType=Application\nExec=/usr/bin/omamobile-android {action}\n"
             f"Terminal=false\nIcon={icon}\nCategories=Settings;HardwareSettings;\n").encode()
     assert required_portal <= before.keys(), f"Access portal payload members missing: {required_portal - before.keys()}"
+    adapter_prefix = "usr/share/omamobile/shell/plugins/omamobile.android/"
+    assert {adapter_prefix + name for name in ("AndroidRadio.qml", "AndroidRadioModel.js", "qmldir")} <= before.keys()
+    desktop_radio_prefix = "usr/share/omamobile/shell/plugins/omamobile.desktop-radio/"
+    assert {desktop_radio_prefix + name for name in ("RadioBar.qml", "manifest.json")} <= before.keys()
+    desktop_manifest = json.loads(member_bytes(directory / "clean.tar.gz", desktop_radio_prefix + "manifest.json"))
+    assert desktop_manifest["schemaVersion"] == 1
+    assert desktop_manifest["id"] == "omamobile.desktop-radio"
+    assert desktop_manifest["kinds"] == ["bar-widget"]
+    assert desktop_manifest["entryPoints"] == {"barWidget": "RadioBar.qml"}
+    radio_bar = member_bytes(directory / "clean.tar.gz", desktop_radio_prefix + "RadioBar.qml").decode()
+    assert 'import "../omamobile.android" as Android' in radio_bar
+    assert '["omamobile-android", action]' in radio_bar
+    assert '"network-settings"' in radio_bar and '"bluetooth-settings"' in radio_bar
+    assert 'visible: enabled' in radio_bar and 'requestBar(root, enabled && visible)' in radio_bar and 'onVisibleChanged' in radio_bar and 'requestBar(root, false)' in radio_bar
+    assert 'property QtObject bar: null' in radio_bar
+    assert radio_bar.count('bar: root.bar') == 2
+    assert 'Grid {' in radio_bar and 'Model.radioGridColumns(root.bar && root.bar.vertical, 2)' in radio_bar
+    bar = member_bytes(directory / "clean.tar.gz", "usr/share/omamobile/shell/plugins/omamobile.bar/Bar.qml").decode()
+    quicksettings = member_bytes(directory / "clean.tar.gz", "usr/share/omamobile/shell/plugins/omamobile.quicksettings/QuickSettings.qml").decode()
+    assert 'import "../omamobile.android" as Android' in bar
+    assert "Android.AndroidRadio.enabled" in bar and "Android.AndroidRadio.network" in bar
+    assert "Android.AndroidRadio.requestBar(root, Android.AndroidRadio.enabled && root.visible)" in bar
+    assert "Android.AndroidRadio.requestBar(root, root.visible)" in bar
+    assert "Android.AndroidRadio.requestBar(root, false)" in bar
+    assert 'networkKind === "cellular" ? "CELL"' in bar
+    assert 'networkKind === "connected" ? "NET"' in bar
+    assert 'StatusModel.cellularIcon(-1)' not in bar
+    assert 'import "../omamobile.android" as Android' in quicksettings
+    assert 'function openAndroidSettings(page)' in quicksettings
+    assert quicksettings.index('function openAndroidSettings(page)') < quicksettings.index('function openPage(page)')
+    for entry in ('function open(payloadJson)', 'function openWifi()', 'function openBluetooth()',
+                  'function openWifiPanel()', 'function openBluetoothPanel()'):
+        entry_start = quicksettings.index(entry)
+        entry_end = quicksettings.find('\n  function ', entry_start + len(entry))
+        body = quicksettings[entry_start:entry_end if entry_end >= 0 else None]
+        assert 'openAndroidSettings' in body, entry
+    assert '["omamobile-android", "network-settings"]' in quicksettings
+    assert '["omamobile-android", "bluetooth-settings"]' in quicksettings
+    assert "Android.AndroidRadio.quickSettingsVisible = true" in quicksettings
+    assert "tile-state.sh" in quicksettings
     portal_config = member_bytes(directory / "clean.tar.gz", "etc/xdg/xdg-desktop-portal/hyprland-portals.conf")
     assert portal_config == b"[preferred]\ndefault=*\norg.freedesktop.impl.portal.Access=omamobile\n"
     for profile in ("phone", "desktop"):
         config = json.loads(member_bytes(directory / "clean.tar.gz", f"usr/share/omamobile/android/{profile}.json"))
         assert any(item.get("id") == "omamobile.access" for item in config.get("plugins", [])), profile
+    phone = json.loads(member_bytes(directory / "clean.tar.gz", "usr/share/omamobile/android/phone.json"))
+    assert "omarchy.network" not in phone.get("disabledPlugins", [])
+    assert "omarchy.bluetooth" not in phone.get("disabledPlugins", [])
+    desktop = json.loads(member_bytes(directory / "clean.tar.gz", "usr/share/omamobile/android/desktop.json"))
+    desktop_right = desktop.get("bar", {}).get("layout", {}).get("right", [])
+    desktop_ids = [entry.get("id") for entry in desktop_right if isinstance(entry, dict)]
+    assert desktop_ids.count("omamobile.desktop-radio") == 1
+    assert "omarchy.network" not in desktop_ids and "omarchy.bluetooth" not in desktop_ids
+    assert {"omarchy.network", "omarchy.bluetooth"} <= set(desktop.get("disabledPlugins", []))
     # Invalid JSON makes accidental worktree reads fail loudly. License changes
     # cover both explicit put() calls and trees; widget bytes cover hash checks.
     dirty_paths = {
