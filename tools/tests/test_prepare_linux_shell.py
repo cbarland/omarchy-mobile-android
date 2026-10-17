@@ -56,6 +56,28 @@ def member_bytes(path, name):
         item = archive.getmember(name)
         return archive.extractfile(item).read()
 
+def verify_android_settings_router(quicksettings):
+    start = quicksettings.index("  function openAndroidSettings(page) {")
+    end = quicksettings.index("\n  }", start) + len("\n  }")
+    router = quicksettings[start:end]
+    script = '''const assert = require("node:assert/strict");
+const Android = { AndroidRadio: { enabled: true } };
+const launches = [];
+const Quickshell = { execDetached: argv => launches.push(argv) };
+''' + router + '''
+assert.equal(openAndroidSettings("wifi"), true);
+assert.equal(openAndroidSettings("bluetooth"), true);
+assert.equal(openAndroidSettings("unexpected"), false);
+Android.AndroidRadio.enabled = false;
+assert.equal(openAndroidSettings("wifi"), false);
+assert.equal(openAndroidSettings("bluetooth"), false);
+assert.deepEqual(launches, [
+  ["omamobile-android", "network-settings"],
+  ["omamobile-android", "bluetooth-settings"]
+]);
+'''
+    run("node", "-e", script)
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -161,8 +183,7 @@ def main():
         entry_end = quicksettings.find('\n  function ', entry_start + len(entry))
         body = quicksettings[entry_start:entry_end if entry_end >= 0 else None]
         assert 'openAndroidSettings' in body, entry
-    assert '["omamobile-android", "network-settings"]' in quicksettings
-    assert '["omamobile-android", "bluetooth-settings"]' in quicksettings
+    verify_android_settings_router(quicksettings)
     assert "Android.AndroidRadio.quickSettingsVisible = true" in quicksettings
     assert "tile-state.sh" in quicksettings
     portal_config = member_bytes(directory / "clean.tar.gz", "etc/xdg/xdg-desktop-portal/hyprland-portals.conf")
