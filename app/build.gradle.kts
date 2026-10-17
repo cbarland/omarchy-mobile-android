@@ -1,11 +1,37 @@
 plugins { id("com.android.application") }
 
-val sourceRevision = providers.gradleProperty("sourceRevision")
+val revisionPattern = Regex("[0-9a-fA-F]{7,64}")
+val hasGitMetadata = rootProject.file(".git").exists()
+val gitHead = if (hasGitMetadata) {
+    providers.exec {
+        commandLine("git", "-C", rootDir.absolutePath, "rev-parse", "--verify", "--short=12", "HEAD")
+    }.standardOutput.asText
+} else providers.provider { "" }
+val gitStatus = if (hasGitMetadata) {
+    providers.exec {
+        commandLine("git", "-C", rootDir.absolutePath, "status", "--porcelain", "--untracked-files=no")
+    }.standardOutput.asText
+} else providers.provider { "" }
+val localSourceRevision = gitHead.zip(gitStatus) { head, status ->
+    val revision = head.trim()
+    revision.takeIf { it.matches(Regex("[0-9a-fA-F]{12}")) }?.let {
+        it + if (status.isBlank()) "" else "-dirty"
+    } ?: "unknown"
+}
+val suppliedSourceRevision = providers.gradleProperty("sourceRevision")
     .orElse(providers.environmentVariable("GITHUB_SHA"))
     .map { revision ->
-        revision.trim().takeIf { it.matches(Regex("[0-9a-fA-F]{7,64}")) } ?: "unknown"
+        revision.trim().takeIf { it.matches(revisionPattern) } ?: "unknown"
     }
-    .orElse("unknown")
+val sourceRevision = suppliedSourceRevision.orElse(localSourceRevision)
+val sourceRevisionValue = try {
+    sourceRevision.get()
+} catch (_: Exception) {
+    // Git metadata is optional; missing Git or an unusable checkout keeps builds usable.
+    "unknown"
+}.let { revision ->
+    revision.takeIf { it.matches(revisionPattern) || it.matches(Regex("[0-9a-fA-F]{12}-dirty")) } ?: "unknown"
+}
 
 abstract class AttributionAssets : DefaultTask() {
     @get:InputFile abstract val credits: org.gradle.api.file.RegularFileProperty
@@ -29,7 +55,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0-dev"
-        buildConfigField("String", "SOURCE_REVISION", sourceRevision.map { "\"$it\"" }.get())
+        buildConfigField("String", "SOURCE_REVISION", "\"$sourceRevisionValue\"")
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=c++_shared" } }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
