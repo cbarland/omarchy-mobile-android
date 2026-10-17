@@ -178,7 +178,17 @@ public class AdapterRefreshTest {
         }
     }
 
-    @Test public void symbolicHelperIsPreservedAndDescendantAliasRejected() throws Exception {
+    @Test public void noPayloadSkipsHelperInspectionAndRetainsSharedOwnership() throws Exception {
+        try (Fixture fixture = new Fixture(legacy())) {
+            try (InstallationLease lease = AdapterRefresh.acquire(fixture.files, noPayload(), noInspection(), fixture.logs::add)) {
+                assertArrayEquals(legacy(), Files.readAllBytes(fixture.helper));
+                assertThrows(InstallationLease.BusyException.class,
+                        () -> InstallationLease.acquire(fixture.linux, InstallationLease.Mode.EXCLUSIVE_INSTALL));
+            }
+        }
+    }
+
+    @Test public void symbolicHelperAndDescendantAliasPreserveStartupWithoutFollowing() throws Exception {
         org.junit.Assume.assumeTrue(java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix"));
         try (Fixture fixture = new Fixture(legacy())) {
             Path outside = fixture.files.resolve("user-helper"); Files.move(fixture.helper, outside);
@@ -187,10 +197,62 @@ public class AdapterRefreshTest {
             assertTrue(Files.isSymbolicLink(fixture.helper)); assertArrayEquals(legacy(), Files.readAllBytes(outside));
             Files.delete(fixture.helper);
             Path bin = fixture.helper.getParent(); Path moved = fixture.files.resolve("bin"); Files.move(bin, moved);
+            Files.copy(outside, moved.resolve("omamobile-android"));
             Files.createSymbolicLink(bin, moved);
-            assertThrows(IOException.class, () -> fixture.acquire(fixture.source()));
+            try (InstallationLease lease = AdapterRefresh.acquire(fixture.files, fixture.source(), noInspection(), fixture.logs::add)) {
+                assertTrue(Files.isSymbolicLink(bin));
+            }
             assertEquals(0, fixture.staged);
+            assertTrue(fixture.logs.stream().anyMatch(message -> message.contains("linked ancestor")));
+            try (InstallationLease lease = AdapterRefresh.acquire(fixture.files, noPayload(), noInspection(), fixture.logs::add)) {
+                assertArrayEquals(legacy(), Files.readAllBytes(moved.resolve("omamobile-android")));
+            }
         }
+    }
+
+    @Test public void aliasIntroducedDuringStagingFailsBeforeWritingIntoIt() throws Exception {
+        org.junit.Assume.assumeTrue(java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix"));
+        try (Fixture fixture = new Fixture(legacy())) {
+            AdapterRefresh.Source good = fixture.source();
+            Path bin = fixture.helper.getParent(), moved = fixture.files.resolve("original-bin");
+            Path outside = Files.createDirectory(fixture.files.resolve("outside-bin"));
+            AdapterRefresh.Source changed = new AdapterRefresh.Source() {
+                public AdapterRefresh.Desired desired() throws Exception { return good.desired(); }
+                public Path stage(Path directory) throws Exception {
+                    Path archive = good.stage(directory);
+                    Files.move(bin, moved); Files.createSymbolicLink(bin, outside);
+                    return archive;
+                }
+            };
+            assertThrows(IOException.class, () -> fixture.acquire(changed));
+            assertArrayEquals(legacy(), Files.readAllBytes(moved.resolve("omamobile-android")));
+            try (var files = Files.list(outside)) { assertEquals(0, files.count()); }
+        }
+    }
+
+    @Test public void installationAliasesAreRejectedBeforeOpeningLease() throws Exception {
+        org.junit.Assume.assumeTrue(java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix"));
+        for (String target : List.of("linux", "linux/rootfs")) try (Fixture fixture = new Fixture(legacy())) {
+            Path original = fixture.files.resolve(target), moved = fixture.files.resolve("aliased-installation");
+            Files.move(original, moved); Files.createSymbolicLink(original, moved);
+            assertThrows(IOException.class, () -> fixture.acquire(fixture.source()));
+            Path lock = target.equals("linux") ? moved.resolve(".installation-lease") : fixture.linux.resolve(".installation-lease");
+            assertFalse(Files.exists(lock)); assertEquals(0, fixture.staged);
+        }
+    }
+
+    private static AdapterRefresh.Modes noInspection() {
+        return new AdapterRefresh.Modes() {
+            public int read(Path path) { throw new AssertionError("must not inspect helper through aliases or without payload"); }
+            public void write(Path path, int mode) { throw new AssertionError("must not mutate helper"); }
+        };
+    }
+
+    private static AdapterRefresh.Source noPayload() {
+        return new AdapterRefresh.Source() {
+            public AdapterRefresh.Desired desired() { return null; }
+            public Path stage(Path directory) { throw new AssertionError("must not stage without payload"); }
+        };
     }
 
     private static String hash(byte[] bytes) throws Exception {

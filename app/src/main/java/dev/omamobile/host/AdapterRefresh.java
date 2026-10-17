@@ -46,19 +46,21 @@ final class AdapterRefresh {
 
     /** Called only on a worker; returned shared lease must cover the entire child lifetime. */
     static InstallationLease acquire(Path filesRoot, Source source, Modes modes, Consumer<String> log) throws Exception {
-        // Android's authoritative files directory may itself be an alias. Descendants may not.
+        // Android's authoritative files directory may itself be an alias.
         Path anchor = filesRoot.toRealPath();
         Path linux = anchor.resolve("linux");
         Path helper = linux.resolve("rootfs").resolve(MEMBER);
-        safeParents(anchor, helper);
+        safeInstallation(anchor);
         Desired desired = source.desired();
         long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(15);
         while (true) {
             running();
             try {
+                safeInstallation(anchor);
                 InstallationLease shared = InstallationLease.acquire(linux, InstallationLease.Mode.SHARED_USE);
                 boolean keep = false;
                 try {
+                    safeInstallation(anchor);
                     if (desired == null) {
                         log.accept("This APK has no installer payload; keeping the Linux Android helper unchanged.");
                         keep = true;
@@ -73,6 +75,7 @@ final class AdapterRefresh {
                 } finally { if (!keep) shared.close(); }
                 // Never upgrade a held lock or open an overlapping channel. Another starter may
                 // win here; retry from shared inspection so its completed refresh can be used.
+                safeInstallation(anchor);
                 try (InstallationLease exclusive = InstallationLease.acquire(linux, InstallationLease.Mode.EXCLUSIVE_INSTALL)) {
                     Snapshot before = inspect(anchor, helper, modes, log);
                     if (before != null && known(before) && !current(before, desired))
@@ -94,14 +97,24 @@ final class AdapterRefresh {
         return Objects.equals(PREIMAGES.get(snapshot.hash), snapshot.bytes);
     }
 
-    private static void safeParents(Path anchor, Path helper) throws IOException {
-        GuestPaths.noSymlinkParents(anchor, helper);
+    private static void safeInstallation(Path anchor) throws IOException {
+        GuestPaths.noSymlinkParents(anchor, anchor.resolve("linux/rootfs/.installation-path-check"));
         if (!Files.isDirectory(anchor.resolve("linux/rootfs"), LinkOption.NOFOLLOW_LINKS))
             throw new IOException("Linux installation is not available");
     }
 
+    private static void safeHelperParents(Path anchor, Path helper) throws IOException {
+        safeInstallation(anchor);
+        GuestPaths.noSymlinkParents(anchor.resolve("linux/rootfs"), helper);
+    }
+
     private static Snapshot inspect(Path anchor, Path helper, Modes modes, Consumer<String> log) throws Exception {
-        safeParents(anchor, helper);
+        safeInstallation(anchor);
+        try { GuestPaths.noSymlinkParents(anchor.resolve("linux/rootfs"), helper); }
+        catch (IOException alias) {
+            log.accept("Keeping Linux Android helper with linked ancestor directories unchanged.");
+            return null;
+        }
         if (!Files.isRegularFile(helper, LinkOption.NOFOLLOW_LINKS) || modes.read(helper) != 0755) {
             log.accept("Keeping missing, linked, or mode-customized Linux Android helper unchanged.");
             return null;
@@ -116,7 +129,7 @@ final class AdapterRefresh {
 
     private static void replace(Path anchor, Path linux, Path helper, Snapshot before, Desired desired,
             Source source, Modes modes, Consumer<String> log) throws Exception {
-        safeParents(anchor, helper);
+        safeHelperParents(anchor, helper);
         Path staging = Files.createTempDirectory(linux, "adapter-refresh-");
         Path temporary = null;
         try {
@@ -155,7 +168,7 @@ final class AdapterRefresh {
                 while (gzip.read() != -1) { running(); }
             }
             if (selected == null) throw new IOException("APK Android helper member missing");
-            safeParents(anchor, helper);
+            safeHelperParents(anchor, helper);
             temporary = Files.createTempFile(helper.getParent(), ".omamobile-android-", ".tmp");
             Files.write(temporary, selected);
             modes.write(temporary, 0755);

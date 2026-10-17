@@ -100,9 +100,11 @@ entry, then atomically publishes only that regular 0755 member. It does not reru
 setup or extract the source archive into the installed Linux tree.
 
 An already current helper is a no-op. Missing helpers, links, changed modes, and
-unknown/user-edited contents stay untouched and are logged. Symlink ancestors
-below Android's authoritative files directory are rejected. Contributor APKs
-without installer assets leave the helper unchanged.
+unknown/user-edited contents stay untouched and are logged. Linked helper ancestor
+directories skip refresh and preserve startup without following the helper.
+Aliases of the installation's `linux` or `rootfs` directories are rejected.
+Contributor APKs without installer assets leave the helper unchanged and do not
+inspect its directories.
 
 Refresh releases its inspection lease before claiming exclusive installation
 ownership, rechecks before replacement, and reacquires shared use before launch.
