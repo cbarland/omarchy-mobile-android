@@ -9,12 +9,14 @@ selected by the portal resolver. FileChooser, PipeWire, and every other
 interface remain unverified and unsupported by this payload.
 
 The signed Arch package setup installs the required `xdg-desktop-portal`,
-`python-dbus`, and Python GLib packages. An APK update does not rewrite an
-existing rootfs payload. Refresh and reapply the packaged payload, then run
-the normal authorized shell setup for an existing installation; running setup
-alone cannot create a helper that is absent from the payload. A missing
-backend, failed lock-state query, or unavailable visible sheet fails the
-request closed.
+`python-dbus`, and Python GLib packages. An APK update does not rewrite the
+existing full rootfs payload; the narrow `/usr/bin/omamobile-android` refresh
+path does not add this backend or its D-Bus metadata. Refresh and reapply the
+packaged payload, then run the normal authorized shell setup for an existing
+installation; running setup alone cannot create a helper that is absent from
+the payload. A missing backend, failed lock-state query, or unavailable visible
+sheet fails the request closed. See [Android app integration](ANDROID-APPS.md#scope-and-cleanup)
+for the separate helper-refresh contract.
 
 Run `verify-access-portal allow` or `verify-access-portal deny` inside a
 prepared phone or desktop graphical session. The harness first proves that

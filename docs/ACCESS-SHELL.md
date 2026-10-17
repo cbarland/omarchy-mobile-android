@@ -16,12 +16,15 @@ at Omarchy Mobile commit `953bcb3058347459cdf7faaa1e149f16e0f7cfa6`; its
 lock check invokes the shell as `omarchy-shell lock isLocked`. This adapter
 keeps that call boundary while replacing only the Android-owned lock query.
 
-The adapter is staged into a newly prepared shell payload. Updating an APK
-does not rewrite an already installed rootfs payload, so an existing
-installation needs the refreshed Linux shell payload applied before running
-its normal shell setup. Rerunning `setup-linux-shell` alone cannot add a
-missing helper. If the helper is absent, the environment hook cannot provide a
-synthetic unlocked result and the upstream call fails closed.
+The adapter is staged into a newly prepared shell payload. An APK update does
+not rewrite that full installed payload; the narrow refresh path for the single
+`/usr/bin/omamobile-android` helper does not update this shell hook. An existing
+installation therefore needs the refreshed Linux shell payload applied before
+running its normal shell setup. Rerunning `setup-linux-shell` alone cannot add
+a missing helper. If the helper is absent, the environment hook cannot provide
+a synthetic unlocked result and the upstream call fails closed. See
+[Android app integration](ANDROID-APPS.md#scope-and-cleanup) for the separate
+helper-refresh contract.
 
 On the disposable API35 emulator, the healthy upstream shell answered `ping`
 but its Linux `lock isLocked` target was unavailable. With the adapter staged,

@@ -18,8 +18,14 @@ operation is available while `DesktopService` owns the portal and disappears
 when that service tears down.
 
 Use `omamobile-android device-state` from Linux. Freshly prepared images include
-the CLI; updating the APK alone does not refresh an existing Linux installation.
-An older or malformed reply fails with stderr and nonzero exit status.
+the CLI. On an existing installation, an authenticated APK update may
+atomically refresh this one helper when starting an ordinary command or new
+graphical session if the existing file is an exact audited 0755 preimage. Missing,
+mode-customized, symlinked, unknown, or user-edited helpers stay unchanged.
+The update does not rerun setup or refresh the full Linux payload, packages, or
+desktop entries; see [Android app integration](ANDROID-APPS.md#scope-and-cleanup)
+for the complete helper contract. An older or malformed reply fails with stderr
+and nonzero exit status.
 
 On the disposable API35 emulator, the previous APK rejects the new operation.
 The candidate passes direct Android API and real Linux CLI comparisons, plus
@@ -42,7 +48,8 @@ Hyprland monitor controls.
 The private portal accepts only this fixed host action and reports that Android
 was asked to show it; it cannot launch arbitrary components. Android still owns
 activity launch policy. Fresh Linux payloads contain the command and desktop
-entry; an APK update alone does not refresh installed Linux helper files.
+entry. The narrow helper refresh above does not add a missing full payload or
+desktop entry.
 
 On API35 x86_64, the graphical integration test passed in 50.439s with both
 upstream shells ready. It checked a cold host activity, reuse of the same
