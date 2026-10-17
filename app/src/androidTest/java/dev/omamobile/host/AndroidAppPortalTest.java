@@ -182,22 +182,24 @@ public class AndroidAppPortalTest {
                 "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
         var instrumentation = InstrumentationRegistry.getInstrumentation();
         Context context = instrumentation.getTargetContext();
+        var uiAutomation = instrumentation.getUiAutomation();
+        var originalServiceInfo = uiAutomation.getServiceInfo();
+        assertNotNull("UiAutomation service info", originalServiceInfo);
+        int originalFlags = originalServiceInfo.flags;
 
-        // Reuse the real readiness path; the two established compositor owners
-        // must retain their Android PID and kernel start time throughout.
-        new GraphicsSmokeTest().upstreamShellsMapOnBothNativeHyprlandSessions();
-        List<String> owners = compositorOwnerIdentity(instrumentation);
-        java.nio.file.Path root = context.getFilesDir().toPath().resolve("linux/rootfs");
+        // UiAutomation returns interactive windows only after opting into them.
+        originalServiceInfo.flags |= android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
         try {
-            awaitMainActivity(instrumentation);
-            List<String> actions = List.of("network-settings", "bluetooth-settings");
-            for (int i = 0; i < actions.size(); i++) {
-                if (i > 0) {
-                    assertTrue("Return from Android Settings", instrumentation.getUiAutomation()
-                            .performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK));
-                    awaitMainActivity(instrumentation);
-                }
-                String action = actions.get(i);
+            uiAutomation.setServiceInfo(originalServiceInfo);
+            // Reuse the real readiness path; the two established compositor owners
+            // must retain their Android PID and kernel start time throughout.
+            new GraphicsSmokeTest().upstreamShellsMapOnBothNativeHyprlandSessions();
+            List<String> owners = compositorOwnerIdentity(instrumentation);
+            java.nio.file.Path root = context.getFilesDir().toPath().resolve("linux/rootfs");
+            for (String action : List.of("network-settings", "bluetooth-settings")) {
+                instrumentation.runOnMainSync(() -> context.startActivity(new Intent(context, MainActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+                awaitMainActivity(instrumentation);
                 assertEquals("Compositor owners changed before " + action, owners,
                         compositorOwnerIdentity(instrumentation));
 
@@ -209,11 +211,17 @@ public class AndroidAppPortalTest {
                         compositorOwnerIdentity(instrumentation));
             }
         } finally {
-            // Return focus to the app and leave the established Linux sessions
-            // running for the operator's next check.
-            instrumentation.runOnMainSync(() -> context.startActivity(new Intent(context, MainActivity.class)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
-            instrumentation.waitForIdleSync();
+            try {
+                // Restore visible controls and leave the established sessions running.
+                instrumentation.runOnMainSync(() -> context.startActivity(new Intent(context, MainActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+                awaitMainActivity(instrumentation);
+            } finally {
+                var restoredServiceInfo = uiAutomation.getServiceInfo();
+                assertNotNull("UiAutomation service info during cleanup", restoredServiceInfo);
+                restoredServiceInfo.flags = originalFlags;
+                uiAutomation.setServiceInfo(restoredServiceInfo);
+            }
         }
     }
 
