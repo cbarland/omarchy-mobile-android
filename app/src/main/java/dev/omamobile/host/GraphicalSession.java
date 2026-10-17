@@ -36,15 +36,14 @@ final class GraphicalSession {
         home = Files.createDirectories(files.resolve("graphics/" + profile));
         // Keep Unix-domain IPC addresses beneath sockaddr_un's 108-byte limit.
         runtime = SessionRuntime.prepare(files, root, profile);
+        androidBin = SessionRuntime.prepareAdapterBin(runtime);
         // Each display owns a separate lifetime pipe/socket. A phone teardown
         // cannot revoke the desktop's Android commands (or the batch console's).
         androidBroker = new AndroidBroker(new File(context.getApplicationInfo().nativeLibraryDir, "libando.so"),
-                runtime.resolve("ando").toFile());
-        Files.createDirectories(androidBroker.directory.toPath());
+                androidBin.getParent().toFile());
         HostRuntime.chmod(androidBroker.directory.toPath(), 0700);
         // tawcroot binds directories, not individual files. Use the same
         // app-owned staging pattern as HostRuntime, scoped to this display.
-        androidBin = Files.createDirectories(runtime.resolve("ando/bin"));
         Files.copy(new File(context.getApplicationInfo().nativeLibraryDir, "libando.so").toPath(),
                 androidBin.resolve("ando"), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         HostRuntime.chmod(androidBin.resolve("ando"), 0755);

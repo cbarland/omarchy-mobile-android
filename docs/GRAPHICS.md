@@ -284,6 +284,13 @@ remain untouched. This dialog-only adapter uses installed Quickshell/Qt software
 Wayland rendering; it does not add a dmabuf backend or fix general Hyprtoolkit
 applications.
 
+Before changing permissions or copying adapters, session preparation requires
+literal `ando` and `ando/bin` directories beneath the checked profile runtime.
+Symlinks and non-directories there stop startup without changing their targets;
+the intentional host `files/s` alias remains supported. This check assumes the
+session owns preparation; it is not protection against a concurrent same-UID
+editor replacing directories after validation.
+
 The frontend preserves the guiutils 0.2.2 title/apptitle/text/buttons CLI, including
 button trimming and text newline normalization. Heading, message, and labels are
 displayed as plain text. It passes data in child-only `OMAMOBILE_DIALOG_SPEC` JSON

@@ -48,6 +48,25 @@ final class SessionRuntime {
         return hostAlias.resolve(profile.equals("phone") ? "p" : "d");
     }
 
+    /** Prepare literal adapter directories beneath a runtime returned by prepare(). */
+    static Path prepareAdapterBin(Path runtime) throws IOException {
+        Path broker = runtime.resolve("ando");
+        prepareAdapterDirectory(broker);
+        Path bin = broker.resolve("bin");
+        prepareAdapterDirectory(bin);
+        return bin;
+    }
+
+    private static void prepareAdapterDirectory(Path directory) throws IOException {
+        try {
+            Files.createDirectory(directory);
+        } catch (java.nio.file.FileAlreadyExistsException exists) {
+            // Check the existing literal entry without following an alias.
+        }
+        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS))
+            throw new IOException("Graphical adapter path must be a real directory: " + directory);
+    }
+
     private static void ensureAlias(Path alias, Path target) throws IOException {
         Path expected = target.toAbsolutePath().normalize();
         if (Files.exists(alias, LinkOption.NOFOLLOW_LINKS)) {
