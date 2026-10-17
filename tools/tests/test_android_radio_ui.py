@@ -46,6 +46,29 @@ def main():
     assert run_model({}) == {"networkKind": "unknown", "wifiAvailable": True,
                              "bluetoothAvailable": True, "wifiState": "unknown",
                              "bluetoothState": "unknown"}
+    script = """
+const M = require(process.argv[1]);
+const a = {}, b = {};
+let owners = [];
+owners = M.requestBarOwners(owners, a, true);
+owners = M.requestBarOwners(owners, a, true);
+owners = M.requestBarOwners(owners, b, true);
+const two = owners.length;
+owners = M.requestBarOwners(owners, a, false);
+const one = owners.length;
+owners = M.requestBarOwners(owners, b, false);
+console.log(JSON.stringify({two, one, zero: owners.length,
+  horizontal: M.radioGridColumns(false, 2), vertical: M.radioGridColumns(true, 2),
+  labels: ["unknown", "unavailable", "wifi", "cellular", "connected"].map(M.networkDisplay),
+  tooltips: ["unknown", "unavailable", "wifi", "cellular", "connected"].map(M.networkTooltip)}));
+"""
+    output = subprocess.check_output(["node", "-e", script, str(MODEL)], text=True, encoding="utf-8")
+    assert json.loads(output) == {
+        "two": 2, "one": 1, "zero": 0, "horizontal": 2, "vertical": 1,
+        "labels": ["?", "disconnected", "wifi", "CELL", "NET"],
+        "tooltips": ["Network unknown", "No default network · Open Android settings",
+                     "Wi-Fi connected · Open Android settings", "Cellular connected · Open Android settings",
+                     "Network connected · Open Android settings"]}
     print("android radio presentation mapping passed")
 
 

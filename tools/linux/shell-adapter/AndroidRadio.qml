@@ -11,7 +11,11 @@ QtObject {
   id: root
 
   readonly property bool enabled: Quickshell.env("OMAMOBILE_SESSION_HOST") === "android"
-  property bool barVisible: false
+  property var barOwners: []
+  function requestBar(owner, visible) {
+    barOwners = Model.requestBarOwners(barOwners, owner, visible)
+  }
+  readonly property bool barVisible: barOwners.length > 0
   property bool quickSettingsVisible: false
   readonly property bool polling: enabled && (barVisible || quickSettingsVisible)
   readonly property var snapshot: sample

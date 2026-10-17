@@ -30,6 +30,35 @@ function radioAvailable(radio) {
   return !!radio && radio.supported !== false && radio.state !== "unsupported"
 }
 
+function requestBarOwners(owners, owner, visible) {
+  var next = Array.isArray(owners) ? owners.slice() : []
+  var index = next.indexOf(owner)
+  if (visible && index < 0) next.push(owner)
+  if (!visible && index >= 0) next.splice(index, 1)
+  return next
+}
+
+function radioGridColumns(vertical, buttonCount) {
+  return vertical ? 1 : buttonCount
+}
+
+function networkDisplay(kind) {
+  if (kind === "unknown") return "?"
+  if (kind === "unavailable") return "disconnected"
+  if (kind === "wifi") return "wifi"
+  if (kind === "cellular") return "CELL"
+  return "NET"
+}
+
+function networkTooltip(kind) {
+  if (kind === "unknown") return "Network unknown"
+  if (kind === "unavailable") return "No default network · Open Android settings"
+  if (kind === "wifi") return "Wi-Fi connected · Open Android settings"
+  if (kind === "cellular") return "Cellular connected · Open Android settings"
+  return "Network connected · Open Android settings"
+}
+
 if (typeof module !== "undefined") {
-  module.exports = { section, project, networkKind, radioAvailable }
+  module.exports = { section, project, networkKind, radioAvailable, requestBarOwners,
+    radioGridColumns, networkDisplay, networkTooltip }
 }

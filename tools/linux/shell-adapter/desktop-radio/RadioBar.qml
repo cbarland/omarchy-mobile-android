@@ -2,6 +2,8 @@ import QtQuick
 import Quickshell
 import qs.Ui
 import "../omamobile.android" as Android
+import "../omamobile.bar/StatusModel.js" as StatusModel
+import "../omamobile.android/AndroidRadioModel.js" as Model
 
 // Android-session-only desktop radio shortcuts. The shared singleton is the
 // only state owner; this widget never loads NetworkManager or BlueZ objects.
@@ -17,29 +19,24 @@ Item {
   readonly property var bluetooth: Android.AndroidRadio.bluetooth
 
   visible: enabled
-  implicitWidth: enabled ? row.implicitWidth : 0
-  implicitHeight: enabled ? row.implicitHeight : 0
+  implicitWidth: enabled ? layout.implicitWidth : 0
+  implicitHeight: enabled ? layout.implicitHeight : 0
 
-  Component.onCompleted: if (enabled) Android.AndroidRadio.barVisible = true
-  Component.onDestruction: if (enabled) Android.AndroidRadio.barVisible = false
+  Component.onCompleted: if (enabled) Android.AndroidRadio.requestBar(root, true)
+  Component.onDestruction: if (enabled) Android.AndroidRadio.requestBar(root, false)
 
   function networkText() {
-    if (!enabled || network.state === "unknown") return "?"
-    if (network.state !== "available") return "?"
-    var transports = network.transports || []
-    if (transports.indexOf("wifi") >= 0) return "󰤯"
-    if (transports.indexOf("cellular") >= 0) return "CELL"
-    return transports.length > 0 ? "NET" : "?"
+    if (!enabled) return "?"
+    var kind = Model.networkKind(network)
+    var display = Model.networkDisplay(kind)
+    if (display === "disconnected") return StatusModel.networkIcon(kind, -1)
+    if (display === "wifi") return "󰤯"
+    return display
   }
 
-  function wifiStatus() {
+  function networkStatus() {
     if (!enabled) return "Unknown"
-    var state = wifi.state
-    if (state === "unknown") return "Unknown"
-    if (state === "unsupported") return "Unsupported"
-    if (state === "enabled") return "On · Open Android settings"
-    if (state === "disabled") return "Off · Open Android settings"
-    return "Transitioning · Open Android settings"
+    return Model.networkTooltip(Model.networkKind(network))
   }
 
   function bluetoothText() {
@@ -62,14 +59,15 @@ Item {
     Quickshell.execDetached(["omamobile-android", action])
   }
 
-  Row {
-    id: row
+  Grid {
+    id: layout
     spacing: 0
+    columns: Model.radioGridColumns(root.bar && root.bar.vertical, 2)
 
     BarIconButton {
       bar: root.bar
       text: root.networkText()
-      tooltipText: root.wifiStatus()
+      tooltipText: root.networkStatus()
       onPressed: root.openSettings("network-settings")
     }
 

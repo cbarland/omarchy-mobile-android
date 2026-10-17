@@ -61,8 +61,8 @@ def mobile_transform(relative, data):
             'import "StatusModel.js" as StatusModel\nimport "../omamobile.android" as Android\n', 1)
         text = text.replace('  id: root\n',
             '  id: root\n\n'
-            '  Component.onCompleted: Android.AndroidRadio.barVisible = true\n'
-            '  Component.onDestruction: Android.AndroidRadio.barVisible = false\n', 1)
+            '  Component.onCompleted: Android.AndroidRadio.requestBar(root, true)\n'
+            '  Component.onDestruction: Android.AndroidRadio.requestBar(root, false)\n', 1)
         start = text.index("  readonly property var networkDevices:")
         end = text.index("  // Cellular signal.", start)
         text = text[:start] + '''  readonly property bool androidRadio: Android.AndroidRadio.enabled
