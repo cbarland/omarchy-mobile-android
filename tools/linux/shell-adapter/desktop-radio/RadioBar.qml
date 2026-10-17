@@ -22,8 +22,9 @@ Item {
   implicitWidth: enabled ? layout.implicitWidth : 0
   implicitHeight: enabled ? layout.implicitHeight : 0
 
-  Component.onCompleted: if (enabled) Android.AndroidRadio.requestBar(root, true)
-  Component.onDestruction: if (enabled) Android.AndroidRadio.requestBar(root, false)
+  Component.onCompleted: Android.AndroidRadio.requestBar(root, enabled && visible)
+  onVisibleChanged: if (enabled) Android.AndroidRadio.requestBar(root, visible)
+  Component.onDestruction: Android.AndroidRadio.requestBar(root, false)
 
   function networkText() {
     if (!enabled) return "?"

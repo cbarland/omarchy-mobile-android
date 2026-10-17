@@ -122,7 +122,7 @@ def main():
     assert 'import "../omamobile.android" as Android' in radio_bar
     assert '["omamobile-android", action]' in radio_bar
     assert '"network-settings"' in radio_bar and '"bluetooth-settings"' in radio_bar
-    assert 'visible: enabled' in radio_bar and 'requestBar(root, true)' in radio_bar and 'requestBar(root, false)' in radio_bar
+    assert 'visible: enabled' in radio_bar and 'requestBar(root, enabled && visible)' in radio_bar and 'onVisibleChanged' in radio_bar and 'requestBar(root, false)' in radio_bar
     assert 'property QtObject bar: null' in radio_bar
     assert radio_bar.count('bar: root.bar') == 2
     assert 'Grid {' in radio_bar and 'Model.radioGridColumns(root.bar && root.bar.vertical, 2)' in radio_bar
@@ -130,7 +130,8 @@ def main():
     quicksettings = member_bytes(directory / "clean.tar.gz", "usr/share/omamobile/shell/plugins/omamobile.quicksettings/QuickSettings.qml").decode()
     assert 'import "../omamobile.android" as Android' in bar
     assert "Android.AndroidRadio.enabled" in bar and "Android.AndroidRadio.network" in bar
-    assert "Android.AndroidRadio.requestBar(root, true)" in bar
+    assert "Android.AndroidRadio.requestBar(root, Android.AndroidRadio.enabled && root.visible)" in bar
+    assert "Android.AndroidRadio.requestBar(root, root.visible)" in bar
     assert "Android.AndroidRadio.requestBar(root, false)" in bar
     assert 'networkKind === "cellular" ? "CELL"' in bar
     assert 'networkKind === "connected" ? "NET"' in bar

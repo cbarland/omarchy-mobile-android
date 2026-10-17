@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import subprocess
+import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -70,6 +71,11 @@ console.log(JSON.stringify({two, one, zero: owners.length,
                      "Wi-Fi connected · Open Android settings", "Cellular connected · Open Android settings",
                      "Network connected · Open Android settings"]}
     print("android radio presentation mapping passed")
+
+
+class RadioUiTest(unittest.TestCase):
+    def test_mapping_and_ownership(self):
+        main()
 
 
 if __name__ == "__main__":
