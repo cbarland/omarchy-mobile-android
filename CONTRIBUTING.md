@@ -10,6 +10,12 @@ build tooling, archive-import edge cases, Android display lifetime tests, keyboa
 and IME compatibility, documentation, and reproducible application compatibility
 reports. A focused issue describing a concrete user problem is enough to begin.
 
+Three scoped places to start:
+
+- [Document the host's input controls](https://github.com/cbarland/omarchy-mobile-android/issues/55).
+- [Show app version and source revision in the controls](https://github.com/cbarland/omarchy-mobile-android/issues/56).
+- [Check the core build guide from a fresh environment](https://github.com/cbarland/omarchy-mobile-android/issues/57).
+
 ## Where to work
 
 - `app/src/main/java/`: installation, Android services, displays, input and window ownership.
