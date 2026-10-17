@@ -18,7 +18,7 @@ Android Studio's SDK Manager. From the SDK's command-line-tools `bin` directory:
 
 ```sh
 sdkmanager --install --channel=3 \
-  "platforms;android-37" "build-tools;36.0.0" \
+  "platforms;android-37.0" "build-tools;36.0.0" \
   "ndk;30.0.14904198" "cmake;4.1.2"
 sdkmanager --licenses
 ```
@@ -28,7 +28,7 @@ version. If an exact package is unavailable, report that failure rather than
 silently switching versions. Google's [SDK Manager reference](https://developer.android.com/tools/sdkmanager)
 documents package paths, channels, and license acceptance. These exact platform,
 NDK, and CMake packages were present in Google's SDK catalog on 2026-10-15. The
-`platforms;android-37` package is required by the resolved `zstd-jni:1.5.7-23`
+`platforms;android-37.0` package is required by the resolved `zstd-jni:1.5.7-23`
 Android archive; target 35 and minimum API 29 remain the app compatibility policy.
 
 ## Core APK from a clean checkout
