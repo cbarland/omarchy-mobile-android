@@ -56,6 +56,28 @@ def member_bytes(path, name):
         item = archive.getmember(name)
         return archive.extractfile(item).read()
 
+def verify_android_settings_router(quicksettings):
+    start = quicksettings.index("  function openAndroidSettings(page) {")
+    end = quicksettings.index("\n  }", start) + len("\n  }")
+    router = quicksettings[start:end]
+    script = '''const assert = require("node:assert/strict");
+const Android = { AndroidRadio: { enabled: true } };
+const launches = [];
+const Quickshell = { execDetached: argv => launches.push(argv) };
+''' + router + '''
+assert.equal(openAndroidSettings("wifi"), true);
+assert.equal(openAndroidSettings("bluetooth"), true);
+assert.equal(openAndroidSettings("unexpected"), false);
+Android.AndroidRadio.enabled = false;
+assert.equal(openAndroidSettings("wifi"), false);
+assert.equal(openAndroidSettings("bluetooth"), false);
+assert.deepEqual(launches, [
+  ["omamobile-android", "network-settings"],
+  ["omamobile-android", "bluetooth-settings"]
+]);
+'''
+    run("node", "-e", script)
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -110,7 +132,8 @@ def main():
             f"Terminal=false\nIcon={icon}\nCategories=Settings;HardwareSettings;\n").encode()
     assert required_portal <= before.keys(), f"Access portal payload members missing: {required_portal - before.keys()}"
     adapter_prefix = "usr/share/omamobile/shell/plugins/omamobile.android/"
-    assert {adapter_prefix + name for name in ("AndroidRadio.qml", "AndroidRadioModel.js", "qmldir")} <= before.keys()
+    assert {adapter_prefix + name for name in ("AndroidRadio.qml", "AndroidRadioModel.js", "AndroidBattery.qml", "AndroidBatteryModel.js", "qmldir")} <= before.keys()
+    assert 'battery-state' in member_bytes(directory / "clean.tar.gz", adapter_prefix + "AndroidBattery.qml").decode()
     desktop_radio_prefix = "usr/share/omamobile/shell/plugins/omamobile.desktop-radio/"
     assert {desktop_radio_prefix + name for name in ("RadioBar.qml", "manifest.json")} <= before.keys()
     desktop_manifest = json.loads(member_bytes(directory / "clean.tar.gz", desktop_radio_prefix + "manifest.json"))
@@ -136,6 +159,21 @@ def main():
     assert 'networkKind === "cellular" ? "CELL"' in bar
     assert 'networkKind === "connected" ? "NET"' in bar
     assert 'StatusModel.cellularIcon(-1)' not in bar
+    assert 'import "file:///usr/share/omamobile/shell/plugins/omamobile.android" as AndroidBattery' in bar
+    assert 'AndroidBattery.AndroidBattery.requestPanel' in bar
+    assert 'visible: root.hasBattery' in bar
+    assert 'AndroidBatteryModel.icon' not in bar
+    assert 'root.batteryPercent >= 0 ? root.batteryPercent + "%" : "—"' in bar
+    power = member_bytes(directory / "clean.tar.gz", "root/.local/share/omarchy/shell/plugins/panels/power/Panel.qml").decode()
+    assert 'import "file:///usr/share/omamobile/shell/plugins/omamobile.android" as AndroidBattery' in power
+    assert power.count('Component.onCompleted:') == 1
+    assert 'AndroidBattery.AndroidBattery.requestPanel' in power
+    assert 'androidBattery || batteryPresent' in power
+    assert 'visible: root.batteryPresent' in power
+    assert 'implicitWidth: batteryPresent ? button.implicitWidth : 0' in power
+    assert 'implicitHeight: batteryPresent ? button.implicitHeight : 0' in power
+    assert 'open: root.opened && root.batteryPresent' in power
+    assert 'AndroidBattery.AndroidBattery.displayPercentage(AndroidBattery.AndroidBattery.sample)' in power
     assert 'import "../omamobile.android" as Android' in quicksettings
     assert 'function openAndroidSettings(page)' in quicksettings
     assert quicksettings.index('function openAndroidSettings(page)') < quicksettings.index('function openPage(page)')
@@ -145,8 +183,7 @@ def main():
         entry_end = quicksettings.find('\n  function ', entry_start + len(entry))
         body = quicksettings[entry_start:entry_end if entry_end >= 0 else None]
         assert 'openAndroidSettings' in body, entry
-    assert '["omamobile-android", "network-settings"]' in quicksettings
-    assert '["omamobile-android", "bluetooth-settings"]' in quicksettings
+    verify_android_settings_router(quicksettings)
     assert "Android.AndroidRadio.quickSettingsVisible = true" in quicksettings
     assert "tile-state.sh" in quicksettings
     portal_config = member_bytes(directory / "clean.tar.gz", "etc/xdg/xdg-desktop-portal/hyprland-portals.conf")
