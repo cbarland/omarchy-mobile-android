@@ -16,6 +16,10 @@ This is an independent integration prototype. It is not an official Omarchy
 release. Android remains the hardware and security owner; installation requires
 no root, bootloader unlock, flashing, custom kernel or SELinux changes.
 
+**Developer preview: source builds required.** There is no public graphical APK
+release yet. The temporary **core validation** CI APK cannot install or display
+Omarchy. See [graphical release readiness](docs/RELEASE-READINESS.md).
+
 Fresh x86_64 emulator installation, using the app's packaged setup:
 
 ![Omarchy desktop after a fresh installation](docs/images/desktop-fresh-install.png)
@@ -27,16 +31,17 @@ Fresh x86_64 emulator installation, using the app's packaged setup:
 
 ## Try it
 
-Follow [the installation guide](docs/INSTALLING.md). A full graphical APK includes
-the native compositor and pinned upstream shell sources. Choose **Install Omarchy
-from Linux archive**, select an independently verified Arch Linux ARM base
-(x86_64 for an emulator), and let the app install signed packages and prepare both
-profiles. A failed setup is not activated, and an existing installation is never
-replaced. Then choose **Start Omarchy screens**.
+Build a full graphical APK using [the build guide](docs/BUILDING.md), then follow
+[the installation guide](docs/INSTALLING.md). **Download and install authenticated
+Arch base** downloads and verifies the matching official archive. This automatic
+path has x86_64 emulator verification; ARM64 automatic installation remains
+unverified.
 
-The image is downloaded and verified separately for now. There is no established
-signed public APK/update channel yet. The temporary **core validation** CI APK
-has no graphical backend and cannot install or display Omarchy.
+For manual installation, choose **Install Omarchy from Linux archive** and select
+an independently verified Arch Linux ARM base (x86_64 for an emulator). Setup
+installs signed packages and prepares both profiles. A failed setup is not
+activated, and an existing installation is never replaced. Then choose **Start
+Omarchy screens**.
 
 An ARM64 device, Android 10 or newer, several GB of free storage and an
 Android-supported external display are needed for the intended phone/desktop
@@ -85,6 +90,7 @@ Release builds enforce the payload gate; [binary release readiness](docs/RELEASE
 also tracks missing notices and source-material obligations. Never uninstall a
 prepared app as routine test cleanup: that deletes its Linux installation.
 
+Start with a [good first issue](https://github.com/cbarland/omarchy-mobile-android/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22).
 Small fixes, compatibility reports, documentation and focused tests are welcome.
 The issue forms and PR template describe the evidence needed for review.
 [Product intent](docs/INTENT.md), [graphics boundaries](docs/GRAPHICS.md) and
