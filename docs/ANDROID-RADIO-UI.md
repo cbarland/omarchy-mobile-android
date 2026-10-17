@@ -20,6 +20,9 @@ Bar and QuickSettings input hashes before changing them. The added mapping
 module is pure and has fixture coverage in
 `tools/tests/test_android_radio_ui.py`.
 
+The Python host test discovery runs these presentation fixtures with Node.js;
+both Python and Node.js are required for that check.
+
 The phone Bar and QuickSettings integration remains a fresh-payload feature.
 The desktop profile now also seeds an Android-session-only
 `omamobile.desktop-radio` bar widget that replaces the canonical desktop
