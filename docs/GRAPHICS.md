@@ -295,6 +295,11 @@ Android permission-dialog creation, open, or response failures deny the request
 and complete its pending permission promise. The other platforms retain their
 existing missing-utility fallback.
 
+ANR responses capture weak ownership of the real shared ANR actor and the exact
+dialog instance. A delayed response is ignored after that actor is destroyed,
+its dialog is canceled, or a replacement dialog is opened. Neither capture
+retains the actor or creates an ownership cycle.
+
 Rerunnable source and Linux host checks:
 
 ```sh
@@ -308,6 +313,12 @@ the actual wrapper argument protocol and spawn helper under a seccomp no-fork
 gate; it checks argv, stdout, token isolation, signal mask, PID preservation,
 availability, timeout, FD cleanup, and targeted child reaping. It does not prove
 Android ART, tawcroot, Wayland dialog mapping, or startup latency.
+
+Add `--check-anr-owner --hyprutils-include /path/to/hyprutils/include` to the
+source check to compile the emitted ANR callback against the real pointer types
+with ASan/UBSan. It exercises valid Wait/Terminate, actor destruction, cancellation,
+and dialog replacement; the original pinned callback is a negative control that
+must reproduce its use-after-free. This requires a host compiler with sanitizers.
 
 The remaining runtime check uses the existing native ANR flow, without a test
 hook: launch an owned Foot window, record its PID/starttime and current profile,

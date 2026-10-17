@@ -143,6 +143,15 @@ SP<CAsyncDialogBox>""")
     promise->then(""")
         path.write_text(text)
 
+    path = source / "src/managers/ANRManager.hpp"
+    text = path.read_text()
+    if "OMAMOBILE_ANR_OWNER" not in text:
+        text = once(text,
+                    "        void                            runDialog(const std::string& appName, const std::string appClass, pid_t dialogWmPID);",
+                    "        // OMAMOBILE_ANR_OWNER: promise callbacks borrow the real shared actor.\n"
+                    "        void                            runDialog(const std::string& appName, const std::string appClass, pid_t dialogWmPID, const WP<SANRData>& owner);")
+        path.write_text(text)
+
     path = source / "src/managers/ANRManager.cpp"
     text = path.read_text()
     if "OMAMOBILE_GUEST_DIALOG" not in text:
@@ -158,7 +167,21 @@ SP<CAsyncDialogBox>""")
     if (!promise) { dialogBox.reset(); return; }
 #endif
     promise->then(""")
-        path.write_text(text)
+    if "OMAMOBILE_ANR_OWNER" not in text:
+        text = once(text,
+                    "                data->runDialog(firstWindow->metadata().title(), firstWindow->metadata().appID(), data->pid);",
+                    "                data->runDialog(firstWindow->metadata().title(), firstWindow->metadata().appID(), data->pid, WP<SANRData>(data));")
+        text = once(text,
+                    "void CANRManager::SANRData::runDialog(const std::string& appName, const std::string appClass, pid_t dialogWmPID) {",
+                    "// OMAMOBILE_ANR_OWNER\nvoid CANRManager::SANRData::runDialog(const std::string& appName, const std::string appClass, pid_t dialogWmPID, const WP<SANRData>& owner) {")
+        text = once(text,
+                    "promise->then([dialogWmPID, this, OPTION_TERMINATE_STR, OPTION_WAIT_STR](SP<CPromiseResult<std::string>> r) {",
+                    "promise->then([dialogWmPID, owner, currentDialog = WP<CAsyncDialogBox>(dialogBox), OPTION_TERMINATE_STR, OPTION_WAIT_STR](SP<CPromiseResult<std::string>> r) {\n"
+                    "        const auto data = owner.lock();\n"
+                    "        const auto dialog = currentDialog.lock();\n"
+                    "        if (!data || !dialog || data->dialogBox != dialog) return;")
+        text = once(text, "            dialogSaidWait = true;", "            data->dialogSaidWait = true;")
+    path.write_text(text)
 
     path = source / "src/managers/permissions/DynamicPermissionManager.cpp"
     text = path.read_text()
