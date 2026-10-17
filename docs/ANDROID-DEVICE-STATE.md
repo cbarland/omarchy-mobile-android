@@ -39,13 +39,22 @@ separate observations rather than an atomic security snapshot.
 ## Android radio state
 
 The authenticated portal's `radio-state` operation and Linux
-`omamobile-android radio-state` command expose Android's current default
-network state and transport/capability facts, plus Wi-Fi and Bluetooth radio
-support and transition state. Missing services, unavailable samples, and
-unsupported hardware remain explicit as `unknown`, `null`, or `unsupported`;
-the response contains no network identifiers or nearby-device data. These are
-read-only observations. Android owns radio hardware and connectivity; Linux
-does not gain NetworkManager or BlueZ control from this interface.
+`omamobile-android radio-state` command expose whether the default network is
+available to the host app's Android UID; Linux receives that same sample
+through the portal. The response includes default-network transport and
+capability facts, plus Wi-Fi and Bluetooth radio support and transition state.
+`unavailable` means
+[`ConnectivityManager.getActiveNetwork()`](https://developer.android.com/reference/android/net/ConnectivityManager#getActiveNetwork())
+returned null: the app has no visible
+default network, or Android blocked that network for the app. This API cannot
+distinguish those cases or report device-global network availability.
+`available` means a default network was returned, not that it is validated or
+reaches the internet; those capabilities are reported separately. Missing
+services or samples remain explicit as `unknown` or `null`, and unsupported
+hardware as `unsupported`. The response contains no network identifiers or
+nearby-device data. These are read-only observations. Android owns radio
+hardware and connectivity; Linux does not gain NetworkManager or BlueZ control
+from this interface.
 
 The normal Android permissions are `ACCESS_NETWORK_STATE` and
 `ACCESS_WIFI_STATE`; the legacy `BLUETOOTH` declaration is limited to API 30

@@ -195,7 +195,7 @@ def radio_state(reply):
     network = reply["network"]
     if not isinstance(network, dict) or set(network) != {"state", "transports", "internetCapable", "validated"}:
         raise RuntimeError("Android network state fields are not exact")
-    if type(network["state"]) is not str or network["state"] not in {"connected", "disconnected", "unknown"}:
+    if type(network["state"]) is not str or network["state"] not in {"available", "unavailable", "unknown"}:
         raise RuntimeError("Android network state is invalid")
     transports = network["transports"]
     if transports is not None:
@@ -206,14 +206,14 @@ def radio_state(reply):
     for key in ("internetCapable", "validated"):
         if network[key] is not None and type(network[key]) is not bool:
             raise RuntimeError("Android network capability is not boolean or null: " + key)
-    if network["state"] == "disconnected":
+    if network["state"] == "unavailable":
         if transports != [] or network["internetCapable"] is not None or network["validated"] is not None:
-            raise RuntimeError("Disconnected Android network state is inconsistent")
+            raise RuntimeError("Unavailable Android network state is inconsistent")
     elif network["state"] == "unknown":
         if transports is not None or network["internetCapable"] is not None or network["validated"] is not None:
             raise RuntimeError("Unknown Android network state is inconsistent")
     elif (not transports or network["internetCapable"] is None or network["validated"] is None):
-        raise RuntimeError("Connected Android network state is incomplete")
+        raise RuntimeError("Available Android network state is incomplete")
 
     result = {"network": {key: network[key] for key in
                            ("state", "transports", "internetCapable", "validated")}}

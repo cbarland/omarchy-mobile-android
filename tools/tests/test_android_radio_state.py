@@ -14,10 +14,10 @@ cli = importlib.util.module_from_spec(spec)
 loader.exec_module(cli)
 
 
-def connected_reply():
+def available_reply():
     return {
         "ok": True,
-        "network": {"state": "connected", "transports": ["wifi", "vpn"],
+        "network": {"state": "available", "transports": ["wifi", "vpn"],
                     "internetCapable": True, "validated": False},
         "wifi": {"supported": True, "state": "enabled"},
         "bluetooth": {"supported": None, "state": "unknown"},
@@ -41,16 +41,16 @@ class FakePortal:
 
 
 class RadioStateTest(unittest.TestCase):
-    def test_accepts_connected_disconnected_and_unknown_observations(self):
-        connected = connected_reply()
-        self.assertEqual(cli.radio_state(connected), {key: value for key, value in connected.items() if key != "ok"})
-        disconnected = {
-            "network": {"state": "disconnected", "transports": [],
+    def test_accepts_available_unavailable_and_unknown_observations(self):
+        available = available_reply()
+        self.assertEqual(cli.radio_state(available), {key: value for key, value in available.items() if key != "ok"})
+        unavailable = {
+            "network": {"state": "unavailable", "transports": [],
                         "internetCapable": None, "validated": None},
             "wifi": {"supported": False, "state": "unsupported"},
             "bluetooth": {"supported": True, "state": "off"},
         }
-        self.assertEqual(cli.radio_state({"ok": True, **disconnected}), disconnected)
+        self.assertEqual(cli.radio_state({"ok": True, **unavailable}), unavailable)
         unknown = {
             "network": {"state": "unknown", "transports": None,
                         "internetCapable": None, "validated": None},
@@ -60,12 +60,13 @@ class RadioStateTest(unittest.TestCase):
         self.assertEqual(cli.radio_state({"ok": True, **unknown}), unknown)
 
     def test_rejects_malformed_or_inconsistent_state_at_boundary(self):
-        base = connected_reply()
+        base = available_reply()
         cases = []
         cases.append({key: value for key, value in base.items() if key != "ok"})
         cases.append(dict(base, extra=False))
         cases.append({key: value for key, value in base.items() if key != "wifi"})
-        for key, value in (("state", "invalid"), ("transports", []), ("transports", ["wifi", "wifi"]),
+        for key, value in (("state", "connected"), ("state", "disconnected"), ("state", "invalid"),
+                           ("transports", []), ("transports", ["wifi", "wifi"]),
                            ("transports", ["shell"]), ("internetCapable", 1),
                            ("validated", "no")):
             changed = json.loads(json.dumps(base))
@@ -82,7 +83,7 @@ class RadioStateTest(unittest.TestCase):
                 cli.radio_state(candidate)
 
     def test_real_cli_path_uses_fixed_operation_and_closes_socket(self):
-        reply = connected_reply()
+        reply = available_reply()
         portal = FakePortal(reply)
         original_portal, original_argv = cli.Portal, sys.argv
         output, errors = io.StringIO(), io.StringIO()
@@ -105,7 +106,7 @@ class RadioStateTest(unittest.TestCase):
         def make_portal():
             nonlocal portal_created
             portal_created = True
-            return FakePortal(connected_reply())
+            return FakePortal(available_reply())
 
         original_portal, original_argv = cli.Portal, sys.argv
         try:

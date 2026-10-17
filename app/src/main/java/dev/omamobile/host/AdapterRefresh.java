@@ -27,7 +27,7 @@ final class AdapterRefresh {
             "b4446d2a49052b931509ec7f026ee269baf5093c33d3fe549dce535c693aa460", 13093L, // 3fd49b6
             "479e2065cf49d10b698a2cf9984fea51bbba9bb283175c999c63706656b067a7", 14564L, // 1c9bdca
             "a982962449dfe7e2418d2d020e90ded834b3b4011e1bc4b794ce55845152c6d4", 15269L, // Android settings actions
-            "e6664196bf8a0524e10fc4a227c9b4b42704bfdf300caeef7fcda1f37fb51b6d", 19027L); // radio-state command
+            "ff7f973e2a0512e25c371ba632f312539ba205648a7a94509a71b02a8f012fbe", 19024L); // radio-state command
     private static final int MAX_HELPER = 256 * 1024;
     record Desired(String sha256, long bytes) {
         Desired {

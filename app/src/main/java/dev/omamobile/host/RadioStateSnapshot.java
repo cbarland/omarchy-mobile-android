@@ -17,9 +17,9 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 
-/** One read-only sample of Android-owned radio and default-network state. */
+/** Read-only radio state and the default network visible to this Android UID. */
 final class RadioStateSnapshot {
-    enum NetworkState { CONNECTED, DISCONNECTED, UNKNOWN }
+    enum NetworkState { AVAILABLE, UNAVAILABLE, UNKNOWN }
     enum WifiState { ENABLED, DISABLED, ENABLING, DISABLING, UNSUPPORTED, UNKNOWN }
     enum BluetoothState { ON, OFF, TURNING_ON, TURNING_OFF, UNSUPPORTED, UNKNOWN }
     enum Transport { WIFI, CELLULAR, ETHERNET, BLUETOOTH, VPN, WIFI_AWARE, LOWPAN, USB, THREAD, SATELLITE, OTHER }
@@ -54,10 +54,10 @@ final class RadioStateSnapshot {
                 network.validated(), wifi.supported(), wifi.state(), bluetooth.supported(), bluetooth.state());
     }
 
-    static RadioStateSnapshot fromValues(Boolean activeNetwork, Integer[] transportTypes,
+    static RadioStateSnapshot fromValues(Boolean defaultNetworkVisible, Integer[] transportTypes,
             Boolean internetCapable, Boolean validated, Boolean wifiSupported, Integer wifiState,
             Boolean bluetoothSupported, Integer bluetoothState) {
-        NetworkSample network = networkSample(activeNetwork, transportTypes, internetCapable, validated);
+        NetworkSample network = networkSample(defaultNetworkVisible, transportTypes, internetCapable, validated);
         WifiSample wifi = wifiSample(wifiSupported, wifiState);
         BluetoothSample bluetooth = bluetoothSample(bluetoothSupported, bluetoothState);
         return new RadioStateSnapshot(network.state(), network.transports(), network.internetCapable(),
@@ -96,6 +96,7 @@ final class RadioStateSnapshot {
             ConnectivityManager manager = context.getSystemService(ConnectivityManager.class);
             if (manager == null) return networkSample(null, null, null, null);
             Network active = manager.getActiveNetwork();
+            // A null result also covers a default network blocked for this caller.
             if (active == null) return networkSample(false, null, null, null);
             NetworkCapabilities capabilities = manager.getNetworkCapabilities(active);
             if (capabilities == null) return networkSample(null, null, null, null);
@@ -143,16 +144,17 @@ final class RadioStateSnapshot {
         }
     }
 
-    private static NetworkSample networkSample(Boolean active, Integer[] transportTypes,
+    private static NetworkSample networkSample(Boolean defaultNetworkVisible, Integer[] transportTypes,
             Boolean internetCapable, Boolean validated) {
-        if (Boolean.FALSE.equals(active))
-            return new NetworkSample(NetworkState.DISCONNECTED, List.of(), null, null);
-        if (!Boolean.TRUE.equals(active) || transportTypes == null || internetCapable == null || validated == null)
+        if (Boolean.FALSE.equals(defaultNetworkVisible))
+            return new NetworkSample(NetworkState.UNAVAILABLE, List.of(), null, null);
+        if (!Boolean.TRUE.equals(defaultNetworkVisible) || transportTypes == null
+                || internetCapable == null || validated == null)
             return new NetworkSample(NetworkState.UNKNOWN, null, null, null);
         Set<Transport> transports = EnumSet.noneOf(Transport.class);
         for (Integer type : transportTypes) transports.add(type == null ? Transport.OTHER : transport(type));
         if (transports.isEmpty()) transports.add(Transport.OTHER);
-        return new NetworkSample(NetworkState.CONNECTED, new ArrayList<>(transports), internetCapable, validated);
+        return new NetworkSample(NetworkState.AVAILABLE, new ArrayList<>(transports), internetCapable, validated);
     }
 
     private static WifiSample wifiSample(Boolean supported, Integer state) {

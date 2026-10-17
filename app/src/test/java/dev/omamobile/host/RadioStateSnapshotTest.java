@@ -8,29 +8,29 @@ import java.util.List;
 import static org.junit.Assert.*;
 
 public class RadioStateSnapshotTest {
-    @Test public void distinguishesNoRouteFromUnavailableNetworkObservation() {
-        RadioStateSnapshot disconnected = RadioStateSnapshot.fromValues(false, null, null, null,
+    @Test public void distinguishesNoAppVisibleDefaultFromUnavailableObservation() {
+        RadioStateSnapshot unavailable = RadioStateSnapshot.fromValues(false, null, null, null,
                 false, null, false, null);
-        assertEquals(RadioStateSnapshot.NetworkState.DISCONNECTED, disconnected.networkState());
-        assertEquals(List.of(), disconnected.transports());
-        assertNull(disconnected.internetCapable());
-        assertNull(disconnected.validated());
+        assertEquals(RadioStateSnapshot.NetworkState.UNAVAILABLE, unavailable.networkState());
+        assertEquals(List.of(), unavailable.transports());
+        assertNull(unavailable.internetCapable());
+        assertNull(unavailable.validated());
 
-        RadioStateSnapshot unavailable = RadioStateSnapshot.fromValues(null, null, null, null,
+        RadioStateSnapshot unknown = RadioStateSnapshot.fromValues(null, null, null, null,
                 null, null, null, null);
-        assertEquals(RadioStateSnapshot.NetworkState.UNKNOWN, unavailable.networkState());
-        assertNull(unavailable.transports());
-        assertNull(unavailable.wifiSupported());
-        assertEquals(RadioStateSnapshot.WifiState.UNKNOWN, unavailable.wifiState());
-        assertNull(unavailable.bluetoothSupported());
-        assertEquals(RadioStateSnapshot.BluetoothState.UNKNOWN, unavailable.bluetoothState());
+        assertEquals(RadioStateSnapshot.NetworkState.UNKNOWN, unknown.networkState());
+        assertNull(unknown.transports());
+        assertNull(unknown.wifiSupported());
+        assertEquals(RadioStateSnapshot.WifiState.UNKNOWN, unknown.wifiState());
+        assertNull(unknown.bluetoothSupported());
+        assertEquals(RadioStateSnapshot.BluetoothState.UNKNOWN, unknown.bluetoothState());
     }
 
     @Test public void retainsNetworkCapabilitiesAndMapsUnknownTransportWithoutGuessing() {
         RadioStateSnapshot value = RadioStateSnapshot.fromValues(true,
                 new Integer[] { NetworkCapabilities.TRANSPORT_WIFI, 9876 }, true, false,
                 true, WifiManager.WIFI_STATE_ENABLED, true, BluetoothAdapter.STATE_OFF);
-        assertEquals(RadioStateSnapshot.NetworkState.CONNECTED, value.networkState());
+        assertEquals(RadioStateSnapshot.NetworkState.AVAILABLE, value.networkState());
         assertEquals(List.of(RadioStateSnapshot.Transport.WIFI, RadioStateSnapshot.Transport.OTHER),
                 value.transports());
         assertEquals(Boolean.TRUE, value.internetCapable());

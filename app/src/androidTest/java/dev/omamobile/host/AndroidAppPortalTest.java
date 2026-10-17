@@ -150,7 +150,7 @@ public class AndroidAppPortalTest {
         } else {
             var active = connectivity.getActiveNetwork();
             if (active == null) {
-                assertEquals("disconnected", network.getString("state"));
+                assertEquals("unavailable", network.getString("state"));
                 assertEquals(0, network.getJSONArray("transports").length());
                 assertTrue(network.isNull("internetCapable"));
                 assertTrue(network.isNull("validated"));
@@ -162,7 +162,7 @@ public class AndroidAppPortalTest {
                     assertTrue(network.isNull("internetCapable"));
                     assertTrue(network.isNull("validated"));
                 } else {
-                    assertEquals("connected", network.getString("state"));
+                    assertEquals("available", network.getString("state"));
                     java.util.Set<String> transports = new java.util.HashSet<>();
                     for (int type : new int[] { android.net.NetworkCapabilities.TRANSPORT_WIFI,
                             android.net.NetworkCapabilities.TRANSPORT_CELLULAR,
