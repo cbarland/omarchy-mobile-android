@@ -15,6 +15,7 @@ import android.app.ActivityOptions;
 import android.os.Process;
 import android.os.PowerManager;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.system.Os;
 import android.view.Display;
 import org.json.JSONArray;
@@ -55,6 +56,16 @@ final class AndroidAppPortal implements AutoCloseable {
     AndroidAppPortal(Context context, ShellProvider shellProvider) {
         this.context = context.getApplicationContext();
         this.shellProvider = shellProvider;
+    }
+
+    static Intent settingsIntent(String operation) throws IOException {
+        return switch (operation) {
+            case "network-settings" -> new Intent(Settings.ACTION_WIRELESS_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            case "bluetooth-settings" -> new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            default -> throw new IOException("Unknown Android settings operation");
+        };
     }
 
     void start() throws IOException {
@@ -126,6 +137,12 @@ final class AndroidAppPortal implements AutoCloseable {
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
                         context.startActivity(controls, ActivityOptions.makeBasic()
                                 .setLaunchDisplayId(Display.DEFAULT_DISPLAY).toBundle());
+                        reply.put("requested", true);
+                    } else if (op.equals("network-settings") || op.equals("bluetooth-settings")) {
+                        // These are fixed Android-owned panels. Linux cannot
+                        // choose an action, component, URI, or command.
+                        context.startActivity(settingsIntent(op),
+                                ActivityOptions.makeBasic().setLaunchDisplayId(Display.DEFAULT_DISPLAY).toBundle());
                         reply.put("requested", true);
                     } else if (op.equals("open")) {
                         if (hosted != null) throw new IOException("A connection already owns a display");

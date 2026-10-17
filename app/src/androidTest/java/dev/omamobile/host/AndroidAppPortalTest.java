@@ -175,6 +175,114 @@ public class AndroidAppPortalTest {
                     .setAction(DesktopService.STOP_SCREENS)));
         }
     }
+    @Test public void linuxSettingsCommandsShowAndroidPanelsAndPreserveBothCompositorOwners() throws Exception {
+        org.junit.Assume.assumeTrue("Explicit -e settingsActions true required",
+                "true".equals(InstrumentationRegistry.getArguments().getString("settingsActions")));
+        org.junit.Assume.assumeTrue("Explicit -e graphics true and prepared Linux required",
+                "true".equals(InstrumentationRegistry.getArguments().getString("graphics")));
+        var instrumentation = InstrumentationRegistry.getInstrumentation();
+        Context context = instrumentation.getTargetContext();
+        var uiAutomation = instrumentation.getUiAutomation();
+        var originalServiceInfo = uiAutomation.getServiceInfo();
+        assertNotNull("UiAutomation service info", originalServiceInfo);
+        int originalFlags = originalServiceInfo.flags;
+
+        // UiAutomation returns interactive windows only after opting into them.
+        originalServiceInfo.flags |= android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
+        try {
+            uiAutomation.setServiceInfo(originalServiceInfo);
+            // Reuse the real readiness path; the two established compositor owners
+            // must retain their Android PID and kernel start time throughout.
+            new GraphicsSmokeTest().upstreamShellsMapOnBothNativeHyprlandSessions();
+            List<String> owners = compositorOwnerIdentity(instrumentation);
+            java.nio.file.Path root = context.getFilesDir().toPath().resolve("linux/rootfs");
+            for (String action : List.of("network-settings", "bluetooth-settings")) {
+                instrumentation.runOnMainSync(() -> context.startActivity(new Intent(context, MainActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+                awaitMainActivity(instrumentation);
+                assertEquals("Compositor owners changed before " + action, owners,
+                        compositorOwnerIdentity(instrumentation));
+
+                assertEquals("Android " + (action.equals("network-settings") ? "network" : "Bluetooth")
+                                + " settings requested",
+                        runLinuxClient(context, root, action, "portal-" + action + "-"));
+                awaitResumedSettings(instrumentation, android.view.Display.DEFAULT_DISPLAY);
+                assertEquals("Compositor owners changed during " + action, owners,
+                        compositorOwnerIdentity(instrumentation));
+            }
+        } finally {
+            try {
+                // Restore visible controls and leave the established sessions running.
+                instrumentation.runOnMainSync(() -> context.startActivity(new Intent(context, MainActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+                awaitMainActivity(instrumentation);
+            } finally {
+                var restoredServiceInfo = uiAutomation.getServiceInfo();
+                assertNotNull("UiAutomation service info during cleanup", restoredServiceInfo);
+                restoredServiceInfo.flags = originalFlags;
+                uiAutomation.setServiceInfo(restoredServiceInfo);
+            }
+        }
+    }
+
+    private static List<String> compositorOwnerIdentity(android.app.Instrumentation instrumentation) throws Exception {
+        List<String> identities = new ArrayList<>();
+        for (String profile : List.of("phone", "desktop")) {
+            String process = "dev.omamobile.host:" + profile;
+            String[] pids = shellCapture(instrumentation, "pidof " + process).trim().split("\\s+");
+            assertEquals(profile + " compositor owner process", 1, pids.length);
+            int pid = Integer.parseInt(pids[0]);
+            String stat = shellCapture(instrumentation, "cat /proc/" + pid + "/stat").trim();
+            int commandEnd = stat.lastIndexOf(") ");
+            assertTrue(profile + " owner has a valid /proc stat", commandEnd > 0);
+            assertEquals(profile + " owner PID", pid,
+                    Integer.parseInt(stat.substring(0, commandEnd).split("\\s+", 2)[0]));
+            String[] fields = stat.substring(commandEnd + 2).split("\\s+");
+            assertTrue(profile + " owner stat has a start time", fields.length > 19);
+            identities.add(profile + ":" + pid + ":" + fields[19]);
+        }
+        return identities;
+    }
+
+    private static void awaitResumedSettings(android.app.Instrumentation instrumentation, int displayId)
+            throws Exception {
+        long deadline = SystemClock.uptimeMillis() + 10000;
+        String observed = "";
+        while (SystemClock.uptimeMillis() < deadline) {
+            String resumed = shellCapture(instrumentation, "dumpsys activity activities");
+            for (var window : instrumentation.getUiAutomation().getWindows()) {
+                try {
+                    if (!window.isActive() || window.getDisplayId() != displayId) continue;
+                    var root = window.getRoot();
+                    if (root == null) continue;
+                    try {
+                        CharSequence name = root.getPackageName();
+                        String packageName = name == null ? "" : name.toString();
+                        observed = "activeWindow=" + packageName + " display=" + window.getDisplayId();
+                        if (packageName.toLowerCase(java.util.Locale.ROOT).contains("settings")
+                                && resumed.lines().anyMatch(line -> {
+                                    String activityLine = line.trim();
+                                    boolean resumedActivity = activityLine.startsWith("mResumedActivity:")
+                                            || activityLine.startsWith("topResumedActivity=")
+                                            || activityLine.startsWith("ResumedActivity:");
+                                    return resumedActivity && activityLine.contains(packageName + "/");
+                                })) return;
+                    } finally { root.recycle(); }
+                } finally { window.recycle(); }
+            }
+            SystemClock.sleep(100);
+        }
+        fail("Linux settings command did not show a resumed Android Settings activity on display "
+                + displayId + "; observed " + observed);
+    }
+
+    private static String shellCapture(android.app.Instrumentation instrumentation, String command) throws Exception {
+        try (var parcel = instrumentation.getUiAutomation().executeShellCommand(command);
+             var in = new android.os.ParcelFileDescriptor.AutoCloseInputStream(parcel)) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
     private static List<MainActivity> finishMainActivities(android.app.Instrumentation instrumentation) {
         List<MainActivity> found = new ArrayList<>();
         instrumentation.runOnMainSync(() -> {

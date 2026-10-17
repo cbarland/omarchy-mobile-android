@@ -102,6 +102,12 @@ def main():
         b"[Desktop Entry]\nName=Android displays\nType=Application\n"
         b"Exec=/usr/bin/omamobile-android display-settings\nTerminal=false\n"
         b"Icon=video-display\nCategories=Settings;HardwareSettings;\n")
+    for action, title, icon in (("network-settings", "Android network settings", "network-wireless"),
+                                ("bluetooth-settings", "Android Bluetooth settings", "bluetooth")):
+        name = "org.omamobile.Android" + ("Network" if action == "network-settings" else "Bluetooth") + "Settings.desktop"
+        assert member_bytes(directory / "clean.tar.gz", "usr/share/applications/" + name) == (
+            f"[Desktop Entry]\nName={title}\nType=Application\nExec=/usr/bin/omamobile-android {action}\n"
+            f"Terminal=false\nIcon={icon}\nCategories=Settings;HardwareSettings;\n").encode()
     assert required_portal <= before.keys(), f"Access portal payload members missing: {required_portal - before.keys()}"
     portal_config = member_bytes(directory / "clean.tar.gz", "etc/xdg/xdg-desktop-portal/hyprland-portals.conf")
     assert portal_config == b"[preferred]\ndefault=*\norg.freedesktop.impl.portal.Access=omamobile\n"

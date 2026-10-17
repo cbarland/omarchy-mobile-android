@@ -139,6 +139,14 @@ with tarfile.open(a.output, "w:gz") as archive:
         b"Terminal=false\n"
         b"Icon=video-display\n"
         b"Categories=Settings;HardwareSettings;\n")
+    for filename, title, action, icon in [
+        ("org.omamobile.AndroidNetworkSettings.desktop", "Android network settings", "network-settings", "network-wireless"),
+        ("org.omamobile.AndroidBluetoothSettings.desktop", "Android Bluetooth settings", "bluetooth-settings", "bluetooth"),
+    ]:
+        put("usr/share/applications/" + filename,
+            ("[Desktop Entry]\nName=" + title + "\nType=Application\n"
+             "Exec=/usr/bin/omamobile-android " + action + "\nTerminal=false\nIcon=" + icon + "\n"
+             "Categories=Settings;HardwareSettings;\n").encode())
     tools = Path(__file__).parent
     for name in ["setup-linux-shell", "start-shell", "omamobile-android", "omamobile-access-shell", "verify-access-portal", "sync-session-theme"]:
         put("root/.local/share/omamobile/" + name, (tools / "linux" / name).read_bytes(), 0o755)
