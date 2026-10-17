@@ -59,11 +59,14 @@ final class AndroidAppPortal implements AutoCloseable {
     }
 
     static Intent settingsIntent(String operation) throws IOException {
+        // Settings keeps nested panels in its task; CLEAR_TOP makes a later
+        // radio request replace the resumed panel instead of reusing it.
+        int flags = Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP;
         return switch (operation) {
             case "network-settings" -> new Intent(Settings.ACTION_WIRELESS_SETTINGS)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    .addFlags(flags);
             case "bluetooth-settings" -> new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    .addFlags(flags);
             default -> throw new IOException("Unknown Android settings operation");
         };
     }
