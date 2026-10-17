@@ -111,7 +111,7 @@ final class RadioStateSnapshot {
                     transports.add(type);
                 }
             }
-            return networkSample(true, transports.toArray(Integer[]::new),
+            return networkSample(true, transports.toArray(new Integer[0]),
                     capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
                     capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED));
         } catch (RuntimeException unavailable) {
