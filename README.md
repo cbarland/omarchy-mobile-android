@@ -72,6 +72,9 @@ see [Android battery state](docs/ANDROID-BATTERY-STATE.md) and
 tiles expose Android's fixed settings panels; see
 [Android radio UI](docs/ANDROID-RADIO-UI.md) and
 [Android network and Bluetooth settings](docs/ANDROID-SETTINGS.md).
+These battery and radio UI integrations are part of the fresh shell payload
+verified on an API 35 x86_64 emulator; replacing an APK does not migrate the
+shell or user profiles in an existing installation.
 Real PipeWire-to-Android transport has passed opt-in emulator tests, but a normal shared audio
 owner, default device, volume, and focus integration is still pending; [AUDIO.md](docs/AUDIO.md)
 documents that foundation. Physical Bluetooth pairing, raw-radio access, and
