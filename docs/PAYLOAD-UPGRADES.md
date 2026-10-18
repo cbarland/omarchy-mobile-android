@@ -40,5 +40,11 @@ updates, and future upstream pin changes need their own compatibility checks.
 JVM behavior tests cover stock replacement, conflict preflight, customized
 unchanged files, removal/addition rollback, process-interruption recovery, newer
 edits, committed recovery, path traversal, and symlink preservation. An adapter
-test prevents execution/refresh against an interrupted update. Prepared-emulator
-and full graphical workflow validation are separate gates.
+test prevents execution/refresh against an interrupted update. On a prepared
+API 35 x86_64 emulator, the visible controls rejected updates while Linux was
+running, preserved a deliberate stock-file conflict without changing the
+ownership manifest, updated 16 changed stock paths plus one missing profile,
+and made a repeated update a zero-file operation. Existing data, profiles and
+Android grants were checked unchanged, and the original installation was
+restored after testing. Shared-mode visual readiness remains a separate gate;
+this does not establish arbitrary upstream-version or ARM64 upgrade safety.
