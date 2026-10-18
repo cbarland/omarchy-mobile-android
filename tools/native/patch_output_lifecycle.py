@@ -1,6 +1,7 @@
 """Apply the exact phase-two lifecycle delta after the pinned phase-one patch."""
 import hashlib
 import json
+import argparse
 from pathlib import Path
 import subprocess
 
@@ -22,3 +23,9 @@ def apply(source: Path) -> None:
     mismatches = [name for name, expected in hashes.items() if actual[name] != expected["phase2"]]
     if mismatches:
         raise RuntimeError(f"Phase-two patch output does not match reviewed hashes: {[(name, actual[name], hashes[name]['phase2']) for name in mismatches]}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("source", type=Path)
+    apply(parser.parse_args().source)
