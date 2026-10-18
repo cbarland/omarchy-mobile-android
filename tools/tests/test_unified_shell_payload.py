@@ -53,6 +53,11 @@ def verify(path):
         assert '&& !phoneFallback &&' not in desktop_bar
         assert 'exclusionMode: phoneFallback || root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto' in desktop_bar
         assert desktop_bar.count('(phoneFallback || root.barHidden) && root.position === ') == 4
+        remap = read("root/.local/share/omarchy/shell/Ui/ScreenMoveRemap.qml")
+        assert 'import Quickshell\n' in remap
+        assert 'target: root.window\n    function onScreenChanged()' in remap
+        assert 'Quickshell.env("OMAMOBILE_PROFILE") === "unified" && root.screen' in remap
+        assert 'settleTimer.restart()' in remap
         quick_settings = read("usr/share/omamobile/shell/plugins/omamobile.quicksettings/QuickSettings.qml")
         assert 'visible: !!root.phoneScreen && (root.opened || root.reveal > 0)' in quick_settings
         assert 'jq -r \'(.mobileBar // .bar).clockFormat // \\"\\"\'' in quick_settings

@@ -11,6 +11,7 @@ def once(text: str, before: str, after: str, name: str) -> str:
 def compose(relative: str, data: bytes) -> bytes:
     targets = {
         "shell/shell.qml", "shell/plugins/bar/Bar.qml", "shell/Ui/OverlayWindow.qml",
+        "shell/Ui/ScreenMoveRemap.qml",
         "shell/services/PluginRegistry.qml",
         "bin/omarchy-hyprland-monitor-scaling",
         "packages/omamobile-shell/plugins/omamobile.bar/Bar.qml",
@@ -156,6 +157,19 @@ def compose(relative: str, data: bytes) -> bytes:
         else if (Quickshell.screens[i].name === "ANDROID-1") phone = Quickshell.screens[i]
       return phone
     }
+''', relative)
+    elif relative == "shell/Ui/ScreenMoveRemap.qml":
+        text = once(text, 'import QtQuick\n', 'import QtQuick\nimport Quickshell\n', relative)
+        text = once(text, '  Connections {\n    target: root.screen\n', '''  Connections {
+    target: root.window
+    function onScreenChanged() {
+      if (Quickshell.env("OMAMOBILE_PROFILE") === "unified" && root.screen)
+        settleTimer.restart()
+    }
+  }
+
+  Connections {
+    target: root.screen
 ''', relative)
     elif relative == "packages/omamobile-shell/plugins/omamobile.bar/Bar.qml":
         text = once(text, '    model: Quickshell.screens\n',
