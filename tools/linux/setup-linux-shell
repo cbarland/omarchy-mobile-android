@@ -17,7 +17,7 @@ fi
 for plugin in /usr/share/omamobile/shell/plugins/omamobile.*; do
   ln -sfn "$plugin" ~/.config/omarchy/plugins/"${plugin##*/}"
 done
-for profile in phone desktop; do
+for profile in phone desktop unified; do
   target=$HOME/.local/share/omamobile/profiles/$profile.json
   [[ -e $target ]] || cp /usr/share/omamobile/android/$profile.json "$target"
 done

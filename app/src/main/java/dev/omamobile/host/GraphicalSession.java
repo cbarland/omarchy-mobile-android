@@ -97,10 +97,9 @@ final class GraphicalSession {
             if (generatedSeeds(phone).contains(migrated) && !migrated.equals(original))
                 Files.write(config, migrated.getBytes(StandardCharsets.UTF_8));
         }
-        monitorConfig = unified ? null
-                : ProfileMonitorConfig.prepare(root, config, profile, generatedSeeds(phone), phone ? 3 : 1);
-        String displayReport = profile + " display config: "
-                + (monitorConfig != null ? monitorConfig.report() : "unified output seed; monitor preparation deferred");
+        monitorConfig = ProfileMonitorConfig.prepare(root, config, profile,
+                unified ? List.of(unifiedSeedConfig()) : generatedSeeds(phone), phone ? 3 : 1);
+        String displayReport = profile + " display config: " + monitorConfig.report();
         Files.write(home.resolve("linux-shell.log"), (displayReport + "\n").getBytes(StandardCharsets.UTF_8));
         android.util.Log.i("OmamobileHyprland", displayReport);
         String fontConfig = "<?xml version=\"1.0\"?><!DOCTYPE fontconfig SYSTEM \"urn:fontconfig:fonts.dtd\"><fontconfig>"
@@ -198,7 +197,7 @@ final class GraphicalSession {
         };
     }
     private java.util.Map<String, String> environment() {
-        return RuntimeSpec.graphicalEnvironment(profile.equals("unified") ? "desktop" : profile,
+        return RuntimeSpec.graphicalEnvironment(profile,
                 guestRuntime(), java.util.TimeZone.getDefault().getID());
     }
 
@@ -216,8 +215,7 @@ final class GraphicalSession {
     private void launchClients(String display, String signature) throws IOException {
         // A login shell may reset PATH in /etc/profile; restore the session's
         // bound client after profile loading, without editing user dotfiles.
-        String shellProfile = profile.equals("unified") ? "desktop" : profile;
-        String script = "export PATH=/opt/omamobile/bin:$PATH; exec /root/.local/share/omamobile/start-shell " + shellProfile;
+        String script = "export PATH=/opt/omamobile/bin:$PATH; exec /root/.local/share/omamobile/start-shell " + profile;
         var sessionEnv = environment();
         sessionEnv.put("WAYLAND_DISPLAY", display);
         sessionEnv.put("HYPRLAND_INSTANCE_SIGNATURE", signature);
@@ -262,7 +260,7 @@ final class GraphicalSession {
     }
 
     synchronized void stopForUser() {
-        Process phoneShell = profile.equals("phone") && clients != null && clients.isAlive() ? clients : null;
+        Process phoneShell = !profile.equals("desktop") && clients != null && clients.isAlive() ? clients : null;
         requestStop();
         Path temporary = null;
         try {
