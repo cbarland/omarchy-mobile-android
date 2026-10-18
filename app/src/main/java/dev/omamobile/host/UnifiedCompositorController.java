@@ -127,6 +127,9 @@ final class UnifiedCompositorController {
             if (acceptsInput()) NativeCompositor.axisAt(role.id(), lease.generation(), dx, dy);
         }
         @Override public void key(int code, boolean pressed) {
+            if (BuildConfig.DEBUG && android.util.Log.isLoggable("OmamobileKeyTrace", android.util.Log.DEBUG))
+                android.util.Log.d("OmamobileKeyTrace", "route role=" + role + " code=" + code + " pressed=" + pressed
+                        + " generation=" + (lease == null ? 0 : lease.generation()) + " accepted=" + acceptsInput());
             if (acceptsInput()) NativeCompositor.keyAt(role.id(), lease.generation(), code, pressed);
         }
         @Override public void unicode(int codepoint) {

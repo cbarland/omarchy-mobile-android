@@ -183,6 +183,7 @@ public abstract class CompositorActivity extends Activity {
         @Override public boolean onHoverEvent(MotionEvent event) { return NativeCompositor.AVAILABLE && pointer(event); }
         @Override public boolean onCheckIsTextEditor() { return true; }
         @Override public boolean dispatchKeyEventPreIme(KeyEvent event) {
+            traceKey("pre-ime", event);
             // Android IMEs can consume Escape DOWN before Activity dispatch,
             // leaving a Wayland application in insert mode with only the UP.
             // Consume this key here after forwarding both edges; the event
@@ -269,6 +270,12 @@ public abstract class CompositorActivity extends Activity {
         }
         return false;
     }
+    private void traceKey(String stage, KeyEvent event) {
+        if (BuildConfig.DEBUG && android.util.Log.isLoggable("OmamobileKeyTrace", android.util.Log.DEBUG))
+            android.util.Log.d("OmamobileKeyTrace", stage + " phone=" + phone() + " action=" + event.getAction()
+                    + " code=" + event.getKeyCode() + " scan=" + event.getScanCode() + " flags=" + event.getFlags()
+                    + " repeat=" + event.getRepeatCount() + " time=" + event.getEventTime());
+    }
     private boolean handleEscape(KeyEvent event) {
         if (handleCaptureRelease(event)) return true;
         if (!NativeCompositor.AVAILABLE || event.getKeyCode() != KeyEvent.KEYCODE_ESCAPE
@@ -278,6 +285,7 @@ public abstract class CompositorActivity extends Activity {
         return true;
     }
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        traceKey("activity", event);
         // Also support callers that dispatch directly to the Activity. Normal
         // ViewRoot delivery consumes Escape in LinuxSurface before the IME.
         if (handleEscape(event)) return true;
