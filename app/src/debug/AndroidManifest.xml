@@ -1,8 +1,0 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application>
-        <activity android:name=".UnifiedOutputSpikeActivity" android:exported="true"
-            android:process=":unified_spike" android:taskAffinity="dev.omamobile.host.unified_spike"
-            android:excludeFromRecents="true" android:resizeableActivity="true"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density|uiMode" />
-    </application>
-</manifest>
