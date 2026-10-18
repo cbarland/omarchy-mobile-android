@@ -1,165 +1,86 @@
-# Private PCM output foundation
+# Shared Linux audio output
 
-`AndroidPcmOutput` is a package-private, explicitly owned FIFO-to-`AudioTrack`
-primitive for S16LE stereo at 48 kHz (four bytes per frame). The experimental
-shared runtime described below owns it through `ManagedAudioOutput`.
-It adds no permissions and makes no claim of audible hardware output.
+Starting Omarchy screens binds one app-private `SharedAudioService` in `:audio`.
+Phone, desktop and shared-compositor clients use that same output. Display
+replacement and graphics-mode switching retain its owner. Stop screens or remove
+the controls task to release it. Audio is output-only; microphone input is not
+implemented.
 
-`ManagedAudioOutput` adds an owning-looper policy around that primitive. A
-validated read/write FIFO probe waits for the first PCM without consuming it;
-focus is requested before an AudioTrack is opened. Idle closes the consumer
-and abandons focus. Denied/lost-focus streams are drained without repeatedly
-requesting focus, and a later stream can resume after idle. The controller is
-used by one shared PipeWire owner bound to the graphical service.
-
-The opt-in `ManagedAudioOutputTest` (`-e managedAudio true`) exercises actual
-FIFO/AudioTrack output with a controlled focus policy: no idle track or readiness
-spin, complete frame submission/replay, denial without repeated requests, and
-release/recovery after focus loss, and silence during graph shutdown. All four cases and the six existing PCM
-cases passed on the disposable API35 x86_64 emulator. These tests do not establish
-real Android focus delivery, acoustic output, or shared-session service behavior.
-
-## Shared session integration
-
-`DesktopService` binds one `SharedAudioService` in `:audio` while screens are
-requested, including phone-only use. Display replacement and switching between
-legacy/shared graphics modes retain this owner. Stop screens and removal of the
-controls task unbind it. The separate JVM holds its own shared installation lease,
-so ordinary main-process Linux commands can still run; updates require all users
-of that installation to stop.
-
-One foreground Python helper owns PipeWire, WirePlumber's policy profile, and
-the Pulse compatibility server. They expose a real FIFO sink named
-`omamobile-android`, not an emulated hardware card. All profiles point their
-native and Pulse clients to `/run/omamobile/a-shared`; their Wayland and D-Bus
-runtimes stay separate. The helper blocks on control/child-exit events when
-idle and records exact process identities. Shutdown silences playback, reaps
-the graph, verifies recorded children are gone, and then releases files and lease.
-Failed cleanup retains ownership and logs the failure. Startup never installs
-packages or changes user PipeWire configuration.
-
-Fresh signed provisioning includes `pipewire`, `pipewire-audio`, `pipewire-pulse`,
-and `wireplumber`. Preserved images missing them need an explicit normal signed
-package update, for example `pacman -Syu --needed pipewire pipewire-audio
-pipewire-pulse wireplumber`, after reviewing that transaction. Payload updates
-and package-manager updates are separate operations.
-
-`SharedAudioServiceTest` (`-e sharedAudio true`) passed on the disposable API35
-emulator: ordinary native and Pulse clients from phone/desktop environments
-shared one owner, acquired real Android focus, advanced the playback head,
-released track/focus on idle, and stopped with the exclusive installation lease
-available again. Two simultaneous streams linked actively to the same sink;
-real transient focus loss/recovery and forced audio-owner death followed by
-Android rebinding and renewed playback also passed. This direct service test
-does not establish the complete normal graphical Start/hotplug/main-process
-death workflow, real hardware routing, or ARM64 behavior.
-Those remain separate gates. Platform focus/route policy follows
-[Android audio focus](https://developer.android.com/media/optimize/audio-focus).
-
-The caller provides an existing FIFO beneath `Context.getFilesDir()`, owns the
-producer, and must call `close()` even after worker EOF or failure. Android's
-Context-provided app-directory alias is accepted; aliases beneath that directory,
-missing files, regular files, changed inode identity, and a different FIFO owner
-are rejected. The final open uses `O_NOFOLLOW`, `O_NONBLOCK`, and `O_CLOEXEC` and
-checks the opened descriptor with `fstat`. This assumes an app-owned producer;
-it is not a filesystem transaction against concurrent hostile same-UID changes.
-
-One worker uses an 8192-byte buffer, polls the input and a cancellation pipe, and
-submits only complete frames. It retains up to three bytes across reads. A writer
-disconnect ends that worker; any final incomplete frame is counted and discarded.
-EOF does not release the track: queued audio can continue playing until the caller
-closes. `bytesRead`, `framesSubmitted`, and `partialBytes` describe transport,
-not physical presentation. Playback head is the public unsigned 32-bit position,
-not a wrap-extended lifetime counter.
-
-Close cancels, pauses the track to interrupt a blocking write, signals a dedicated
-pipe to wake a blocked poll, and joins before releasing any owned descriptor or
-the track. Exactly one byte is sent to the otherwise empty cancellation pipe, so
-the signal cannot fill it. Public `ParcelFileDescriptor.createPipe()` provides
-close-on-exec descriptors on the supported API 29+ range. A join failure retains
-ownership and reports an error so the caller can retry close. Close aborts queued
-audio; it does not promise a graceful drain.
-
-The public AudioTrack write contract explicitly allows another thread's pause
-or stop to interrupt a blocking write and return a short transfer. The worker
-accounts for accepted complete frames and never calls play after startup.
-References: [Android AudioTrack](https://developer.android.com/reference/android/media/AudioTrack),
-[Android Os](https://developer.android.com/reference/android/system/Os), and
-[ParcelFileDescriptor](https://developer.android.com/reference/android/os/ParcelFileDescriptor).
-
-`AndroidPcmOutputTest` covers playback-head progress, fragmented reads, incomplete
-frames, missing or stalled writers, cancellation during a blocked AudioTrack
-write, repeated close/reopen, rejected paths, and release after join. It requires
-explicit `-e audio true` and does not require a prepared Linux installation.
-After installing the host and test APKs, run it with:
+Fresh signed Linux provisioning includes `pipewire`, `pipewire-audio`,
+`pipewire-pulse` and `wireplumber`. Existing images missing these packages need
+an explicit signed package transaction, for example:
 
 ```sh
-adb -s emulator-5562 shell am instrument -w -r -e audio true \
-  -e class dev.omamobile.host.AndroidPcmOutputTest \
-  dev.omamobile.host.test/androidx.test.runner.AndroidJUnitRunner
+pacman -Syu --needed pipewire pipewire-audio pipewire-pulse wireplumber
 ```
 
-Playback-head progress verifies the public Android pipeline. Speakers, physical
-device routing, ARM64 behavior, and a complete Linux audio service need separate
-verification.
+Review that transaction before running it. Playback never installs packages.
+Updating APK-provided shell files and updating Linux packages are separate
+operations.
 
-## PipeWire integration test
+## Ownership and routing
 
-`PipeWireAndroidOutputTest` requires `-e pipewireAudio true` and prepared Linux
-with the existing PipeWire/libpipewire 1:1.6.9-1, Python, pw-cli, and pw-link.
-Missing prerequisites fail an opted-in test. The test-only fixture creates one
-private foreground graph: the audiotestsrc default 440 Hz source, two explicit
-links, and a pipe-tunnel sink emitting S16LE stereo at 48 kHz into AndroidPcmOutput.
-Both private protocol sockets have explicit access; no global policy changes.
+One foreground Python helper owns PipeWire, WirePlumber's policy profile and the
+Pulse compatibility server. Ordinary native and Pulse clients automatically link
+to the `omamobile-android` sink. This is a real FIFO sink, not an emulated hardware
+card. All profiles use `/run/omamobile/a-shared`; their Wayland and D-Bus runtimes
+remain separate. Private XDG configuration leaves user PipeWire settings alone.
 
-The normal test checks actual node formats, running states and active links,
-complete FIFO-frame submission and advancing public playback head. The second
-test cancels the Android consumer while PipeWire is alive, then injects a fixture
-failure. Both require producer reaping, joined Android worker, released track and
-descriptors, and exact FIFO/run-directory removal. Evidence remains in the app's
-private `cache/pipewire-android-proof/<run>` directory. This extends transport
-verification, with the same audibility and integration limits above; it adds no
-application audio service, focus handling, package installation, or default-device
-policy. All public-delivery holds remain.
+`ManagedAudioOutput` waits for FIFO readability without consuming the first PCM.
+It requests Android media focus before opening `AudioTrack`, and releases the
+track and focus after idle. Denied or lost-focus output is discarded without
+repeated focus requests during a continuing stream. Transient gain can resume
+output. This silences Linux audio; it does not pause individual Linux players.
+Android chooses the physical output route and media volume.
 
-The complete owned run holds the shared installation lease through cleanup.
-The single-threaded Python fixture binds its foreground server with
-`PR_SET_PDEATHSIG(SIGKILL)` before exec and checks its parent again after arming;
-an arming failure fails startup. A third test uses public `Os.kill(SIGKILL)` on
-the verified helper identity after the graph is running. It requires the exact
-producer PID/start identity to disappear before FIFO removal and lease release.
-Normal and controlled-failure cases assert Python reaped the server; the forced
-case bypasses Python finally and proves parent-death termination and observed
-process absence, with orphan reaping left to Android. This fixture-specific
-binding does not establish ownership for a future application audio service.
+The FIFO-to-`AudioTrack` primitive transports S16LE stereo at 48 kHz, retains
+partial frames across reads and counts incomplete trailing bytes. It validates
+an app-private, same-UID FIFO using `O_NOFOLLOW` and opened-descriptor identity.
+Close cancels and joins its worker before releasing descriptors. Failed cleanup
+retains ownership so a later stop can retry; it does not hide the failure.
 
-## Ordinary Linux-client policy test
+The audio JVM holds a shared installation lease independently of main-process
+Linux commands. Exact helper and child PID/start identities guard cleanup. The
+helper blocks on control and child-exit events when idle. Shutdown silences
+output, reaps the graph and verifies children are gone before releasing its
+files and lease. Logs are in app-private `files/audio/` and Android logcat under
+`OmamobileAudio`. Startup errors are logged without preventing graphics startup.
 
-`PipeWirePolicyOutputTest` is a separate opt-in integration gate. Run it only on a
-prepared disposable emulator with the signed Arch packages `pipewire`,
-`libpipewire`, `pipewire-audio`, `pipewire-pulse` 1:1.6.9-1 and `wireplumber`
-0.5.18-1. It checks the installed WirePlumber policy config hash and fails on
-missing or changed prerequisites. Enable it with `-e pipewirePolicyAudio true`
-and class `dev.omamobile.host.PipeWirePolicyOutputTest`.
+## Verification and limits
 
-Its private foreground fixture uses WirePlumber's installed policy profile,
-PipeWire's internal software driver and a pipe-tunnel sink connected to a real
-app-owned source FIFO. One owned foreground GNU `tee` relay copies those PCM
-bytes to the Android FIFO and a regular capture file; it is the source FIFO's
-only reader. It disables Pulse's fallback sink in a private XDG config. A
-normal native `pw-play` stream, a second native stream after idle, and a normal
-Pulse `paplay` stream must each automatically link to that default sink and
-produce complete frames plus an advancing Android playback head while the
-client is active. Each captured segment must contain the generated 440 Hz tone,
-and Android's read/submitted byte counts must catch up to the capture length.
-The relay requires the installed signed Arch `coreutils` package. There is no
-synthetic test source or manual link. The test
-also checks that the Android worker survives idle, that all exact foreground
-children are gone after normal stop or forced helper death, and that the track,
-descriptors, both FIFOs and run directory are released. Raw logs, graph snapshots,
-identities and receipts remain under the app's private
-`cache/pipewire-policy-proof/<run>` directory.
+The disposable API 35 x86_64 emulator passed six `AndroidPcmOutputTest` cases,
+four `ManagedAudioOutputTest` cases and the prepared-Linux
+`SharedAudioServiceTest`. The service test verifies normal native/Pulse clients,
+two simultaneous streams actively linked to one sink, actual Android transient
+focus loss/recovery, owner-process death and rebinding, renewed playback, idle
+release, child reaping and exclusive-installation access after stop.
 
-This is an application-to-Android pipeline gate, not a phone/desktop audio
-service. It does not claim speaker audibility, Android focus/routing policy,
-real hardware, or service lifecycle support.
+Normal host controls also passed playback before/after a real integration update,
+idle release, unchanged audio ownership across graphics-mode switching and
+external-display reconnect, and cleanup after main-process death. The combined
+run's early screenshots were incomplete; graphical readiness and painting are
+tracked separately from this audio pipeline result.
+
+These checks observe bytes, submitted frames and advancing public playback-head
+positions. They do not establish speaker audibility, physical Bluetooth/USB
+routing, ARM64 operation, latency, power efficiency, per-application volume UI,
+microphone capture or media-key/MPRIS integration. All native binary publication
+holds remain.
+
+After installing the host and instrumentation APKs on a disposable prepared
+emulator, enable the relevant opt-in tests explicitly:
+
+```sh
+adb -s emulator-5562 shell am instrument -w -r -e audio true -e managedAudio true -e sharedAudio true -e class dev.omamobile.host.AndroidPcmOutputTest,dev.omamobile.host.ManagedAudioOutputTest,dev.omamobile.host.SharedAudioServiceTest dev.omamobile.host.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Earlier isolated graph fixtures remain opt-in as `PipeWireAndroidOutputTest`
+(`pipewireAudio=true`) and `PipeWirePolicyOutputTest`
+(`pipewirePolicyAudio=true`). They require the signed package versions documented
+in their test prerequisites. They check transport, tone content and cleanup;
+they are not substitutes for the service and normal-controls checks.
+
+Platform contracts: [Android audio focus](https://developer.android.com/media/optimize/audio-focus),
+[AudioTrack](https://developer.android.com/reference/android/media/AudioTrack),
+[Os](https://developer.android.com/reference/android/os/Os) and
+[ParcelFileDescriptor](https://developer.android.com/reference/android/os/ParcelFileDescriptor).
