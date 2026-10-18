@@ -21,7 +21,7 @@ public final class MainActivity extends Activity {
     private HostRuntime runtime;
     private TextView status, console;
     private EditText command;
-    private Button run, importImage, install, downloadInstall, exportData, recoverData, screens, stop;
+    private Button run, importImage, install, downloadInstall, exportData, recoverData, screens, unifiedPreview, stop;
     private CheckBox ando, androidDns;
     private DisplaySettings displaySettings;
     private android.app.AlertDialog credits;
@@ -86,7 +86,7 @@ public final class MainActivity extends Activity {
         screens.setText(R.string.start_screens);
         screens.setOnClickListener(v -> startForegroundService(new Intent(this, DesktopService.class)));
         layout.addView(screens);
-        Button unifiedPreview = new Button(this);
+        unifiedPreview = new Button(this);
         unifiedPreview.setText(R.string.start_shared_compositor_preview);
         unifiedPreview.setOnClickListener(v -> startForegroundService(new Intent(this, DesktopService.class)
                 .setAction(DesktopService.START_UNIFIED)));
@@ -220,6 +220,7 @@ public final class MainActivity extends Activity {
         install.setEnabled(runtime.installerAvailable() && !runtime.installed() && !runtime.busy());
         downloadInstall.setEnabled(runtime.installerAvailable() && !runtime.installed() && !runtime.busy());
         screens.setEnabled(runtime.graphicsReady() && !runtime.busy());
+        unifiedPreview.setEnabled(runtime.graphicsReady() && !runtime.busy());
         ando.setEnabled(!runtime.busy());
         androidDns.setEnabled(!runtime.busy());
         stop.setEnabled(runtime.busy());

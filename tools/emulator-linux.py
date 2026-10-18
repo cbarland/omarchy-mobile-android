@@ -25,6 +25,7 @@ p.add_argument("--adb", default=shutil.which("adb") or (str(Path(os.environ.get(
 p.add_argument("--serial", default="emulator-5554")
 sub = p.add_subparsers(dest="action", required=True)
 sub.add_parser("start", help="Launch both displays using the visible Android app control")
+sub.add_parser("start-unified", help="Launch the shared compositor preview using the visible Android control")
 sub.add_parser("stop", help="Stop both displays using the visible Android app control")
 command = sub.add_parser("command", help="Run a setup command through Android instrumentation (restarts the app)",
                          description="Run a setup command through Android instrumentation. This may restart the app; acknowledge it with --allow-app-restart.")
@@ -33,7 +34,7 @@ command.add_argument("--file", type=Path)
 command.add_argument("--allow-app-restart", action="store_true",
                      help="Acknowledge that Android instrumentation restarts the app")
 session = sub.add_parser("session", help="Run in an active display's Linux environment without restarting Android")
-session.add_argument("profile", choices=["phone", "desktop"])
+session.add_argument("profile", choices=["phone", "desktop", "unified"])
 session.add_argument("text", nargs="?")
 session.add_argument("--file", type=Path, help="Read a Linux script without nesting shell quotes")
 push = sub.add_parser("push")
@@ -67,10 +68,10 @@ def session_adb_command(profile, session_text, *, metadata_timeout=30, deadline=
     architecture = metadata(["shell", "getprop", "ro.product.cpu.abi"]).strip()
     native = apk.rsplit("/", 1)[0] + "/lib/" + ("arm64" if architecture == "arm64-v8a" else architecture)
     root = ready["ROOTFS"]
-    runtime = "/run/omamobile/" + ("p" if profile == "phone" else "d")
+    runtime = "/run/omamobile/" + {"phone": "p", "desktop": "d", "unified": "u"}[profile]
     argv = ["run-as", "dev.omamobile.host", "/system/bin/env", "-i", "HOME=/root", "USER=root", "LANG=C.UTF-8",
             "PATH=/usr/lib/omamobile/session-bin:/root/.local/share/omarchy/bin:/usr/local/bin:/usr/bin:/bin", "OMARCHY_PATH=/root/.local/share/omarchy",
-            "OMAMOBILE_SESSION_HOST=android", "OMAMOBILE_PROFILE=" + profile, "GSETTINGS_BACKEND=keyfile",
+            "OMAMOBILE_SESSION_HOST=android", "OMAMOBILE_PROFILE=" + ("desktop" if profile == "unified" else profile), "GSETTINGS_BACKEND=keyfile",
             "XDG_RUNTIME_DIR=" + runtime, "WAYLAND_DISPLAY=" + ready["WAYLAND_DISPLAY"],
             "HYPRLAND_INSTANCE_SIGNATURE=" + ready["HYPRLAND_INSTANCE_SIGNATURE"], "DBUS_SESSION_BUS_ADDRESS=unix:path=" + runtime + "/bus",
             "QT_QPA_PLATFORM=wayland", "QT_QUICK_BACKEND=software", "QSG_RENDER_LOOP=basic",
@@ -79,8 +80,8 @@ def session_adb_command(profile, session_text, *, metadata_timeout=30, deadline=
             "--", "/bin/bash", "-c", session_text]
     return adb + ["shell", shlex.join(argv)]
 
-if a.action in ("start", "stop"):
-    control = "START OMARCHY SCREENS" if a.action == "start" else "STOP GRAPHICAL SESSIONS"
+if a.action in ("start", "start-unified", "stop"):
+    control = {"start": "START OMARCHY SCREENS", "start-unified": "START SHARED COMPOSITOR PREVIEW", "stop": "STOP GRAPHICAL SESSIONS"}[a.action]
     adb_run(adb + ["shell", "am", "start", "--display", "0", "-W", "-n", "dev.omamobile.host/.MainActivity"], check=True)
     adb_run(adb + ["shell", "uiautomator", "dump", "/data/local/tmp/omamobile-start.xml"], check=True, capture_output=True)
     tree = ET.fromstring(adb_output(adb + ["exec-out", "cat", "/data/local/tmp/omamobile-start.xml"]))
@@ -103,7 +104,7 @@ if a.action in ("start", "stop"):
     if a.action == "stop":
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
-            owners = adb_run(adb + ["shell", "pidof", "dev.omamobile.host:phone", "dev.omamobile.host:desktop"],
+            owners = adb_run(adb + ["shell", "pidof", "dev.omamobile.host:phone", "dev.omamobile.host:desktop", "dev.omamobile.host:unified"],
                                     capture_output=True, text=True, check=False, timeout=5)
             if owners.returncode == 1 and not owners.stdout.strip():
                 print("Both display owners stopped")
@@ -114,7 +115,7 @@ if a.action in ("start", "stop"):
         raise RuntimeError("Display owners did not stop after the normal Stop control")
     # A tap queues native compositor startup. Confirm live IPC instead of
     # handing subsequent checks a ready file left by the previous process.
-    for profile in ("phone", "desktop"):
+    for profile in (("unified",) if a.action == "start-unified" else ("phone", "desktop")):
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
             try:

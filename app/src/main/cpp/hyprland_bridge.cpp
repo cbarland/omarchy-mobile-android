@@ -8,6 +8,17 @@
 
 extern "C" {
 int anhyprland_run(ANativeWindow*, int, int, const char*, void (*)(void*), void*);
+int anhyprland_run_generation(ANativeWindow*, int, int, uint64_t, const char*, void (*)(void*), void*);
+void anhyprland_set_output_listener(void (*)(void*, int, uint64_t, int), void*);
+int anhyprland_output_surface(int, uint64_t, ANativeWindow*, int, int);
+int anhyprland_output_resize(int, uint64_t, int, int);
+int anhyprland_output_remove(int, uint64_t);
+int anhyprland_pointer_at(int, uint64_t, float, float, uint32_t, int);
+int anhyprland_touch_at(int, uint64_t, int, int, float, float);
+int anhyprland_axis_at(int, uint64_t, float, float);
+int anhyprland_key_at(int, uint64_t, uint32_t, int);
+int anhyprland_unicode_at(int, uint64_t, uint32_t);
+int anhyprland_focus_at(int, uint64_t, int);
 int anhyprland_window(ANativeWindow*, int, int);
 int anhyprland_pointer(float, float, uint32_t, int);
 int anhyprland_touch(int, int, float, float);
@@ -36,8 +47,16 @@ static void ready(void*) {
     env->DeleteLocalRef(display);
     env->DeleteLocalRef(signature);
 }
-extern "C" JNIEXPORT jint JNICALL JNI_FN(run)(JNIEnv* env, jclass cls, jobject surface, jint width, jint height,
+static void outputState(void*, int id, uint64_t generation, int status) {
+    JNIEnv* env = nullptr;
+    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) return;
+    auto method = env->GetStaticMethodID(bridge, "onOutputState", "(IJI)V");
+    env->CallStaticVoidMethod(bridge, method, id, static_cast<jlong>(generation), status);
+}
+static jint run(JNIEnv* env, jclass cls, jobject surface, jint width, jint height, jlong generation,
         jstring jhome, jstring jruntime, jstring jconfig, jstring jrootfs, jstring jwrapper, jstring jlibraries, jstring jmagic, jstring jxkb) {
+    auto window = surface ? ANativeWindow_fromSurface(env, surface) : nullptr;
+    if (!window) return -1;
     env->GetJavaVM(&vm);
     bridge = static_cast<jclass>(env->NewGlobalRef(cls));
     auto home = string(env, jhome), runtime = string(env, jruntime), config = string(env, jconfig);
@@ -57,14 +76,40 @@ extern "C" JNIEXPORT jint JNICALL JNI_FN(run)(JNIEnv* env, jclass cls, jobject s
     setenv("TMPDIR", runtime.c_str(), 1);
     setenv("ARLINUX_EXEC_WRAPPER", wrapper.c_str(), 1);
     setenv("GIO_USE_VFS", "local", 1);
-    auto window = ANativeWindow_fromSurface(env, surface);
-    if (!window) return -1;
-    int result = anhyprland_run(window, width, height, config.c_str(), ready, nullptr);
+    if (generation > 0) anhyprland_set_output_listener(outputState, nullptr);
+    int result = generation > 0
+            ? anhyprland_run_generation(window, width, height, generation, config.c_str(), ready, nullptr)
+            : anhyprland_run(window, width, height, config.c_str(), ready, nullptr);
+    if (generation > 0) anhyprland_set_output_listener(nullptr, nullptr);
     ANativeWindow_release(window);
     env->DeleteGlobalRef(bridge);
     bridge = nullptr;
     return result;
 }
+extern "C" JNIEXPORT jint JNICALL JNI_FN(run)(JNIEnv* env, jclass cls, jobject surface, jint width, jint height,
+        jstring home, jstring runtime, jstring config, jstring rootfs, jstring wrapper, jstring libraries, jstring magic, jstring xkb) {
+    return run(env, cls, surface, width, height, 0, home, runtime, config, rootfs, wrapper, libraries, magic, xkb);
+}
+extern "C" JNIEXPORT jint JNICALL JNI_FN(runUnified)(JNIEnv* env, jclass cls, jobject surface, jint width, jint height, jlong generation,
+        jstring home, jstring runtime, jstring config, jstring rootfs, jstring wrapper, jstring libraries, jstring magic, jstring xkb) {
+    if (generation <= 0) return -1;
+    return run(env, cls, surface, width, height, generation, home, runtime, config, rootfs, wrapper, libraries, magic, xkb);
+}
+extern "C" JNIEXPORT jint JNICALL JNI_FN(outputSurface)(JNIEnv* env, jclass, jint id, jlong generation, jobject surface, jint width, jint height) {
+    auto window = surface ? ANativeWindow_fromSurface(env, surface) : nullptr;
+    if (surface && !window) return -1;
+    int result = anhyprland_output_surface(id, generation, window, width, height);
+    if (window) ANativeWindow_release(window);
+    return result;
+}
+extern "C" JNIEXPORT jint JNICALL JNI_FN(outputResize)(JNIEnv*, jclass, jint id, jlong generation, jint width, jint height) { return anhyprland_output_resize(id, generation, width, height); }
+extern "C" JNIEXPORT jint JNICALL JNI_FN(outputRemove)(JNIEnv*, jclass, jint id, jlong generation) { return anhyprland_output_remove(id, generation); }
+extern "C" JNIEXPORT jint JNICALL JNI_FN(pointerAt)(JNIEnv*, jclass, jint id, jlong generation, jfloat x, jfloat y, jint button, jboolean pressed) { return anhyprland_pointer_at(id, generation, x, y, button, pressed); }
+extern "C" JNIEXPORT jint JNICALL JNI_FN(touchAt)(JNIEnv*, jclass, jint id, jlong generation, jint touch, jint action, jfloat x, jfloat y) { return anhyprland_touch_at(id, generation, touch, action, x, y); }
+extern "C" JNIEXPORT jint JNICALL JNI_FN(axisAt)(JNIEnv*, jclass, jint id, jlong generation, jfloat x, jfloat y) { return anhyprland_axis_at(id, generation, x, y); }
+extern "C" JNIEXPORT jint JNICALL JNI_FN(keyAt)(JNIEnv*, jclass, jint id, jlong generation, jint code, jboolean pressed) { return anhyprland_key_at(id, generation, code, pressed); }
+extern "C" JNIEXPORT jint JNICALL JNI_FN(unicodeAt)(JNIEnv*, jclass, jint id, jlong generation, jint code) { return anhyprland_unicode_at(id, generation, code); }
+extern "C" JNIEXPORT jint JNICALL JNI_FN(focusAt)(JNIEnv*, jclass, jint id, jlong generation, jboolean focused) { return anhyprland_focus_at(id, generation, focused); }
 extern "C" JNIEXPORT jint JNICALL JNI_FN(window)(JNIEnv* env, jclass, jobject surface, jint width, jint height) {
     auto window = surface ? ANativeWindow_fromSurface(env, surface) : nullptr;
     int result = anhyprland_window(window, width, height);
