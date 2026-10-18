@@ -94,14 +94,15 @@ public class DisplayPreviewControllerTest {
     @Test public void unifiedPreviewTargetsExternalOutputAndKeepsPhoneScale() throws Exception {
         Path directory = temporary.getRoot().toPath().resolve("preview");
         Path unified = temporary.getRoot().toPath().resolve("unified/monitors.lua");
-        String original = "hl.monitor({ output = \"ANDROID-1\", mode = \"preferred\", position = \"0x0\", scale = 3 })\n"
-                + "hl.monitor({ output = \"ANDROID-2\", mode = \"preferred\", position = \"auto\", scale = 1 })\n";
+        String original = "local omamobile_phone_scale = 2.25\nlocal omarchy_monitor_scale = 1.6\n"
+                + "hl.monitor({ output = \"ANDROID-1\", mode = \"preferred\", position = \"0x0\", scale = omamobile_phone_scale })\n"
+                + "hl.monitor({ output = \"ANDROID-2\", mode = \"preferred\", position = \"auto\", scale = omarchy_monitor_scale })\n";
         Files.createDirectories(unified.getParent());
         write(unified, original);
         var preview = new DisplayPreviewController(unified, directory, "unified");
         preview.preview(125, 1000);
-        assertTrue(read(unified).contains("ANDROID-1\", mode = \"preferred\", position = \"0x0\", scale = 3"));
-        assertTrue(read(unified).contains("ANDROID-2\", mode = \"preferred\", position = \"auto\", scale = 1.25"));
+        assertTrue(read(unified).contains("omamobile_phone_scale = 2.25"));
+        assertTrue(read(unified).contains("local omarchy_monitor_scale = 1.25"));
         String journal = read(directory.resolve("pending.properties"));
         assertTrue(journal.contains("profile=unified"));
         assertEquals(DisplayPreviewController.RevertResult.REVERTED, preview.revert());

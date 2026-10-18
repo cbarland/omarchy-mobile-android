@@ -25,9 +25,10 @@ final class DisplayPreviewController {
             + "local omarchy_monitor_scale = ([0-9]+(?:\\.[0-9]+)?)\\n"
             + "\\Qhl.monitor({ output = \"\", mode = \"preferred\", position = \"auto\", scale = omarchy_monitor_scale })\\E\\n");
     private static final Pattern UNIFIED_GENERATED = Pattern.compile(
-            "\\Qhl.monitor({ output = \"ANDROID-1\", mode = \"preferred\", position = \"0x0\", scale = 3 })\\E\\n"
-            + "\\Qhl.monitor({ output = \"ANDROID-2\", mode = \"preferred\", position = \"auto\", scale = \\E"
-            + "([0-9]+(?:\\.[0-9]+)?)\\Q })\\E\\n");
+            "local omamobile_phone_scale = ([0-9]+(?:\\.[0-9]+)?)\\n"
+            + "local omarchy_monitor_scale = ([0-9]+(?:\\.[0-9]+)?)\\n"
+            + "hl\\.monitor\\(\\{ output = \"ANDROID-1\", mode = \"preferred\", position = \"0x0\", scale = omamobile_phone_scale \\}\\)\\n"
+            + "hl\\.monitor\\(\\{ output = \"ANDROID-2\", mode = \"preferred\", position = \"auto\", scale = omarchy_monitor_scale \\}\\)\\n");
     enum RevertResult { NONE, REVERTED, CHANGED }
     private record Pending(String profile, Path target, byte[] before, byte[] applied, long deadline) { }
     private final Path monitor, unifiedMonitor, state, boundary;
@@ -68,9 +69,10 @@ final class DisplayPreviewController {
         String text = new String(original, StandardCharsets.UTF_8);
         var match = pattern().matcher(text);
         if (!match.matches()) throw new IOException("Custom desktop monitor config preserved");
+        int scaleGroup = profile.equals("unified") ? 2 : 1;
         String selected = String.format(Locale.ROOT, "%.2f", scale / 100.0);
-        if (Double.parseDouble(match.group(1)) == scale / 100.0) throw new IOException("Desktop already uses that scale");
-        byte[] applied = (text.substring(0, match.start(1)) + selected + text.substring(match.end(1)))
+        if (Double.parseDouble(match.group(scaleGroup)) == scale / 100.0) throw new IOException("Desktop already uses that scale");
+        byte[] applied = (text.substring(0, match.start(scaleGroup)) + selected + text.substring(match.end(scaleGroup)))
                 .getBytes(StandardCharsets.UTF_8);
         Pending preview = new Pending(profile, target, original, applied, Math.addExact(now, TIMEOUT_MS));
         writePending(preview);

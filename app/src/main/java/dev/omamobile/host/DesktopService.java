@@ -119,6 +119,7 @@ public final class DesktopService extends Service {
         try { preview.selectProfile(requested == Mode.UNIFIED ? "unified" : "desktop"); }
         catch (java.io.IOException error) {
             android.util.Log.w("OmamobileDisplay", "Cannot select display preview target", error);
+            return;
         }
         running = true;
         mode = requested;

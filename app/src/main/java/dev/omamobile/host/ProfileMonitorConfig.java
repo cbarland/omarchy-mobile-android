@@ -105,7 +105,17 @@ final class ProfileMonitorConfig {
             end = next + 1;
         }
         if (end == 0) throw new IllegalArgumentException("Expected generated monitor seed");
-        return seed.substring(0, end);
+        String monitors = seed.substring(0, end);
+        String[] lines = monitors.split("\\n", -1);
+        if (lines.length < 3 || !lines[0].contains("output = \"ANDROID-1\"")
+                || !lines[1].contains("output = \"ANDROID-2\"")
+                || !lines[0].contains("scale = 3 })") || !lines[1].contains("scale = 1 })")
+                || !lines[0].startsWith("hl.monitor(") || !lines[1].startsWith("hl.monitor("))
+            throw new IllegalArgumentException("Expected generated unified monitor seed");
+        lines[0] = lines[0].replace("scale = 3 })", "scale = omamobile_phone_scale })");
+        lines[1] = lines[1].replace("scale = 1 })", "scale = omarchy_monitor_scale })");
+        return "local omamobile_phone_scale = 3\nlocal omarchy_monitor_scale = 1\n"
+                + lines[0] + "\n" + lines[1] + "\n";
     }
 
     private static void atomicWrite(Path path, String text) throws IOException {
