@@ -76,8 +76,10 @@ public final class UnifiedOutputSpikeActivity extends Activity {
                     runOnUiThread(() -> {
                         if (stopping) return;
                         ready = true;
-                        for (OutputView output : new OutputView[]{phone, external})
-                            if (output.getHolder().getSurface().isValid()) attach(output);
+                        // run() already owns the initial phone Surface. A new
+                        // ANativeWindow wrapper can still reference that same
+                        // BufferQueue, which cannot have a second EGLSurface.
+                        if (external.getHolder().getSurface().isValid()) attach(external);
                     });
                     new Thread(() -> {
                         try {
