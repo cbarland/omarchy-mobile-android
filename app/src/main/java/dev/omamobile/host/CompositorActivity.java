@@ -189,6 +189,11 @@ public abstract class CompositorActivity extends Activity {
             // Consume this key here after forwarding both edges; the event
             // then cannot reach Activity dispatch and be forwarded twice.
             if (handleEscape(event)) return true;
+            // IMEs may asynchronously return a hardware DOWN after its UP has
+            // already reached Activity dispatch. Linux then sees a stuck key.
+            // Own both hardware edges here; soft IME composition still enters
+            // through InputConnection commitText/finishComposingText.
+            if ((event.getFlags() & KeyEvent.FLAG_SOFT_KEYBOARD) == 0 && forwardKey(event)) return true;
             return super.dispatchKeyEventPreIme(event);
         }
         @Override public InputConnection onCreateInputConnection(EditorInfo info) {
@@ -286,10 +291,14 @@ public abstract class CompositorActivity extends Activity {
     }
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         traceKey("activity", event);
+        return forwardKey(event) || super.dispatchKeyEvent(event);
+    }
+    private boolean forwardKey(KeyEvent event) {
         // Also support callers that dispatch directly to the Activity. Normal
         // ViewRoot delivery consumes Escape in LinuxSurface before the IME.
         if (handleEscape(event)) return true;
-        if (!NativeCompositor.AVAILABLE || event.getKeyCode() == KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event);
+        if (!NativeCompositor.AVAILABLE || event.getKeyCode() == KeyEvent.KEYCODE_BACK
+                || (event.getAction() != KeyEvent.ACTION_DOWN && event.getAction() != KeyEvent.ACTION_UP)) return false;
         int code = event.getScanCode();
         if (code == 0) code = switch (event.getKeyCode()) {
             case KeyEvent.KEYCODE_A -> 30; case KeyEvent.KEYCODE_B -> 48; case KeyEvent.KEYCODE_C -> 46;
@@ -316,6 +325,6 @@ public abstract class CompositorActivity extends Activity {
         };
         if (code != 0) { controller.key(code, event.getAction() == KeyEvent.ACTION_DOWN); return true; }
         if (event.getAction() == KeyEvent.ACTION_DOWN && event.getUnicodeChar() > 0) { controller.unicode(event.getUnicodeChar()); return true; }
-        return super.dispatchKeyEvent(event);
+        return false;
     }
 }
