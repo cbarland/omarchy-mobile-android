@@ -1,16 +1,12 @@
 package dev.omamobile.host;
 
 import android.content.Context;
-import android.media.AudioTrack;
-import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
-import android.system.ErrnoException;
 import android.system.Os;
 import android.system.OsConstants;
 import android.system.StructStat;
 import androidx.test.platform.app.InstrumentationRegistry;
 import java.io.File;
-import java.io.FileDescriptor;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -23,6 +19,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
 import static org.junit.Assert.*;
+import static dev.omamobile.host.PcmOutputAssertions.assertReleased;
 
 /** Opt-in ordinary Linux clients through real Android PCM output, not an app audio service. */
 public class PipeWirePolicyOutputTest {
@@ -123,7 +120,7 @@ public class PipeWirePolicyOutputTest {
             }
             assertNull(output.failure());
             output.close();
-            assertReleased(output);
+            assertReleased(output, "Owned descriptor remains open");
             assertEquals(0, output.partialBytes());
             assertEquals(output.bytesRead(), output.framesSubmitted() * 4);
         } catch (Throwable error) {
@@ -346,20 +343,4 @@ public class PipeWirePolicyOutputTest {
         return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
     }
 
-    private static Object field(Object object, String name) throws Exception {
-        var field = object.getClass().getDeclaredField(name);
-        field.setAccessible(true);
-        return field.get(object);
-    }
-
-    private static void assertReleased(AndroidPcmOutput output) throws Exception {
-        assertFalse(output.workerAlive());
-        assertEquals(AudioTrack.STATE_UNINITIALIZED, ((AudioTrack) field(output, "track")).getState());
-        var cancel = (ParcelFileDescriptor[]) field(output, "cancellation");
-        for (FileDescriptor fd : new FileDescriptor[]{(FileDescriptor) field(output, "input"),
-                cancel[0].getFileDescriptor(), cancel[1].getFileDescriptor()}) {
-            try { Os.fstat(fd); fail("Owned descriptor remains open"); }
-            catch (ErrnoException expected) { assertEquals(OsConstants.EBADF, expected.errno); }
-        }
-    }
 }

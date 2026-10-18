@@ -1,15 +1,11 @@
 package dev.omamobile.host;
 
 import android.content.Context;
-import android.media.AudioTrack;
-import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
-import android.system.ErrnoException;
 import android.system.Os;
 import android.system.OsConstants;
 import androidx.test.platform.app.InstrumentationRegistry;
 import java.io.File;
-import java.io.FileDescriptor;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -22,6 +18,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
 import static org.junit.Assert.*;
+import static dev.omamobile.host.PcmOutputAssertions.assertReleased;
 
 /** Real Linux producer and Android consumer, deliberately disconnected from application services. */
 public class PipeWireAndroidOutputTest {
@@ -97,7 +94,7 @@ public class PipeWireAndroidOutputTest {
                     .put("forcedHelperKill", finish == Finish.KILL);
             if (injectFailure) {
                 output.close(); // Cancel the consumer while the real producer is still running.
-                assertReleased(output);
+                assertReleased(output, "Owned descriptor remains open");
                 assertTrue(helper.isAlive());
             }
             if (finish == Finish.KILL) {
@@ -123,7 +120,7 @@ public class PipeWireAndroidOutputTest {
                 assertEquals(0, output.partialBytes());
                 assertEquals(output.bytesRead(), output.framesSubmitted() * 4);
             }
-            output.close(); assertReleased(output);
+            output.close(); assertReleased(output, "Owned descriptor remains open");
             observed.put("finalBytesRead", output.bytesRead()).put("finalFramesSubmitted", output.framesSubmitted())
                     .put("workerJoined", !output.workerAlive()).put("trackReleased", true);
             Files.write(directory.resolve("android.json"), observed.toString(2).getBytes(StandardCharsets.UTF_8));
@@ -234,18 +231,5 @@ public class PipeWireAndroidOutputTest {
 
     private static String read(Path path) throws Exception {
         return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
-    }
-    private static Object field(Object object, String name) throws Exception {
-        var field = object.getClass().getDeclaredField(name); field.setAccessible(true); return field.get(object);
-    }
-    private static void assertReleased(AndroidPcmOutput output) throws Exception {
-        assertFalse(output.workerAlive());
-        assertEquals(AudioTrack.STATE_UNINITIALIZED, ((AudioTrack) field(output, "track")).getState());
-        var cancel = (ParcelFileDescriptor[]) field(output, "cancellation");
-        for (FileDescriptor fd : new FileDescriptor[]{(FileDescriptor) field(output, "input"),
-                cancel[0].getFileDescriptor(), cancel[1].getFileDescriptor()}) {
-            try { Os.fstat(fd); fail("Owned descriptor remains open"); }
-            catch (ErrnoException expected) { assertEquals(OsConstants.EBADF, expected.errno); }
-        }
     }
 }
