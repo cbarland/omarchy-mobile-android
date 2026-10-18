@@ -10,7 +10,6 @@ import android.system.OsConstants;
 import androidx.test.platform.app.InstrumentationRegistry;
 import java.io.File;
 import java.io.FileDescriptor;
-import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.util.UUID;
 import java.util.ArrayList;
@@ -20,6 +19,8 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import static org.junit.Assert.*;
+import static dev.omamobile.host.PcmOutputAssertions.assertReleased;
+import static dev.omamobile.host.PcmOutputAssertions.field;
 
 /** Explicit public-API transport checks, not a claim of audible hardware output. */
 public class AndroidPcmOutputTest {
@@ -67,7 +68,7 @@ public class AndroidPcmOutputTest {
                 long start = SystemClock.elapsedRealtime();
                 output.close(); output.close();
                 assertTrue("close took too long", SystemClock.elapsedRealtime() - start < 1000);
-                assertReleased(output);
+                assertReleased(output, "PCM descriptor remains open");
                 assertEquals(0, output.bytesRead());
                 assertNull(output.failure());
             }
@@ -82,7 +83,7 @@ public class AndroidPcmOutputTest {
             Os.write(writer, new byte[]{1, 2, 3, 4}, 0, 4);
             await(() -> output.framesSubmitted() == 1, 2000);
             output.close();
-            assertReleased(output); assertNull(output.failure());
+            assertReleased(output, "PCM descriptor remains open"); assertNull(output.failure());
         } finally { output.close(); Os.close(writer); Files.delete(fifo.toPath()); Files.delete(directory.toPath()); }
     }
 
@@ -104,7 +105,7 @@ public class AndroidPcmOutputTest {
                     + " submitted=" + output.framesSubmitted() + " head=" + output.playbackHeadFrames());
         } finally {
             output.close(); writer.interrupt(); writer.join(1500);
-            assertFalse(writer.isAlive()); assertReleased(output);
+            assertFalse(writer.isAlive()); assertReleased(output, "PCM descriptor remains open");
             Files.delete(fifo.toPath()); Files.delete(directory.toPath());
         }
     }
@@ -138,7 +139,7 @@ public class AndroidPcmOutputTest {
             long start = SystemClock.elapsedRealtime(); output.close();
             long elapsed = SystemClock.elapsedRealtime() - start;
             assertTrue("blocked write close=" + elapsed, elapsed < 1000);
-            assertReleased(output); assertNull(output.failure());
+            assertReleased(output, "PCM descriptor remains open"); assertNull(output.failure());
             android.util.Log.i("AndroidPcmProof", "backpressured closeMs=" + elapsed);
         } finally {
             output.close(); writer.interrupt(); writer.join(1500); assertFalse(writer.isAlive());
@@ -190,19 +191,6 @@ public class AndroidPcmOutputTest {
     private void reject(File file) throws Exception {
         try (AndroidPcmOutput ignored = AndroidPcmOutput.open(context, file)) { fail("Accepted " + file); }
         catch (java.io.IOException expected) { }
-    }
-    private static Object field(Object object, String name) throws Exception {
-        Field field = object.getClass().getDeclaredField(name); field.setAccessible(true); return field.get(object);
-    }
-    private static void assertReleased(AndroidPcmOutput output) throws Exception {
-        assertFalse(output.workerAlive());
-        assertEquals(AudioTrack.STATE_UNINITIALIZED, ((AudioTrack) field(output, "track")).getState());
-        ParcelFileDescriptor[] cancel = (ParcelFileDescriptor[]) field(output, "cancellation");
-        for (FileDescriptor fd : new FileDescriptor[]{(FileDescriptor) field(output, "input"),
-                cancel[0].getFileDescriptor(), cancel[1].getFileDescriptor()}) {
-            try { Os.fstat(fd); fail("PCM descriptor remains open"); }
-            catch (ErrnoException expected) { assertEquals(OsConstants.EBADF, expected.errno); }
-        }
     }
     private interface Condition { boolean done() throws Exception; }
     private static void await(Condition condition, long timeout) throws Exception {
