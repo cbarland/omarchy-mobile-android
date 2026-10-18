@@ -140,9 +140,13 @@ def compose(relative: str, data: bytes) -> bytes:
 ''', relative)
         text = once(text, '    visible: !remapGuard.remapping && (cutoutWaitOver || !cutoutPending)\n',
             '    visible: (Quickshell.env("OMAMOBILE_PROFILE") !== "unified" || !!root.unifiedBarScreen)\n'
-            '      && !phoneFallback && !remapGuard.remapping && (cutoutWaitOver || !cutoutPending)\n', relative)
+            '      && !remapGuard.remapping && (cutoutWaitOver || !cutoutPending)\n', relative)
         text = once(text, '    exclusionMode: root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto\n',
             '    exclusionMode: phoneFallback || root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto\n', relative)
+        margins = 'root.barHidden && root.position === '
+        if text.count(margins) != 4:
+            raise ValueError("desktop bar: expected four parking margins")
+        text = text.replace(margins, '(phoneFallback || root.barHidden) && root.position === ')
     elif relative == "shell/Ui/OverlayWindow.qml":
         text = once(text, '  function focusedScreen() {\n', '''  function focusedScreen() {
     if (Quickshell.env("OMAMOBILE_PROFILE") === "unified") {

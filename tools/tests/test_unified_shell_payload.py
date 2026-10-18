@@ -49,8 +49,10 @@ def verify(path):
         assert 'model: Quickshell.env("OMAMOBILE_PROFILE") === "unified" ? [] : Quickshell.screens' in desktop_bar
         assert 'if (candidate.name === "ANDROID-2") return candidate' in desktop_bar
         assert 'if (candidate.name === "ANDROID-1") phone = candidate' in desktop_bar
-        assert '&& !phoneFallback && !remapGuard.remapping' in desktop_bar
+        assert '&& !remapGuard.remapping && (cutoutWaitOver || !cutoutPending)' in desktop_bar
+        assert '&& !phoneFallback &&' not in desktop_bar
         assert 'exclusionMode: phoneFallback || root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto' in desktop_bar
+        assert desktop_bar.count('(phoneFallback || root.barHidden) && root.position === ') == 4
         quick_settings = read("usr/share/omamobile/shell/plugins/omamobile.quicksettings/QuickSettings.qml")
         assert 'visible: !!root.phoneScreen && (root.opened || root.reveal > 0)' in quick_settings
         assert 'jq -r \'(.mobileBar // .bar).clockFormat // \\"\\"\'' in quick_settings
