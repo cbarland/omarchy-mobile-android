@@ -12,6 +12,8 @@ from pathlib import Path
 import subprocess
 import tarfile
 
+from shell.output_composition import compose
+
 OMARCHY = "e71a816e9032f040225e086c7256f73e8080ae45"
 MOBILE = "953bcb3058347459cdf7faaa1e149f16e0f7cfa6"
 WIDGETS = "b63886b75e02ccef1a8a11baeef2d6eff7a374af"
@@ -353,6 +355,7 @@ with tarfile.open(a.output, "w:gz") as archive:
                 data = data.replace(original, b'(Quickshell.env("OMARCHY_SHELL_CONFIG") || home + "/.config/omarchy/shell.json")')
             if root is a.mobile or root is a.omarchy:
                 data = mobile_transform(relative, data)
+            data = compose(relative, data)
             put(target + "/" + name, data, mode)
 
     omarchy = "root/.local/share/omarchy"
@@ -425,7 +428,14 @@ with tarfile.open(a.output, "w:gz") as archive:
         desktop_plugins.append({"id": "omamobile.access"})
     phone["idle"] = desktop["idle"]
     phone["disabledPlugins"] = list(disabled)
-    for profile, config in [("phone", phone), ("desktop", desktop)]:
+    unified = json.loads(json.dumps(desktop))
+    unified["mobileBar"] = phone["bar"]
+    unified_ids = {item.get("id") for item in unified["plugins"] if isinstance(item, dict)}
+    for item in phone["plugins"]:
+        if item["id"] not in unified_ids:
+            unified["plugins"].append(item)
+            unified_ids.add(item["id"])
+    for profile, config in [("phone", phone), ("desktop", desktop), ("unified", unified)]:
         put("usr/share/omamobile/android/" + profile + ".json", json.dumps(config, indent=2) + "\n")
 
     # These are the upstream QML widgets, seeded with offline data for a usable

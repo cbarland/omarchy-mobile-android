@@ -1,7 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-profile=${1:?phone or desktop}
-case $profile in phone|desktop) ;; *) exit 64 ;; esac
+profile=${1:?phone, desktop or unified}
+case $profile in phone|desktop|unified) ;; *) exit 64 ;; esac
+export OMAMOBILE_PROFILE=$profile
 export OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 export OMAMOBILE_SESSION_HOST=android
 # Android accessibility integration is still pending. Avoid trying to activate

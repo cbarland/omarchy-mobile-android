@@ -23,9 +23,17 @@ final class GraphicalSession {
     private final List<Process> launched = new ArrayList<>();
 
     GraphicalSession(Context context, boolean phone, int androidDisplayId) throws IOException {
+        this(context, phone ? "phone" : "desktop", androidDisplayId);
+    }
+
+    GraphicalSession(Context context, String profile, int androidDisplayId) throws IOException {
+        if (!profile.equals("phone") && !profile.equals("desktop") && !profile.equals("unified"))
+            throw new IllegalArgumentException("Unknown graphical profile: " + profile);
         this.context = context.getApplicationContext();
         this.androidDisplayId = androidDisplayId;
-        profile = phone ? "phone" : "desktop";
+        this.profile = profile;
+        boolean phone = profile.equals("phone");
+        boolean unified = profile.equals("unified");
         files = context.getFilesDir().toPath();
         root = files.resolve("linux/rootfs");
         if (!Files.isDirectory(root)) throw new IOException("Import and prepare the shared Linux installation first");
@@ -33,6 +41,9 @@ final class GraphicalSession {
         if (!Files.isRegularFile(xkb.resolve("rules/evdev"))) throw new IOException("Install Linux xkeyboard-config before starting Hyprland");
         if (!Files.isRegularFile(GuestPaths.resolve(root, "/root/.local/share/omamobile/start-shell")))
             throw new IOException("Prepare the upstream Omarchy Linux shell profiles first (see docs/GRAPHICS.md)");
+        if (unified && !Files.isRegularFile(GuestPaths.resolve(root,
+                "/root/.local/share/omamobile/profiles/unified.json")))
+            throw new IOException("Prepare the updated shared shell payload before starting this preview (see docs/GRAPHICS.md)");
         home = Files.createDirectories(files.resolve("graphics/" + profile));
         // Keep Unix-domain IPC addresses beneath sockaddr_un's 108-byte limit.
         runtime = SessionRuntime.prepare(files, root, profile);
@@ -70,9 +81,9 @@ final class GraphicalSession {
             } finally { Files.deleteIfExists(temporary); }
         }
         if (!Files.exists(config, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
-            String lua = previousSeedConfig(phone) + DISPLAY_SHORTCUT;
+            String lua = unified ? unifiedSeedConfig() : previousSeedConfig(phone) + DISPLAY_SHORTCUT;
             Files.write(config, lua.getBytes(StandardCharsets.UTF_8));
-        } else if (!Files.isSymbolicLink(config)) {
+        } else if (!unified && !Files.isSymbolicLink(config)) {
             // Migrate only the exact settings emitted by the initial developer
             // build; retain the rest of an existing, editable Hyprland config.
             String original = new String(Files.readAllBytes(config), StandardCharsets.UTF_8);
@@ -89,7 +100,8 @@ final class GraphicalSession {
             if (generatedSeeds(phone).contains(migrated) && !migrated.equals(original))
                 Files.write(config, migrated.getBytes(StandardCharsets.UTF_8));
         }
-        monitorConfig = ProfileMonitorConfig.prepare(root, config, profile, generatedSeeds(phone), phone ? 3 : 1);
+        monitorConfig = ProfileMonitorConfig.prepare(root, config, profile,
+                unified ? List.of(unifiedSeedConfig()) : generatedSeeds(phone), phone ? 3 : 1);
         String displayReport = profile + " display config: " + monitorConfig.report();
         Files.write(home.resolve("linux-shell.log"), (displayReport + "\n").getBytes(StandardCharsets.UTF_8));
         android.util.Log.i("OmamobileHyprland", displayReport);
@@ -112,7 +124,7 @@ final class GraphicalSession {
         // Only the app-owned staging directory is mounted; the shared Linux
         // installation and user executables are never overwritten.
         binds.add(new RuntimeSpec.Bind(androidBin.toString(), "/opt/omamobile/bin", true));
-        if (monitorConfig.enabled())
+        if (monitorConfig != null && monitorConfig.enabled())
             binds.add(new RuntimeSpec.Bind(monitorConfig.directory().toString(), "/root/.config/hypr", false));
         File external = context.getExternalFilesDir(null);
         Path shared = (external != null ? external.toPath() : files.resolve("shared")).resolve("Shared");
@@ -135,6 +147,13 @@ final class GraphicalSession {
                 + "hl.bind(\"SUPER + RETURN\", hl.dsp.exec_cmd(\"foot\"))\n"
                 + "hl.bind(\"SUPER + W\", hl.dsp.window.close())\n"
                 + "hl.bind(\"SUPER + SPACE\", hl.dsp.exec_cmd(\"omarchy-shell shell toggle omarchy.menu\"))\n";
+    }
+
+    static String unifiedSeedConfig() {
+        String desktop = previousSeedConfig(false);
+        return "hl.monitor({ output = \"ANDROID-1\", mode = \"preferred\", position = \"0x0\", scale = 3 })\n"
+                + "hl.monitor({ output = \"ANDROID-2\", mode = \"preferred\", position = \"auto\", scale = 1 })\n"
+                + desktop.substring(desktop.indexOf('\n') + 1) + DISPLAY_SHORTCUT;
     }
 
     static String migrateDisplayShortcut(String config, boolean phone) {
@@ -172,9 +191,17 @@ final class GraphicalSession {
         return "if [ \"$1\" = --argv ]; then\n  shift\n  [ \"$#\" -gt 0 ] || exit 64\nelse\n  set -- /bin/bash -c \"$1\"\nfi\n";
     }
 
-    String guestRuntime() { return "/run/omamobile/" + (profile.equals("phone") ? "p" : "d"); }
+    String guestRuntime() {
+        return "/run/omamobile/" + switch (profile) {
+            case "phone" -> "p";
+            case "desktop" -> "d";
+            case "unified" -> "u";
+            default -> throw new IllegalStateException("Unknown graphical profile: " + profile);
+        };
+    }
     private java.util.Map<String, String> environment() {
-        return RuntimeSpec.graphicalEnvironment(profile, guestRuntime(), java.util.TimeZone.getDefault().getID());
+        return RuntimeSpec.graphicalEnvironment(profile,
+                guestRuntime(), java.util.TimeZone.getDefault().getID());
     }
 
     synchronized void startClients(String display, String signature) throws IOException {
@@ -236,7 +263,7 @@ final class GraphicalSession {
     }
 
     synchronized void stopForUser() {
-        Process phoneShell = profile.equals("phone") && clients != null && clients.isAlive() ? clients : null;
+        Process phoneShell = !profile.equals("desktop") && clients != null && clients.isAlive() ? clients : null;
         requestStop();
         Path temporary = null;
         try {

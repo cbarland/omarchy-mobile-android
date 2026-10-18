@@ -57,8 +57,14 @@ themes, signed packages, shared-storage binds and app-UID Android commands have
 direct test evidence. See [the verification record](docs/VERIFICATION.md) for
 the limits of each claim and the new installer's separate results.
 
-The current backend uses two compositor sessions with a shared rootfs and home;
-live windows do not move between outputs. Linux clients use software rendering;
+The default start uses two compositor sessions with a shared rootfs and home.
+The opt-in **Start shared compositor preview** instead uses one Hyprland and
+Quickshell session, with Mobile widgets on the phone and the Omarchy desktop
+on the external display. Live Linux windows can move between those outputs.
+The preview has emulator evidence for independent scaling, reconnect, and
+scale-preview recovery; ARM64 validation and startup/IPC diagnostics remain open.
+See the [shared desktop preview checkpoint](docs/SHARED-DESKTOP-PREVIEW.md).
+Linux clients use software rendering;
 Android windows use a CPU/JPEG transport. Hardware/status/audio adapters,
 performance and power measurements remain useful contribution areas. Authenticated
 image downloading and user-data export/recovery have x86_64 emulator verification;

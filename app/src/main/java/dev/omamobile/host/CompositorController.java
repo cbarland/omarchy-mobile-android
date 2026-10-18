@@ -15,7 +15,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 /** A display's native compositor survives Activity/Surface replacement in its dedicated process. */
-final class CompositorController {
+final class CompositorController implements CompositorEndpoint {
     private static CompositorController instance;
     static synchronized CompositorController get(Context context, boolean phone) {
         if (instance == null) instance = new CompositorController(context.getApplicationContext(), phone);
@@ -26,6 +26,7 @@ final class CompositorController {
     private final DisplayManager displays;
     private volatile GraphicalSession session;
     private volatile InstallationLease installationLease;
+    private volatile InstallationLease graphicalModeLease;
     private Thread thread;
     private boolean started;
     private int attachedDisplayId = Display.INVALID_DISPLAY;
@@ -67,11 +68,11 @@ final class CompositorController {
         // Android 10-12 have no NOT_EXPORTED flag; retain the signature gate.
         context.registerReceiver(stopRequest, filter, "dev.omamobile.host.permission.CONTROL_SCREENS", main);
     }
-    void observe(Consumer<String> listener) { observers.add(listener); listener.accept(status); }
-    void unobserve(Consumer<String> listener) { observers.remove(listener); }
+    @Override public void observe(Consumer<String> listener) { observers.add(listener); listener.accept(status); }
+    @Override public void unobserve(Consumer<String> listener) { observers.remove(listener); }
     private void status(String value) { status = value; main.post(() -> observers.forEach(listener -> listener.accept(value))); }
 
-    synchronized void attach(Object owner, Surface surface, int width, int height, int androidDisplayId) {
+    @Override public synchronized void attach(Object owner, Surface surface, int width, int height, int androidDisplayId) {
         if (stopping) return;
         surfaceOwner = owner;
         if (started) { if (NativeCompositor.AVAILABLE) NativeCompositor.window(surface, width, height); return; }
@@ -80,6 +81,7 @@ final class CompositorController {
         thread = new Thread(() -> {
             try {
                 if (!NativeCompositor.AVAILABLE) throw new IllegalStateException("This APK has no Hyprland backend for this device ABI");
+                graphicalModeLease = GraphicalModeLease.acquire(context.getFilesDir().toPath(), false, () -> stopping);
                 installationLease = InstallAssets.runtimeLease(context,
                         message -> android.util.Log.i("OmamobileHyprland", message));
                 if (stopping) return;
@@ -126,13 +128,19 @@ final class CompositorController {
         }, "native-hyprland");
         thread.start();
     }
-    synchronized void detach(Object owner) {
+    @Override public synchronized void detach(Object owner) {
         // A replaced Activity can destroy its old Surface after the replacement
         // has attached. It must not detach the replacement's native window.
         if (surfaceOwner != owner) return;
         surfaceOwner = null;
         if (started && NativeCompositor.AVAILABLE) NativeCompositor.window(null, 0, 0);
     }
+    @Override public void pointer(float x, float y, int button, boolean pressed) { NativeCompositor.pointer(x, y, button, pressed); }
+    @Override public void touch(int id, int action, float x, float y) { NativeCompositor.touch(id, action, x, y); }
+    @Override public void axis(float dx, float dy) { NativeCompositor.axis(dx, dy); }
+    @Override public void key(int code, boolean pressed) { NativeCompositor.key(code, pressed); }
+    @Override public void unicode(int codepoint) { NativeCompositor.unicode(codepoint); }
+    @Override public void focus(boolean focused) { }
     synchronized void stop() {
         if (stopping) return;
         stopping = true;

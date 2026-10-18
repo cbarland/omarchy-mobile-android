@@ -96,6 +96,12 @@ were not downloaded or verified during this audit.
 
 ## Public source checkpoint
 
+The October 2026 shared desktop prerelease is a source checkpoint. Its opt-in
+unified compositor, differentiated phone/desktop shell, emulator evidence,
+existing-install migration gap, and known startup/IPC diagnostics are described
+in [the preview notes](SHARED-DESKTOP-PREVIEW.md). It includes no graphical APK;
+all seven native corresponding-source/relinking publication holds remain.
+
 The [source repository](https://github.com/cbarland/omarchy-mobile-android) is
 public as of 2026-10-15, with private vulnerability reporting enabled. Contributor
 setup distinguishes the core CI APK from the separately staged graphical build;

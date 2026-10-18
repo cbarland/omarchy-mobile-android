@@ -61,13 +61,41 @@ Candidates checked against upstream documentation:
   layout and keyboard-navigation limitations. Pin and review any adopted
   implementation before installation.
 
-The current Android backend exposes one Surface per compositor process.
+The default **Start Omarchy screens** path exposes one Surface per compositor process.
 Phone and desktop therefore have separate Hyprland output inventories;
 `DesktopService` also selects only one external presentation display. A
 Linux monitor helper cannot by itself join these sessions, add another host
 output or control physical Android display modes. Decide how to coordinate
 the sessions, or extend the backend for multiple outputs, before claiming a
 unified layout, mirroring or cross-display window/pointer movement.
+
+**Start shared compositor preview** selects an experimental alternative: one
+Hyprland process and Linux shell drive the phone (`ANDROID-1`) and the selected
+external display (`ANDROID-2`). Android Activity/Surface replacements receive
+new output generations; old owners cannot detach or send input to a replacement.
+Surface loss pauses presentation, while physical external-display removal removes
+that Hyprland output so its windows can return to the phone. Reconnection reuses
+the logical output name even if Android assigns a new display ID.
+
+The preview runs one Quickshell host with the Mobile bar, home widgets, launcher,
+and quick settings on the phone, and the Omarchy desktop bar and panels on the
+external output. With no active external output, Omarchy panels can open on the
+phone so display controls remain reachable. Its editable config and logs live in `files/graphics/unified/`,
+and its Linux runtime is `/run/omamobile/u`. The shared shell config is
+`~/.local/share/omamobile/profiles/unified.json`; Mobile home/widget state remains
+in `~/.config/omamobile/`. Each output has its own persisted scale in the shared
+profile's `hypr/monitors.lua`. Android's desktop scale preview supports Keep,
+Revert, and timeout recovery in either mode. Custom monitor files are preserved.
+
+This preview requires Linux prepared from the updated APK's pinned shell payload.
+Installing an APK over an existing prepared image does not replace its upstream
+QML or user configuration. Existing images need a deliberate shell-payload update;
+the automatic adapter refresh only updates the Android command helper.
+
+An exclusive graphical-mode lease prevents both modes from
+running against the shared Linux configuration at once; normal Start and Stop
+controls can switch back or close the preview. The private native build and
+binary publication holds still apply.
 
 Completion should demonstrate on emulator displays:
 

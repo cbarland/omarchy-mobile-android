@@ -24,19 +24,20 @@ import java.util.function.Consumer;
 
 /** Actual Linux-compositor frames on an Android Surface, with per-display Android input. */
 public abstract class CompositorActivity extends Activity {
-    private CompositorController controller;
+    private CompositorEndpoint controller;
     private LinuxSurface surface;
     private boolean captureReleaseKeyDown;
     private TextView status;
     private final Consumer<String> observe = value -> { status.setText(value); status.setVisibility(value.isEmpty() ? View.GONE : View.VISIBLE); };
     protected abstract boolean phone();
+    protected CompositorEndpoint endpoint() { return CompositorController.get(this, phone()); }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
-        controller = CompositorController.get(this, phone());
+        controller = endpoint();
         FrameLayout layout = new FrameLayout(this);
         layout.setBackgroundColor(Color.BLACK);
         surface = new LinuxSurface(this);
@@ -122,6 +123,7 @@ public abstract class CompositorActivity extends Activity {
                 releasePointerCapture();
                 if (NativeCompositor.AVAILABLE) updateButtons(0);
             }
+            if (NativeCompositor.AVAILABLE) controller.focus(focused);
         }
         @Override public boolean onCapturedPointerEvent(MotionEvent event) {
             if (!NativeCompositor.AVAILABLE) return true;
@@ -146,12 +148,12 @@ public abstract class CompositorActivity extends Activity {
                 return pointer(event);
             }
             if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN)
-                NativeCompositor.touch(event.getPointerId(index), 0, event.getX(index), event.getY(index));
+                controller.touch(event.getPointerId(index), 0, event.getX(index), event.getY(index));
             else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP)
-                NativeCompositor.touch(event.getPointerId(index), 1, event.getX(index), event.getY(index));
+                controller.touch(event.getPointerId(index), 1, event.getX(index), event.getY(index));
             else if (action == MotionEvent.ACTION_MOVE)
-                for (int i = 0; i < event.getPointerCount(); i++) NativeCompositor.touch(event.getPointerId(i), 2, event.getX(i), event.getY(i));
-            else if (action == MotionEvent.ACTION_CANCEL) NativeCompositor.touch(0, 3, 0, 0);
+                for (int i = 0; i < event.getPointerCount(); i++) controller.touch(event.getPointerId(i), 2, event.getX(i), event.getY(i));
+            else if (action == MotionEvent.ACTION_CANCEL) controller.touch(0, 3, 0, 0);
             return true;
         }
         private boolean pointer(MotionEvent event) {
@@ -160,12 +162,12 @@ public abstract class CompositorActivity extends Activity {
         }
         private boolean pointer(MotionEvent event, float x, float y) {
             int action = event.getActionMasked();
-            NativeCompositor.pointer(x, y, 0, false);
+            controller.pointer(x, y, 0, false);
             int buttons = event.getButtonState();
             if (action == MotionEvent.ACTION_DOWN && buttons == 0) buttons = MotionEvent.BUTTON_PRIMARY;
             if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) buttons = 0;
             updateButtons(buttons);
-            if (action == MotionEvent.ACTION_SCROLL) NativeCompositor.axis(-event.getAxisValue(MotionEvent.AXIS_HSCROLL) * 15, -event.getAxisValue(MotionEvent.AXIS_VSCROLL) * 15);
+            if (action == MotionEvent.ACTION_SCROLL) controller.axis(-event.getAxisValue(MotionEvent.AXIS_HSCROLL) * 15, -event.getAxisValue(MotionEvent.AXIS_VSCROLL) * 15);
             return true;
         }
         private void updateButtons(int buttons) {
@@ -173,7 +175,7 @@ public abstract class CompositorActivity extends Activity {
             for (int bit : new int[]{MotionEvent.BUTTON_PRIMARY, MotionEvent.BUTTON_SECONDARY, MotionEvent.BUTTON_TERTIARY}) {
                 if ((changed & bit) == 0) continue;
                 int evdev = bit == MotionEvent.BUTTON_SECONDARY ? 273 : bit == MotionEvent.BUTTON_TERTIARY ? 274 : 272;
-                NativeCompositor.pointer(cursorX, cursorY, evdev, (buttons & bit) != 0);
+                controller.pointer(cursorX, cursorY, evdev, (buttons & bit) != 0);
             }
             mouseButtons = buttons;
         }
@@ -181,11 +183,17 @@ public abstract class CompositorActivity extends Activity {
         @Override public boolean onHoverEvent(MotionEvent event) { return NativeCompositor.AVAILABLE && pointer(event); }
         @Override public boolean onCheckIsTextEditor() { return true; }
         @Override public boolean dispatchKeyEventPreIme(KeyEvent event) {
+            traceKey("pre-ime", event);
             // Android IMEs can consume Escape DOWN before Activity dispatch,
             // leaving a Wayland application in insert mode with only the UP.
             // Consume this key here after forwarding both edges; the event
             // then cannot reach Activity dispatch and be forwarded twice.
             if (handleEscape(event)) return true;
+            // IMEs may asynchronously return a hardware DOWN after its UP has
+            // already reached Activity dispatch. Linux then sees a stuck key.
+            // Own both hardware edges here; soft IME composition still enters
+            // through InputConnection commitText/finishComposingText.
+            if ((event.getFlags() & KeyEvent.FLAG_SOFT_KEYBOARD) == 0 && forwardKey(event)) return true;
             return super.dispatchKeyEventPreIme(event);
         }
         @Override public InputConnection onCreateInputConnection(EditorInfo info) {
@@ -206,7 +214,7 @@ public abstract class CompositorActivity extends Activity {
                 }
 
                 private void emit(CharSequence text) {
-                    if (text != null) text.toString().codePoints().forEach(NativeCompositor::unicode);
+                    if (text != null) text.toString().codePoints().forEach(controller::unicode);
                 }
 
                 @Override public boolean commitText(CharSequence text, int cursor) {
@@ -233,7 +241,7 @@ public abstract class CompositorActivity extends Activity {
                     Editable editable = getEditable();
                     if (editable != null && editable.length() > 0)
                         return super.deleteSurroundingText(before, after);
-                    for (int i = 0; i < before; i++) { NativeCompositor.key(14, true); NativeCompositor.key(14, false); }
+                    for (int i = 0; i < before; i++) { controller.key(14, true); controller.key(14, false); }
                     return true;
                 }
                 @Override public boolean deleteSurroundingTextInCodePoints(int before, int after) {
@@ -241,7 +249,7 @@ public abstract class CompositorActivity extends Activity {
                     Editable editable = getEditable();
                     if (editable != null && editable.length() > 0)
                         return super.deleteSurroundingTextInCodePoints(before, after);
-                    for (int i = 0; i < before; i++) { NativeCompositor.key(14, true); NativeCompositor.key(14, false); }
+                    for (int i = 0; i < before; i++) { controller.key(14, true); controller.key(14, false); }
                     return true;
                 }
                 @Override public void closeConnection() {
@@ -267,19 +275,30 @@ public abstract class CompositorActivity extends Activity {
         }
         return false;
     }
+    private void traceKey(String stage, KeyEvent event) {
+        if (BuildConfig.DEBUG && android.util.Log.isLoggable("OmamobileKeyTrace", android.util.Log.DEBUG))
+            android.util.Log.d("OmamobileKeyTrace", stage + " phone=" + phone() + " action=" + event.getAction()
+                    + " code=" + event.getKeyCode() + " scan=" + event.getScanCode() + " flags=" + event.getFlags()
+                    + " repeat=" + event.getRepeatCount() + " time=" + event.getEventTime());
+    }
     private boolean handleEscape(KeyEvent event) {
         if (handleCaptureRelease(event)) return true;
         if (!NativeCompositor.AVAILABLE || event.getKeyCode() != KeyEvent.KEYCODE_ESCAPE
                 || (event.getAction() != KeyEvent.ACTION_DOWN && event.getAction() != KeyEvent.ACTION_UP)) return false;
         int code = event.getScanCode();
-        NativeCompositor.key(code != 0 ? code : 1, event.getAction() == KeyEvent.ACTION_DOWN);
+        controller.key(code != 0 ? code : 1, event.getAction() == KeyEvent.ACTION_DOWN);
         return true;
     }
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        traceKey("activity", event);
+        return forwardKey(event) || super.dispatchKeyEvent(event);
+    }
+    private boolean forwardKey(KeyEvent event) {
         // Also support callers that dispatch directly to the Activity. Normal
         // ViewRoot delivery consumes Escape in LinuxSurface before the IME.
         if (handleEscape(event)) return true;
-        if (!NativeCompositor.AVAILABLE || event.getKeyCode() == KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event);
+        if (!NativeCompositor.AVAILABLE || event.getKeyCode() == KeyEvent.KEYCODE_BACK
+                || (event.getAction() != KeyEvent.ACTION_DOWN && event.getAction() != KeyEvent.ACTION_UP)) return false;
         int code = event.getScanCode();
         if (code == 0) code = switch (event.getKeyCode()) {
             case KeyEvent.KEYCODE_A -> 30; case KeyEvent.KEYCODE_B -> 48; case KeyEvent.KEYCODE_C -> 46;
@@ -304,8 +323,8 @@ public abstract class CompositorActivity extends Activity {
             case KeyEvent.KEYCODE_DPAD_UP -> 103; case KeyEvent.KEYCODE_DPAD_DOWN -> 108;
             default -> 0;
         };
-        if (code != 0) { NativeCompositor.key(code, event.getAction() == KeyEvent.ACTION_DOWN); return true; }
-        if (event.getAction() == KeyEvent.ACTION_DOWN && event.getUnicodeChar() > 0) { NativeCompositor.unicode(event.getUnicodeChar()); return true; }
-        return super.dispatchKeyEvent(event);
+        if (code != 0) { controller.key(code, event.getAction() == KeyEvent.ACTION_DOWN); return true; }
+        if (event.getAction() == KeyEvent.ACTION_DOWN && event.getUnicodeChar() > 0) { controller.unicode(event.getUnicodeChar()); return true; }
+        return false;
     }
 }

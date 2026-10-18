@@ -1,0 +1,602 @@
+--- a/src/android/Embed.cpp
++++ b/src/android/Embed.cpp
+@@ -3,6 +3,10 @@
+ #include "../Compositor.hpp"
+ #include "../managers/SeatManager.hpp"
+ #include "../layout/algorithm/tiled/yibu/YibuAlgorithm.hpp"
++#include "../desktop/state/FocusState.hpp"
++#include "../state/MonitorState.hpp"
++#include "../output/Monitor.hpp"
++#include "../workspace/HLWorkspace.hpp"
+ #include <aquamarine/backend/Android.hpp>
+ #include <android/native_window.h>
+ #include <android/log.h>
+@@ -15,6 +19,8 @@
+ #include <functional>
+ #include <mutex>
+ #include <optional>
++#include <array>
++#include <unordered_set>
+ 
+ struct SEmbedState {
+     std::mutex                        mutex;
+@@ -22,6 +28,11 @@
+     int                               eventFd     = -1;
+     bool                              used        = false;
+     std::atomic_uint32_t              cursorShape = 1;
++    void (*outputListener)(void*, int, uint64_t, int) = nullptr;
++    void*                             outputUserdata = nullptr;
++    std::array<std::unordered_set<uint32_t>, 2> pressedKeys;
++    std::array<std::unordered_set<uint32_t>, 2> pressedButtons;
++    std::array<std::unordered_set<int>, 2>      activeTouches;
+ };
+ 
+ static SEmbedState                     embed;
+@@ -34,6 +45,46 @@
+             return Hyprutils::Memory::dynamicPointerCast<Aquamarine::CAndroidBackend>(impl);
+     }
+     return nullptr;
++}
++
++static void outputAck(int id, uint64_t generation, int status) {
++    void (*listener)(void*, int, uint64_t, int) = nullptr;
++    void* userdata = nullptr;
++    {
++        std::lock_guard lock(embed.mutex);
++        listener = embed.outputListener;
++        userdata = embed.outputUserdata;
++    }
++    if (listener) listener(userdata, id, generation, status);
++}
++
++static bool focusOutput(int id) {
++    const auto monitor = State::monitorState()->query().name(id ? "ANDROID-2" : "ANDROID-1").run();
++    if (!monitor) return false;
++    if (Desktop::focusState()->monitor() != monitor) {
++        if (auto output = backend())
++            for (auto key : embed.pressedKeys[1 - id]) output->key(key, false);
++        embed.pressedKeys[1 - id].clear();
++    }
++    Desktop::focusState()->rawMonitorFocus(monitor);
++    if (monitor->m_activeWorkspace) {
++        if (const auto candidate = monitor->m_activeWorkspace->getFocusCandidate())
++            Desktop::focusState()->fullWindowFocus(candidate, Desktop::FOCUS_REASON_DESKTOP_STATE_CHANGE);
++        else
++            Desktop::focusState()->fullWindowFocus(nullptr, Desktop::FOCUS_REASON_DESKTOP_STATE_CHANGE);
++    }
++    return true;
++}
++
++static void releaseInputs(int id) {
++    if (auto output = backend()) {
++        for (auto key : embed.pressedKeys[id]) output->key(key, false);
++        for (auto button : embed.pressedButtons[id]) output->releaseButton(button);
++        for (auto touch : embed.activeTouches[id]) output->touch(id, touch, 3, 0, 0);
++    }
++    embed.pressedKeys[id].clear();
++    embed.pressedButtons[id].clear();
++    embed.activeTouches[id].clear();
+ }
+ 
+ static int enqueue(std::function<void()> command) {
+@@ -92,8 +143,8 @@
+     std::vector<std::pair<std::string, std::optional<std::string>>> values;
+ };
+ 
+-extern "C" int anhyprland_run(ANativeWindow* window, int width, int height, const char* config, void (*ready)(void*), void* userdata) {
+-    if (!window || width <= 0 || height <= 0 || !config || !*config)
++extern "C" int anhyprland_run_generation(ANativeWindow* window, int width, int height, uint64_t initialGeneration, const char* config, void (*ready)(void*), void* userdata) {
++    if (!window || width <= 0 || height <= 0 || !initialGeneration || !config || !*config)
+         return -EINVAL;
+     const auto runtime = getenv("XDG_RUNTIME_DIR");
+     if (!runtime || runtime[0] != '/')
+@@ -119,11 +170,16 @@
+         g_pCompositor->m_androidWidth       = width;
+         g_pCompositor->m_androidHeight      = height;
+         g_pCompositor->initServer("wayland-0", -1);
++        if (auto output = backend(); output && output->output(0))
++            output->adoptInitialGeneration(initialGeneration);
++        else
++            throw std::runtime_error("Initial Android output was not created");
+         commands = wl_event_loop_add_fd(g_pCompositor->m_wlEventLoop, embed.eventFd, WL_EVENT_READABLE, dispatchCommands, nullptr);
+         if (!commands)
+             throw std::runtime_error("Cannot register Android command queue");
+         if (ready)
+             ready(userdata);
++        outputAck(0, initialGeneration, 1);
+         g_pCompositor->startCompositor();
+     } catch (const std::exception& error) {
+         __android_log_print(ANDROID_LOG_ERROR, "anhyprland", "Compositor failed: %s", error.what());
+@@ -143,6 +199,52 @@
+     }
+     ANativeWindow_release(window);
+     return result;
++}
++
++extern "C" int anhyprland_run(ANativeWindow* window, int width, int height, const char* config, void (*ready)(void*), void* userdata) {
++    return anhyprland_run_generation(window, width, height, 1, config, ready, userdata);
++}
++
++extern "C" void anhyprland_set_output_listener(void (*listener)(void*, int, uint64_t, int), void* userdata) {
++    std::lock_guard lock(embed.mutex);
++    embed.outputListener = listener;
++    embed.outputUserdata = userdata;
++}
++
++static std::shared_ptr<ANativeWindow> retainWindow(ANativeWindow* window) {
++    if (window) ANativeWindow_acquire(window);
++    return {window, [](ANativeWindow* value) { if (value) ANativeWindow_release(value); }};
++}
++
++extern "C" int anhyprland_output_surface(int id, uint64_t generation, ANativeWindow* window, int width, int height) {
++    if (id < 0 || id > 1 || !generation || (window && (width <= 0 || height <= 0))) return -EINVAL;
++    auto retained = retainWindow(window);
++    return enqueue([=] {
++        auto output = backend();
++        if (!output) { outputAck(id, generation, -ENODEV); return; }
++        if (generation >= output->highWater(id) && (!window || generation != output->generation(id))) releaseInputs(id);
++        const int status = output->setSurface(id, generation, retained.get(), width, height);
++        outputAck(id, generation, status);
++    });
++}
++
++extern "C" int anhyprland_output_resize(int id, uint64_t generation, int width, int height) {
++    if (id < 0 || id > 1 || !generation || width <= 0 || height <= 0) return -EINVAL;
++    return enqueue([=] {
++        const auto output = backend();
++        outputAck(id, generation, output ? output->resize(id, generation, width, height) : -ENODEV);
++    });
++}
++
++extern "C" int anhyprland_output_remove(int id, uint64_t generation) {
++    if (id != 1 || !generation) return -EINVAL;
++    return enqueue([=] {
++        const auto output = backend();
++        if (!output) { outputAck(id, generation, -ENODEV); return; }
++        if (generation >= output->highWater(id)) releaseInputs(id);
++        const int status = output->remove(id, generation);
++        outputAck(id, generation, status);
++    });
+ }
+ 
+ extern "C" int anhyprland_output(int id, ANativeWindow* window, int width, int height) {
+@@ -194,7 +296,7 @@
+ extern "C" int anhyprland_axis(float dx, float dy) {
+     return enqueue([=] {
+         if (auto output = backend())
+-            output->axis(dx, dy);
++            output->axis(0, dx, dy);
+     });
+ }
+ extern "C" int anhyprland_touch(int id, int action, float x, float y) {
+@@ -218,7 +320,7 @@
+             return;
+         }
+         if (auto output = backend())
+-            output->touch(id, action, x, y);
++            output->touch(0, id, action, x, y);
+     });
+ }
+ extern "C" int anhyprland_key(uint32_t evdev, int pressed) {
+@@ -227,10 +329,7 @@
+             output->key(evdev, pressed);
+     });
+ }
+-extern "C" int anhyprland_unicode(uint32_t codepoint) {
+-    if (codepoint > 0x10ffff || (codepoint >= 0xd800 && codepoint <= 0xdfff))
+-        return -EINVAL;
+-    return enqueue([=] {
++static void sendUnicode(uint32_t codepoint) {
+         auto output   = backend();
+         auto keyboard = g_pSeatManager ? g_pSeatManager->m_keyboard.lock() : nullptr;
+         if (!output || !keyboard || !keyboard->m_xkbKeymap || !keyboard->m_xkbState)
+@@ -314,6 +413,81 @@
+             output->key(42, true);
+         if (rightShift)
+             output->key(54, true);
++}
++
++extern "C" int anhyprland_unicode(uint32_t codepoint) {
++    if (codepoint > 0x10ffff || (codepoint >= 0xd800 && codepoint <= 0xdfff)) return -EINVAL;
++    return enqueue([=] { sendUnicode(codepoint); });
++}
++
++static bool taggedActive(int id, uint64_t generation) {
++    const auto output = backend();
++    return output && output->active(id, generation);
++}
++
++extern "C" int anhyprland_focus_at(int id, uint64_t generation, int focused) {
++    if (id < 0 || id > 1 || !generation) return -EINVAL;
++    return enqueue([=] {
++        if (!taggedActive(id, generation)) return;
++        if (focused) focusOutput(id);
++        else {
++            releaseInputs(id);
++            const auto monitor = State::monitorState()->query().name(id ? "ANDROID-2" : "ANDROID-1").run();
++            if (monitor && Desktop::focusState()->monitor() == monitor)
++                Desktop::focusState()->fullWindowFocus(nullptr, Desktop::FOCUS_REASON_DESKTOP_STATE_CHANGE);
++        }
++    });
++}
++
++extern "C" int anhyprland_pointer_at(int id, uint64_t generation, float x, float y, uint32_t button, int pressed) {
++    if (id < 0 || id > 1 || !generation) return -EINVAL;
++    return enqueue([=] {
++        if (!taggedActive(id, generation)) return;
++        if (auto output = backend()) output->pointer(id, x, y, button, pressed);
++        if (button) {
++            if (pressed) embed.pressedButtons[id].insert(button);
++            else embed.pressedButtons[id].erase(button);
++        }
++    });
++}
++
++extern "C" int anhyprland_touch_at(int id, uint64_t generation, int touchId, int action, float x, float y) {
++    if (id < 0 || id > 1 || !generation || touchId < 0 || touchId >= 32 || action < 0 || action > 3) return -EINVAL;
++    return enqueue([=] {
++        if (taggedActive(id, generation))
++            if (auto output = backend()) {
++                output->touch(id, touchId, action, x, y);
++                if (action == 0) embed.activeTouches[id].insert(touchId);
++                if (action == 1 || action == 3) embed.activeTouches[id].erase(touchId);
++            }
++    });
++}
++
++extern "C" int anhyprland_axis_at(int id, uint64_t generation, float dx, float dy) {
++    if (id < 0 || id > 1 || !generation) return -EINVAL;
++    return enqueue([=] {
++        if (taggedActive(id, generation))
++            if (auto output = backend()) output->axis(id, dx, dy);
++    });
++}
++
++extern "C" int anhyprland_key_at(int id, uint64_t generation, uint32_t evdev, int pressed) {
++    if (id < 0 || id > 1 || !generation || evdev > 767) return -EINVAL;
++    return enqueue([=] {
++        if (!taggedActive(id, generation)) return;
++        if (pressed) focusOutput(id);
++        if (auto output = backend()) output->key(evdev, pressed);
++        if (pressed) embed.pressedKeys[id].insert(evdev);
++        else embed.pressedKeys[id].erase(evdev);
++    });
++}
++
++extern "C" int anhyprland_unicode_at(int id, uint64_t generation, uint32_t codepoint) {
++    if (id < 0 || id > 1 || !generation || codepoint > 0x10ffff || (codepoint >= 0xd800 && codepoint <= 0xdfff)) return -EINVAL;
++    return enqueue([=] {
++        if (!taggedActive(id, generation)) return;
++        focusOutput(id);
++        sendUnicode(codepoint);
+     });
+ }
+ 
+--- a/src/android/Embed.h
++++ b/src/android/Embed.h
+@@ -13,6 +13,19 @@
+ // Currently one compositor lifetime is supported per host process.
+ // Returns 0 after a requested shutdown, or a negative errno on failure.
+ int anhyprland_run(struct ANativeWindow* window, int width, int height, const char* config, void (*ready)(void* userdata), void* userdata);
++int anhyprland_run_generation(struct ANativeWindow* window, int width, int height, uint64_t initialGeneration, const char* config, void (*ready)(void* userdata), void* userdata);
++// Callback runs on the compositor thread after the requested operation has executed.
++// Status: 1 attached, 2 detached, 3 removed, 4 resized, 5 stale; negative errno on failure.
++void anhyprland_set_output_listener(void (*listener)(void* userdata, int id, uint64_t generation, int status), void* userdata);
++int anhyprland_output_surface(int id, uint64_t generation, struct ANativeWindow* window, int width, int height);
++int anhyprland_output_resize(int id, uint64_t generation, int width, int height);
++int anhyprland_output_remove(int id, uint64_t generation);
++int anhyprland_focus_at(int id, uint64_t generation, int focused);
++int anhyprland_pointer_at(int id, uint64_t generation, float x, float y, uint32_t button, int pressed);
++int anhyprland_touch_at(int id, uint64_t generation, int touchId, int action, float x, float y);
++int anhyprland_axis_at(int id, uint64_t generation, float dx, float dy);
++int anhyprland_key_at(int id, uint64_t generation, uint32_t evdev, int pressed);
++int anhyprland_unicode_at(int id, uint64_t generation, uint32_t codepoint);
+ // These calls are thread-safe. Window references are retained until processed.
+ int  anhyprland_window(struct ANativeWindow* window, int width, int height);
+ // Output IDs: 0 is the phone, 1 is the external display. Null detaches a surface.
+--- a/src/devices/TouchDevice.cpp
++++ b/src/devices/TouchDevice.cpp
+@@ -53,6 +53,10 @@
+     m_listeners.frame = m_touch->events.frame.listen([this] { m_touchEvents.frame.emit(); });
+ 
+     m_deviceName = m_touch->getName();
++#ifdef __ANDROID__
++    if (m_deviceName == "Android touchscreen ANDROID-1" || m_deviceName == "Android touchscreen ANDROID-2")
++        m_boundOutput = m_deviceName.substr(sizeof("Android touchscreen ") - 1);
++#endif
+ }
+ 
+ bool CTouchDevice::isVirtual() {
+--- a/subprojects/aquamarine/include/aquamarine/backend/Android.hpp
++++ b/subprojects/aquamarine/include/aquamarine/backend/Android.hpp
+@@ -5,6 +5,7 @@
+ #include <hyprutils/os/FileDescriptor.hpp>
+ #include <android/native_window.h>
+ #include <array>
++#include <cstdint>
+ 
+ namespace Aquamarine {
+     class CAndroidBackend;
+@@ -41,9 +42,10 @@
+ 
+     class CAndroidTouch : public ITouch {
+       public:
++        explicit CAndroidTouch(int id) : m_name("Android touchscreen ANDROID-" + std::to_string(id + 1)) {}
+         const std::string& getName() override;
+       private:
+-        const std::string m_name = "Android touchscreen";
++        const std::string m_name;
+     };
+ 
+     // Every method runs on the compositor thread. The embedding API queues
+@@ -68,13 +70,22 @@
+         Hyprutils::Memory::CWeakPointer<IBackendImplementation> getPrimary() override;
+ 
+         bool setWindow(int id, ANativeWindow* window, int width, int height);
++        void adoptInitialGeneration(uint64_t generation);
++        int setSurface(int id, uint64_t generation, ANativeWindow* window, int width, int height);
++        int resize(int id, uint64_t generation, int width, int height);
++        int remove(int id, uint64_t generation);
++        bool active(int id, uint64_t generation) const;
++        uint64_t generation(int id) const;
++        uint64_t highWater(int id) const;
++        Hyprutils::Memory::CSharedPointer<CAndroidOutput> output(int id) const;
+         ANativeWindow* window(int id) const;
+         void scheduleFrame(int id);
+         bool frameScheduled(int id) const;
+         void pointer(int id, float x, float y, uint32_t button, bool pressed);
+-        void axis(float dx, float dy);
+-        void touch(int32_t id, int action, float x, float y);
++        void axis(int id, float dx, float dy);
++        void touch(int displayId, int32_t id, int action, float x, float y);
+         void key(uint32_t evdev, bool pressed);
++        void releaseButton(uint32_t button);
+ 
+         Hyprutils::Memory::CWeakPointer<CAndroidBackend> self;
+         std::function<bool(int, ANativeWindow*)> attachWindow;
+@@ -87,6 +98,11 @@
+             ANativeWindow* window = nullptr;
+             int width = 0, height = 0;
+             bool frameScheduled = false;
++            bool hasPointer = false;
++            float pointerX = 0, pointerY = 0;
++            uint64_t generation = 0;
++            uint64_t highWater = 0;
++            bool removed = false;
+             std::chrono::steady_clock::time_point lastFrame;
+             std::chrono::steady_clock::time_point nextFrame;
+         };
+@@ -94,7 +110,7 @@
+         void armTimer();
+         Hyprutils::Memory::CSharedPointer<CAndroidKeyboard> m_keyboard;
+         Hyprutils::Memory::CSharedPointer<CAndroidPointer> m_pointer;
+-        Hyprutils::Memory::CSharedPointer<CAndroidTouch> m_touch;
++        std::array<Hyprutils::Memory::CSharedPointer<CAndroidTouch>, 2> m_touches;
+         Hyprutils::Memory::CSharedPointer<IAllocator> m_allocator;
+         Hyprutils::OS::CFileDescriptor m_timer;
+     };
+--- a/subprojects/aquamarine/src/backend/Android.cpp
++++ b/subprojects/aquamarine/src/backend/Android.cpp
+@@ -3,6 +3,7 @@
+ #include <android/hardware_buffer.h>
+ #include <algorithm>
+ #include <cmath>
++#include <cerrno>
+ #include <ctime>
+ #include <sys/timerfd.h>
+ #include <unistd.h>
+@@ -161,10 +162,14 @@
+     if (!m_keyboard) {
+         m_keyboard = makeShared<CAndroidKeyboard>();
+         m_pointer = makeShared<CAndroidPointer>();
+-        m_touch = makeShared<CAndroidTouch>();
+         m_backend->events.newKeyboard.emit(m_keyboard);
+         m_backend->events.newPointer.emit(m_pointer);
+-        m_backend->events.newTouch.emit(m_touch);
++        for (int id = 0; id < 2; ++id) {
++            if (!m_displays[id].output)
++                continue;
++            m_touches[id] = makeShared<CAndroidTouch>(id);
++            m_backend->events.newTouch.emit(m_touches[id]);
++        }
+     }
+     const auto now = std::chrono::steady_clock::now();
+     for (auto& display : m_displays) {
+@@ -199,6 +204,10 @@
+     display.output->modes.emplace_back(makeShared<SOutputMode>(Vector2D{display.width, display.height}, 60000, true));
+     display.output->swapchain = CSwapchain::create(m_allocator, self.lock());
+     m_backend->events.newOutput.emit(display.output);
++    if (m_keyboard && !m_touches[id]) {
++        m_touches[id] = makeShared<CAndroidTouch>(id);
++        m_backend->events.newTouch.emit(m_touches[id]);
++    }
+     return true;
+ }
+ CSharedPointer<IAllocator> CAndroidBackend::preferredAllocator() { return m_allocator; }
+@@ -206,13 +215,122 @@
+ CWeakPointer<IBackendImplementation> CAndroidBackend::getPrimary() { return {}; }
+ ANativeWindow* CAndroidBackend::window(int id) const { return m_displays.at(id).window; }
+ bool CAndroidBackend::frameScheduled(int id) const { return m_displays.at(id).frameScheduled; }
++void CAndroidBackend::adoptInitialGeneration(uint64_t generation) {
++    m_displays[0].generation = generation;
++    m_displays[0].highWater = generation;
++}
++bool CAndroidBackend::active(int id, uint64_t generation) const {
++    if (id < 0 || id > 1) return false;
++    const auto& display = m_displays[id];
++    return display.generation == generation && display.window && display.output;
++}
++uint64_t CAndroidBackend::generation(int id) const { return m_displays.at(id).generation; }
++uint64_t CAndroidBackend::highWater(int id) const { return m_displays.at(id).highWater; }
++CSharedPointer<CAndroidOutput> CAndroidBackend::output(int id) const {
++    return id < 0 || id > 1 ? nullptr : m_displays[id].output;
++}
++
++int CAndroidBackend::setSurface(int id, uint64_t generation, ANativeWindow* window, int width, int height) {
++    if (id < 0 || id > 1 || !generation || (window && (width <= 0 || height <= 0))) return -EINVAL;
++    auto& display = m_displays[id];
++    if (generation < display.highWater) return 5;
++    if (display.removed && generation == display.highWater) return 5;
++    if (!window) {
++        if (display.window && attachWindow && !attachWindow(id, nullptr)) return -EIO;
++        display.highWater = generation;
++        display.generation = generation;
++        display.removed = false;
++        if (display.window) ANativeWindow_release(display.window);
++        display.window = nullptr;
++        display.frameScheduled = false;
++        display.hasPointer = false;
++        armTimer();
++        return 2;
++    }
++    if (display.window && generation == display.generation) {
++        // A JNI ANativeWindow wrapper may differ while naming the same BufferQueue.
++        // The existing EGLSurface remains attached for this generation.
++        return resize(id, generation, width, height);
++    }
++    // A new generation owns a new Surface. Disconnect first: Android permits
++    // only one EGL producer for a BufferQueue, even across distinct wrappers.
++    if (display.window && attachWindow && !attachWindow(id, nullptr)) return -EIO;
++    if (display.window) ANativeWindow_release(display.window);
++    display.window = nullptr;
++    display.frameScheduled = false;
++    display.hasPointer = false;
++    if (attachWindow && !attachWindow(id, window)) {
++        display.highWater = generation;
++        display.generation = generation;
++        armTimer();
++        return -EIO;
++    }
++    display.highWater = generation;
++    display.generation = generation;
++    ANativeWindow_acquire(window);
++    display.window = window;
++    display.removed = false;
++    const bool resized = width != display.width || height != display.height;
++    display.width = width;
++    display.height = height;
++    if (!display.output && !createOutput(id ? "ANDROID-2" : "ANDROID-1")) {
++        if (attachWindow) attachWindow(id, nullptr);
++        ANativeWindow_release(display.window);
++        display.window = nullptr;
++        return -EIO;
++    }
++    if (display.output && resized) display.output->events.state.emit(IOutput::SStateEvent{.size = {width, height}});
++    scheduleFrame(id);
++    return 1;
++}
++
++int CAndroidBackend::resize(int id, uint64_t generation, int width, int height) {
++    if (id < 0 || id > 1 || !generation || width <= 0 || height <= 0) return -EINVAL;
++    auto& display = m_displays[id];
++    if (generation < display.highWater) return 5;
++    if (generation != display.generation || !display.window || !display.output) return -ENODEV;
++    const bool changed = width != display.width || height != display.height;
++    display.width = width;
++    display.height = height;
++    if (changed) display.output->events.state.emit(IOutput::SStateEvent{.size = {width, height}});
++    scheduleFrame(id);
++    return 4;
++}
++
++int CAndroidBackend::remove(int id, uint64_t generation) {
++    if (id != 1 || !generation) return -EINVAL; // The phone is the compositor's required anchor.
++    auto& display = m_displays[id];
++    if (generation < display.highWater) return 5;
++    if (display.window && attachWindow && !attachWindow(id, nullptr)) return -EIO;
++    display.highWater = generation;
++    display.generation = generation;
++    display.removed = true;
++    if (display.window) ANativeWindow_release(display.window);
++    display.window = nullptr;
++    display.frameScheduled = false;
++    display.hasPointer = false;
++    armTimer();
++    if (m_touches[id]) { m_touches[id]->events.destroy.emit(); m_touches[id].reset(); }
++    if (display.output) { display.output->events.destroy.emit(); display.output.reset(); }
++    return 3;
++}
+ 
+ bool CAndroidBackend::setWindow(int id, ANativeWindow* window, int width, int height) {
+     if (id < 0 || id > 1 || (window && (width <= 0 || height <= 0)))
+         return false;
+     auto& display = m_displays[id];
+-    // Android rejects a second EGLSurface for an ANativeWindow already connected
+-    // to EGL. Keep the existing surface when the host repeats the same window.
++    // Legacy callers do not carry a Surface generation. While a window is
++    // present, treat non-null updates as resize; a real replacement must first
++    // detach with null. JNI can hand us a different wrapper for one BufferQueue.
++    if (display.window && window) {
++        const bool resized = width != display.width || height != display.height;
++        display.width = width;
++        display.height = height;
++        if (resized && display.output)
++            display.output->events.state.emit(IOutput::SStateEvent{.size = {width, height}});
++        scheduleFrame(id);
++        return true;
++    }
+     if (display.window != window && attachWindow && !attachWindow(id, window))
+         return false;
+     if (window)
+@@ -263,14 +381,20 @@
+     if (!m_pointer || !display.window || !display.output || !std::isfinite(x) || !std::isfinite(y))
+         return;
+     m_pointer->events.warp.emit(IPointer::SWarpEvent{.timeMs = timeMs(), .absolute = {x / display.width, y / display.height}, .output = display.output});
++    m_displays[id].hasPointer = true;
++    m_displays[id].pointerX = x;
++    m_displays[id].pointerY = y;
+     if (button)
+         m_pointer->events.button.emit(IPointer::SButtonEvent{.timeMs = timeMs(), .button = button, .pressed = pressed});
+     m_pointer->events.frame.emit();
+ }
+ 
+-void CAndroidBackend::axis(float dx, float dy) {
+-    if (!m_pointer || !std::isfinite(dx) || !std::isfinite(dy))
++void CAndroidBackend::axis(int id, float dx, float dy) {
++    if (id < 0 || id > 1 || !m_pointer || !std::isfinite(dx) || !std::isfinite(dy))
+         return;
++    const auto& display = m_displays[id];
++    if (!display.window || !display.output || !display.hasPointer) return;
++    m_pointer->events.warp.emit(IPointer::SWarpEvent{.timeMs = timeMs(), .absolute = {display.pointerX / display.width, display.pointerY / display.height}, .output = display.output});
+     if (dx)
+         m_pointer->events.axis.emit(IPointer::SAxisEvent{.timeMs = timeMs(), .axis = IPointer::AQ_POINTER_AXIS_HORIZONTAL, .delta = dx});
+     if (dy)
+@@ -278,22 +402,30 @@
+     m_pointer->events.frame.emit();
+ }
+ 
+-void CAndroidBackend::touch(int32_t id, int action, float x, float y) {
+-    if (!m_touch || m_width <= 0 || m_height <= 0 || !std::isfinite(x) || !std::isfinite(y))
++void CAndroidBackend::touch(int displayId, int32_t id, int action, float x, float y) {
++    if (displayId < 0 || displayId > 1) return;
++    const auto& display = m_displays[displayId];
++    const auto touch = m_touches[displayId];
++    if (!touch || !display.window || display.width <= 0 || display.height <= 0 || !std::isfinite(x) || !std::isfinite(y))
+         return;
+     const auto now = timeMs();
+-    const Vector2D pos = {x / m_width, y / m_height};
++    const Vector2D pos = {x / display.width, y / display.height};
+     switch (action) {
+-        case 0: m_touch->events.down.emit(ITouch::SDownEvent{.timeMs = now, .touchID = id, .pos = pos}); break;
+-        case 1: m_touch->events.up.emit(ITouch::SUpEvent{.timeMs = now, .touchID = id}); break;
+-        case 2: m_touch->events.move.emit(ITouch::SMotionEvent{.timeMs = now, .touchID = id, .pos = pos}); break;
+-        case 3: m_touch->events.cancel.emit(ITouch::SCancelEvent{.timeMs = now, .touchID = id}); break;
++        case 0: touch->events.down.emit(ITouch::SDownEvent{.timeMs = now, .touchID = id, .pos = pos}); break;
++        case 1: touch->events.up.emit(ITouch::SUpEvent{.timeMs = now, .touchID = id}); break;
++        case 2: touch->events.move.emit(ITouch::SMotionEvent{.timeMs = now, .touchID = id, .pos = pos}); break;
++        case 3: touch->events.cancel.emit(ITouch::SCancelEvent{.timeMs = now, .touchID = id}); break;
+         default: return;
+     }
+-    m_touch->events.frame.emit();
++    touch->events.frame.emit();
+ }
+ 
+ void CAndroidBackend::key(uint32_t evdev, bool pressed) {
+     if (m_keyboard)
+         m_keyboard->events.key.emit(IKeyboard::SKeyEvent{.timeMs = timeMs(), .key = evdev, .pressed = pressed});
+ }
++void CAndroidBackend::releaseButton(uint32_t button) {
++    if (!m_pointer) return;
++    m_pointer->events.button.emit(IPointer::SButtonEvent{.timeMs = timeMs(), .button = button, .pressed = false});
++    m_pointer->events.frame.emit();
++}

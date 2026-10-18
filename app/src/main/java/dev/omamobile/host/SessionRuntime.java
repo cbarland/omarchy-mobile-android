@@ -25,11 +25,17 @@ final class SessionRuntime {
     }
 
     static Path prepare(Path files, Path root, String profile) throws IOException {
-        if (!profile.equals("phone") && !profile.equals("desktop"))
+        if (!profile.equals("phone") && !profile.equals("desktop") && !profile.equals("unified"))
             throw new IllegalArgumentException("Unknown graphical profile: " + profile);
         Path hostAlias = prepareHostAlias(files, root);
         Path guestRoot = GuestPaths.resolve(root, "/run/omamobile");
-        Path runtime = guestRoot.resolve(profile.equals("phone") ? "p" : "d");
+        String alias = switch (profile) {
+            case "phone" -> "p";
+            case "desktop" -> "d";
+            case "unified" -> "u";
+            default -> throw new IllegalArgumentException("Unknown graphical profile: " + profile);
+        };
+        Path runtime = guestRoot.resolve(alias);
         if (Files.exists(runtime, LinkOption.NOFOLLOW_LINKS)) {
             if (Files.isSymbolicLink(runtime))
                 throw new IOException("Graphical profile runtime must not be a symlink: " + runtime);
@@ -45,7 +51,7 @@ final class SessionRuntime {
             // Android's app filesystem is POSIX; host-only JVM fixtures may use
             // a filesystem without permission attributes.
         }
-        return hostAlias.resolve(profile.equals("phone") ? "p" : "d");
+        return hostAlias.resolve(alias);
     }
 
     /** Prepare literal adapter directories beneath a runtime returned by prepare(). */

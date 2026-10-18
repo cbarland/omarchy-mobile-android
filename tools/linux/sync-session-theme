@@ -4,6 +4,8 @@
 set -uo pipefail
 
 [[ ${OMAMOBILE_SESSION_HOST:-} == android ]] || exit 0
+# Both outputs already use the same shell and receive upstream theme IPC once.
+[[ ${OMAMOBILE_PROFILE:-} == unified || ${XDG_RUNTIME_DIR:-} == /run/omamobile/u ]] && exit 0
 
 state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/omamobile
 log_file=$state_dir/theme-sync.log

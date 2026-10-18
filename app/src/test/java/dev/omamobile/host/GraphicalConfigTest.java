@@ -29,4 +29,14 @@ public class GraphicalConfigTest {
             }
         }
     }
+
+    @Test public void unifiedSeedNamesBothOutputsAndKeepsDesktopDefaults() {
+        String seed = GraphicalSession.unifiedSeedConfig();
+        assertTrue(seed.startsWith("hl.monitor({ output = \"ANDROID-1\", mode = \"preferred\", position = \"0x0\", scale = 3 })\n"
+                + "hl.monitor({ output = \"ANDROID-2\", mode = \"preferred\", position = \"auto\", scale = 1 })\n"));
+        assertEquals(2, seed.split("hl.monitor\\(", -1).length - 1);
+        assertTrue(seed.contains("gaps_in = 5, gaps_out = 5, border_size = 2"));
+        assertTrue(seed.contains("no_hardware_cursors = 1"));
+        assertTrue(seed.contains("SUPER + RETURN"));
+    }
 }

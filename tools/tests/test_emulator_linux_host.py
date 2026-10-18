@@ -12,6 +12,26 @@ SCRIPT = Path(__file__).parents[1] / "emulator-linux.py"
 
 
 class EmulatorHelperTests(unittest.TestCase):
+    def test_unified_session_uses_its_runtime_and_unified_shell_environment(self):
+        commands = []
+        def output(command, **kwargs):
+            if command[-1].endswith("ready.properties"):
+                self.assertIn("/unified/", command[-1])
+                return "ROOTFS=/data/user/0/dev.omamobile.host/files/linux/rootfs\nWAYLAND_DISPLAY=wayland-0\nHYPRLAND_INSTANCE_SIGNATURE=shared-test\n"
+            if command[-1] == "ro.product.cpu.abi": return "x86_64\n"
+            return "package:/data/app/host/base.apk\n"
+        def run(command, **kwargs):
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 0)
+        with patch.object(sys, "argv", [str(SCRIPT), "--adb", "fake-adb", "session", "unified", "echo shared"]), \
+                patch("subprocess.run", side_effect=run), patch("subprocess.check_output", side_effect=output):
+            with self.assertRaises(SystemExit) as ended:
+                runpy.run_path(str(SCRIPT), run_name="__main__")
+        self.assertEqual(ended.exception.code, 0)
+        self.assertEqual(len(commands), 1)
+        self.assertIn("XDG_RUNTIME_DIR=/run/omamobile/u", commands[0][-1])
+        self.assertIn("OMAMOBILE_PROFILE=unified", commands[0][-1])
+
     def test_stop_reveals_scrolled_control_before_pressing_enter(self):
         views = iter([
             b'<hierarchy><node text="console output" package="dev.omamobile.host" focused="true" /></hierarchy>',
