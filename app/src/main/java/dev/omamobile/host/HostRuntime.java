@@ -200,6 +200,28 @@ final class HostRuntime {
         return true;
     }
 
+    synchronized boolean updateIntegration(Runnable done) {
+        if (busy || !installed() || !InstallAssets.available(context)) return false;
+        busy = true; stopping = false; recordingSetup = true; changed();
+        worker.execute(() -> {
+            activeWorker = Thread.currentThread();
+            try {
+                checkSetupRunning();
+                ShellPayloadAssets.update(context, importer(), this::appendLine);
+            } catch (InstallationLease.BusyException busyInstallation) {
+                appendLine("Stop Linux screens and command sessions before updating integration.");
+            } catch (Exception failure) {
+                appendLine(stopping ? "Integration update cancelled; interrupted updates recover on the next update."
+                        : "Integration update stopped: " + (failure.getMessage() == null ? failure.toString() : failure.getMessage()));
+            } finally {
+                Thread.interrupted(); activeWorker = null; recordingSetup = false;
+                synchronized (this) { busy = false; }
+                changed(); main.post(done);
+            }
+        });
+        return true;
+    }
+
     synchronized boolean submit(String command, Uri image, boolean ando, boolean androidDns, boolean installOmarchy, Runnable done) {
         if (busy) return false;
         busy = true;

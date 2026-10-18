@@ -16,6 +16,15 @@ import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 import org.junit.Test;
 
 public class AdapterRefreshTest {
+    @Test public void interruptedPayloadUpdateBlocksHelperRefreshBeforeExecution() throws Exception {
+        byte[] before = legacy();
+        try (Fixture fixture = new Fixture(before)) {
+            Files.createDirectory(fixture.linux.resolve(ShellPayloadUpdate.TRANSACTION));
+            assertThrows(IOException.class, () -> fixture.acquire(fixture.source()));
+            assertEquals(0, fixture.staged);
+            assertArrayEquals(before, Files.readAllBytes(fixture.helper));
+        }
+    }
     private static final byte[] DESIRED = "#!/bin/sh\necho updated\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
     private static byte[] legacy() throws IOException {
         return legacy("636daa9");

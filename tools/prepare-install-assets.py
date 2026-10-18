@@ -65,7 +65,7 @@ def archive_entries(path: Path) -> list[dict[str, object]]:
             if "squeekboard" in member.name.lower():
                 raise SystemExit(f"unexpected keyboard layout outside this adapter's payload: {member.name}")
             data = archive.extractfile(member).read()
-            entries.append({"path": member.name, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)})
+            entries.append({"path": member.name, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data), "mode": member.mode & 0o777})
     return entries
 
 
