@@ -105,26 +105,44 @@ def compose(relative: str, data: bytes) -> bytes:
 ''', relative)
     elif relative == "shell/plugins/bar/Bar.qml":
         text = once(text, '  Variants {\n    model: Quickshell.screens\n\n    delegate: Component {\n      BarPanel {', '''  Variants {
-    model: Quickshell.env("OMAMOBILE_PROFILE") === "unified"
-      ? (Quickshell.screens.filter(function(screen) { return screen && screen.name === "ANDROID-2" }).length
-          ? Quickshell.screens.filter(function(screen) { return screen && screen.name === "ANDROID-2" })
-          : Quickshell.screens.filter(function(screen) { return screen && screen.name === "ANDROID-1" }))
-      : Quickshell.screens
+    model: Quickshell.env("OMAMOBILE_PROFILE") === "unified" ? [] : Quickshell.screens
 
     delegate: Component {
       BarPanel {''', relative)
+        text = once(text, '  Variants {\n    model: Quickshell.env("OMAMOBILE_PROFILE") === "unified" ? [] : Quickshell.screens\n', '''  readonly property var unifiedBarScreen: {
+    if (Quickshell.env("OMAMOBILE_PROFILE") !== "unified") return null
+    var phone = null
+    for (var i = 0; i < Quickshell.screens.length; i++) {
+      var candidate = Quickshell.screens[i]
+      if (candidate.name === "ANDROID-2") return candidate
+      if (candidate.name === "ANDROID-1") phone = candidate
+    }
+    return phone
+  }
+
+  Loader {
+    active: Quickshell.env("OMAMOBILE_PROFILE") === "unified"
+    sourceComponent: Component { BarPanel { screen: root.unifiedBarScreen } }
+  }
+
+  Variants {
+    model: Quickshell.env("OMAMOBILE_PROFILE") === "unified" ? [] : Quickshell.screens
+''', relative)
         text = text.replace('model: Quickshell.screens',
             'model: Quickshell.env("OMAMOBILE_PROFILE") === "unified"\n'
             '      ? Quickshell.screens.filter(function(screen) { return screen && screen.name === "ANDROID-2" })\n'
             '      : Quickshell.screens')
-        if text.count('screen.name === "ANDROID-2"') != 4:
-            raise ValueError("desktop bar: expected one fallback and two ghost models")
+        if text.count('screen.name === "ANDROID-2"') != 2:
+            raise ValueError("desktop bar: expected two external ghost models")
+        text = once(text, '    id: barWindow\n', '''    id: barWindow
+    readonly property bool phoneFallback: Quickshell.env("OMAMOBILE_PROFILE") === "unified"
+      && root.unifiedBarScreen && root.unifiedBarScreen.name === "ANDROID-1"
+''', relative)
         text = once(text, '    visible: !remapGuard.remapping && (cutoutWaitOver || !cutoutPending)\n',
-            '    visible: !(Quickshell.env("OMAMOBILE_PROFILE") === "unified" && screen.name === "ANDROID-1")\n'
-            '      && !remapGuard.remapping && (cutoutWaitOver || !cutoutPending)\n', relative)
+            '    visible: (Quickshell.env("OMAMOBILE_PROFILE") !== "unified" || !!root.unifiedBarScreen)\n'
+            '      && !phoneFallback && !remapGuard.remapping && (cutoutWaitOver || !cutoutPending)\n', relative)
         text = once(text, '    exclusionMode: root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto\n',
-            '    exclusionMode: (Quickshell.env("OMAMOBILE_PROFILE") === "unified" && screen.name === "ANDROID-1")\n'
-            '      || root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto\n', relative)
+            '    exclusionMode: phoneFallback || root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto\n', relative)
     elif relative == "shell/Ui/OverlayWindow.qml":
         text = once(text, '  function focusedScreen() {\n', '''  function focusedScreen() {
     if (Quickshell.env("OMAMOBILE_PROFILE") === "unified") {
