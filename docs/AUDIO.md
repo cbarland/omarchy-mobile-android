@@ -6,6 +6,20 @@ callers yet. DesktopService, PipeWire/Pulse installation or lifecycle, shared
 phone/desktop audio, audio focus, and foreground-service policy are not wired.
 It adds no permissions and makes no claim of audible hardware output.
 
+`ManagedAudioOutput` adds an owning-looper policy around that primitive. A
+validated read/write FIFO probe waits for the first PCM without consuming it;
+focus is requested before an AudioTrack is opened. Idle closes the consumer
+and abandons focus. Denied/lost-focus streams are drained without repeatedly
+requesting focus, and a later stream can resume after idle. The controller is
+not yet connected to the normal graphical service or a shared PipeWire owner.
+
+The opt-in `ManagedAudioOutputTest` (`-e managedAudio true`) exercises actual
+FIFO/AudioTrack output with a controlled focus policy: no idle track or readiness
+spin, complete frame submission/replay, denial without repeated requests, and
+release/recovery after focus loss. All three cases and the six existing PCM
+cases passed on the disposable API35 x86_64 emulator. These tests do not establish
+real Android focus delivery, acoustic output, or shared-session service behavior.
+
 The caller provides an existing FIFO beneath `Context.getFilesDir()`, owns the
 producer, and must call `close()` even after worker EOF or failure. Android's
 Context-provided app-directory alias is accepted; aliases beneath that directory,
