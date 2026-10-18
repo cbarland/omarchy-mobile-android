@@ -41,6 +41,9 @@ final class GraphicalSession {
         if (!Files.isRegularFile(xkb.resolve("rules/evdev"))) throw new IOException("Install Linux xkeyboard-config before starting Hyprland");
         if (!Files.isRegularFile(GuestPaths.resolve(root, "/root/.local/share/omamobile/start-shell")))
             throw new IOException("Prepare the upstream Omarchy Linux shell profiles first (see docs/GRAPHICS.md)");
+        if (unified && !Files.isRegularFile(GuestPaths.resolve(root,
+                "/root/.local/share/omamobile/profiles/unified.json")))
+            throw new IOException("Prepare the updated shared shell payload before starting this preview (see docs/GRAPHICS.md)");
         home = Files.createDirectories(files.resolve("graphics/" + profile));
         // Keep Unix-domain IPC addresses beneath sockaddr_un's 108-byte limit.
         runtime = SessionRuntime.prepare(files, root, profile);

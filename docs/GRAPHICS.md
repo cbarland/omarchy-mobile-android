@@ -77,11 +77,21 @@ Surface loss pauses presentation, while physical external-display removal remove
 that Hyprland output so its windows can return to the phone. Reconnection reuses
 the logical output name even if Android assigns a new display ID.
 
-The preview currently uses the desktop shell on both outputs. The per-output
-Mobile widgets and desktop layout are a later integration step. Its editable
-config and logs live in `files/graphics/unified/`, and its Linux runtime is
-`/run/omamobile/u`. The existing per-profile display-scale preview applies to the
-default path only. An exclusive graphical-mode lease prevents both modes from
+The preview runs one Quickshell host with the Mobile bar, home widgets, launcher,
+and quick settings on the phone, and the Omarchy desktop bar and panels on the
+external output. Its editable config and logs live in `files/graphics/unified/`,
+and its Linux runtime is `/run/omamobile/u`. The shared shell config is
+`~/.local/share/omamobile/profiles/unified.json`; Mobile home/widget state remains
+in `~/.config/omamobile/`. Each output has its own persisted scale in the shared
+profile's `hypr/monitors.lua`. Android's desktop scale preview supports Keep,
+Revert, and timeout recovery in either mode. Custom monitor files are preserved.
+
+This preview requires Linux prepared from the updated APK's pinned shell payload.
+Installing an APK over an existing prepared image does not replace its upstream
+QML or user configuration. Existing images need a deliberate shell-payload update;
+the automatic adapter refresh only updates the Android command helper.
+
+An exclusive graphical-mode lease prevents both modes from
 running against the shared Linux configuration at once; normal Start and Stop
 controls can switch back or close the preview. The private native build and
 binary publication holds still apply.
