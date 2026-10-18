@@ -88,15 +88,14 @@ final class UnifiedCompositorController {
             // A replaced/retired Activity cannot reclaim the role through a late resize.
             if (lease != null && !ownership.isGenerationCurrent(role, lease.generation())) return;
             if (displays.getDisplay(displayId) == null) return;
-            Output previous = outputs.get(role);
             lease = ownership.claim(role, owner, displayId);
             Output output = new Output(lease, surface, width, height);
             outputs.put(role, output);
             displayIds.put(role, displayId);
             if (phase == Phase.RUNNING) {
-                if (previous != null && previous.lease() == lease)
-                    queued("resize", NativeCompositor.outputResize(role.id(), lease.generation(), width, height));
-                else attachNative(output);
+                // Native owns actual attachment state. A live same-generation
+                // output resizes; a failed prior attach can retry this Surface.
+                attachNative(output);
                 if (focused) focus(true);
             }
             if (role == OutputOwnership.Role.PHONE) {
