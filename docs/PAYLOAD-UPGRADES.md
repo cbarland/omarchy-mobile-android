@@ -46,5 +46,6 @@ running, preserved a deliberate stock-file conflict without changing the
 ownership manifest, updated 16 changed stock paths plus one missing profile,
 and made a repeated update a zero-file operation. Existing data, profiles and
 Android grants were checked unchanged, and the original installation was
-restored after testing. Shared-mode visual readiness remains a separate gate;
-this does not establish arbitrary upstream-version or ARM64 upgrade safety.
+restored after testing. The updated payload also displayed Mobile widgets on the
+phone and the desktop bar/background on the external output after reconnect.
+This does not establish arbitrary upstream-version or ARM64 upgrade safety.
