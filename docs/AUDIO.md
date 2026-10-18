@@ -48,8 +48,11 @@ and package-manager updates are separate operations.
 emulator: ordinary native and Pulse clients from phone/desktop environments
 shared one owner, acquired real Android focus, advanced the playback head,
 released track/focus on idle, and stopped with the exclusive installation lease
-available again. This direct service test does not establish the complete normal
-graphical Start/hotplug/crash workflow, mixing, real routing, or ARM64 behavior.
+available again. Two simultaneous streams linked actively to the same sink;
+real transient focus loss/recovery and forced audio-owner death followed by
+Android rebinding and renewed playback also passed. This direct service test
+does not establish the complete normal graphical Start/hotplug/main-process
+death workflow, real hardware routing, or ARM64 behavior.
 Those remain separate gates. Platform focus/route policy follows
 [Android audio focus](https://developer.android.com/media/optimize/audio-focus).
 
