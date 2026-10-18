@@ -5,6 +5,23 @@ import static org.junit.Assert.*;
 import org.junit.Test;
 
 public final class OutputOwnershipTest {
+    @Test public void externalReparentCannotEraseThePhysicalRemovalIdentity() {
+        OutputOwnership ownership = new OutputOwnership();
+        Object desktopOwner = new Object();
+        var phone = ownership.claim(OutputOwnership.Role.PHONE, new Object(), 0);
+        var desktop = ownership.claim(OutputOwnership.Role.DESKTOP, desktopOwner, 2);
+        assertFalse(OutputOwnership.Role.DESKTOP.acceptsAndroidDisplay(0));
+        assertThrows(IllegalArgumentException.class,
+                () -> ownership.claim(OutputOwnership.Role.DESKTOP, desktopOwner, 0));
+        assertEquals(desktop, ownership.current(OutputOwnership.Role.DESKTOP).orElseThrow());
+        assertEquals(2, desktop.androidDisplayId());
+        ownership.retire(OutputOwnership.Role.DESKTOP);
+        assertFalse(ownership.isCurrent(desktop));
+        assertTrue(ownership.isCurrent(phone));
+        assertThrows(IllegalArgumentException.class,
+                () -> ownership.claim(OutputOwnership.Role.PHONE, new Object(), 2));
+    }
+
     @Test public void replacingOwnerMakesOldDetachHarmless() {
         OutputOwnership ownership = new OutputOwnership();
         Object oldOwner = new Object();

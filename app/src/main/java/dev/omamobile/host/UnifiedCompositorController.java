@@ -85,6 +85,13 @@ final class UnifiedCompositorController {
         @Override public void unobserve(Consumer<String> listener) { observers.remove(listener); }
         @Override public void attach(Object owner, Surface surface, int width, int height, int displayId) {
             if (phase == Phase.STOPPING || !surface.isValid() || width <= 0 || height <= 0) return;
+            // Android may reparent the external task to display zero before
+            // onDisplayRemoved arrives. Retain its original physical identity
+            // so that callback can retire the output and recover its windows.
+            if (!role.acceptsAndroidDisplay(displayId)) {
+                android.util.Log.i("OmamobileUnified", "Ignoring reparented " + role + " Surface on display " + displayId);
+                return;
+            }
             // A replaced/retired Activity cannot reclaim the role through a late resize.
             if (lease != null && !ownership.isGenerationCurrent(role, lease.generation())) return;
             if (displays.getDisplay(displayId) == null) return;

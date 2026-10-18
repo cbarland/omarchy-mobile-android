@@ -13,6 +13,10 @@ public final class OutputOwnership {
         Role(int id) { this.id = id; }
 
         public int id() { return id; }
+        /** Android's default display is always zero; external roles cannot own it. */
+        public boolean acceptsAndroidDisplay(int displayId) {
+            return this == PHONE ? displayId == 0 : displayId > 0;
+        }
     }
 
     public record Lease(Role role, Object owner, long generation, int androidDisplayId) {
@@ -20,7 +24,7 @@ public final class OutputOwnership {
             Objects.requireNonNull(role, "role");
             Objects.requireNonNull(owner, "owner");
             if (generation < 0) throw new IllegalArgumentException("generation must be nonnegative");
-            if (androidDisplayId < 0) throw new IllegalArgumentException("display id must be nonnegative");
+            if (!role.acceptsAndroidDisplay(androidDisplayId)) throw new IllegalArgumentException("display does not match output role");
         }
     }
 
@@ -34,7 +38,8 @@ public final class OutputOwnership {
     /** Claims a role, preserving its generation only for the same owner object and display. */
     public Lease claim(Role role, Object owner, int androidDisplayId) {
         Objects.requireNonNull(owner, "owner");
-        if (androidDisplayId < 0) throw new IllegalArgumentException("display id must be nonnegative");
+        if (!Objects.requireNonNull(role, "role").acceptsAndroidDisplay(androidDisplayId))
+            throw new IllegalArgumentException("display does not match output role");
         Slot slot = slot(role);
         Lease current = slot.lease;
         if (current != null && current.owner() == owner && current.androidDisplayId() == androidDisplayId) {
