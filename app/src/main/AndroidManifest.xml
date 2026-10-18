@@ -51,6 +51,7 @@
         <service android:name=".PhoneCompositorOwnershipService" android:exported="false" android:process=":phone" />
         <service android:name=".DesktopCompositorOwnershipService" android:exported="false" android:process=":desktop" />
         <service android:name=".UnifiedCompositorOwnershipService" android:exported="false" android:process=":unified" />
+        <service android:name=".SharedAudioService" android:exported="false" android:process=":audio" />
         <service android:name=".LinuxService" android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="User-started Linux command sessions and root filesystem import" />

@@ -22,7 +22,7 @@ final class ManagedAudioOutput implements AutoCloseable {
         boolean request(IntConsumer callback);
         void abandon();
     }
-    private enum State { IDLE, GRANTED, DENIED, TRANSIENT_LOSS, LOST }
+    private enum State { IDLE, GRANTED, DENIED, TRANSIENT_LOSS, LOST, STOPPED }
     record Snapshot(boolean track, boolean focus, long bytes, long submittedFrames,
                     long playbackFrames, long droppedBytes, long readinessEvents) { }
     private final Context context;
@@ -116,7 +116,7 @@ final class ManagedAudioOutput implements AutoCloseable {
             catch (ErrnoException error) {
                 if (error.errno != OsConstants.EAGAIN && error.errno != OsConstants.EINTR) throw error;
             }
-            scheduleIdle();
+            if (state != State.STOPPED) scheduleIdle();
             return MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT
                     | MessageQueue.OnFileDescriptorEventListener.EVENT_ERROR;
         } catch (IOException | ErrnoException | RuntimeException error) {
@@ -129,7 +129,7 @@ final class ManagedAudioOutput implements AutoCloseable {
         handler.postDelayed(idleCheck, IDLE_MS);
     }
     private void idle() {
-        if (closed || failed) return;
+        if (closed || failed || state == State.STOPPED) return;
         try {
             if (output != null) {
                 if (output.failure() != null) throw output.failure();
@@ -161,6 +161,15 @@ final class ManagedAudioOutput implements AutoCloseable {
                 scheduleIdle();
             }
         } catch (IOException | RuntimeException error) { fail(error); }
+    }
+    void silenceForStop() throws IOException {
+        owner();
+        generation++;
+        focus.abandon();
+        state = State.STOPPED;
+        handler.removeCallbacks(idleCheck);
+        releaseTrack();
+        listen();
     }
     private void releaseTrack() throws IOException {
         if (output == null) return;

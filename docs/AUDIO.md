@@ -1,9 +1,8 @@
 # Private PCM output foundation
 
 `AndroidPcmOutput` is a package-private, explicitly owned FIFO-to-`AudioTrack`
-primitive for S16LE stereo at 48 kHz (four bytes per frame). It has no application
-callers yet. DesktopService, PipeWire/Pulse installation or lifecycle, shared
-phone/desktop audio, audio focus, and foreground-service policy are not wired.
+primitive for S16LE stereo at 48 kHz (four bytes per frame). The experimental
+shared runtime described below owns it through `ManagedAudioOutput`.
 It adds no permissions and makes no claim of audible hardware output.
 
 `ManagedAudioOutput` adds an owning-looper policy around that primitive. A
@@ -11,14 +10,48 @@ validated read/write FIFO probe waits for the first PCM without consuming it;
 focus is requested before an AudioTrack is opened. Idle closes the consumer
 and abandons focus. Denied/lost-focus streams are drained without repeatedly
 requesting focus, and a later stream can resume after idle. The controller is
-not yet connected to the normal graphical service or a shared PipeWire owner.
+used by one shared PipeWire owner bound to the graphical service.
 
 The opt-in `ManagedAudioOutputTest` (`-e managedAudio true`) exercises actual
 FIFO/AudioTrack output with a controlled focus policy: no idle track or readiness
 spin, complete frame submission/replay, denial without repeated requests, and
-release/recovery after focus loss. All three cases and the six existing PCM
+release/recovery after focus loss, and silence during graph shutdown. All four cases and the six existing PCM
 cases passed on the disposable API35 x86_64 emulator. These tests do not establish
 real Android focus delivery, acoustic output, or shared-session service behavior.
+
+## Shared session integration
+
+`DesktopService` binds one `SharedAudioService` in `:audio` while screens are
+requested, including phone-only use. Display replacement and switching between
+legacy/shared graphics modes retain this owner. Stop screens and removal of the
+controls task unbind it. The separate JVM holds its own shared installation lease,
+so ordinary main-process Linux commands can still run; updates require all users
+of that installation to stop.
+
+One foreground Python helper owns PipeWire, WirePlumber's policy profile, and
+the Pulse compatibility server. They expose a real FIFO sink named
+`omamobile-android`, not an emulated hardware card. All profiles point their
+native and Pulse clients to `/run/omamobile/a-shared`; their Wayland and D-Bus
+runtimes stay separate. The helper blocks on control/child-exit events when
+idle and records exact process identities. Shutdown silences playback, reaps
+the graph, verifies recorded children are gone, and then releases files and lease.
+Failed cleanup retains ownership and logs the failure. Startup never installs
+packages or changes user PipeWire configuration.
+
+Fresh signed provisioning includes `pipewire`, `pipewire-audio`, `pipewire-pulse`,
+and `wireplumber`. Preserved images missing them need an explicit normal signed
+package update, for example `pacman -Syu --needed pipewire pipewire-audio
+pipewire-pulse wireplumber`, after reviewing that transaction. Payload updates
+and package-manager updates are separate operations.
+
+`SharedAudioServiceTest` (`-e sharedAudio true`) passed on the disposable API35
+emulator: ordinary native and Pulse clients from phone/desktop environments
+shared one owner, acquired real Android focus, advanced the playback head,
+released track/focus on idle, and stopped with the exclusive installation lease
+available again. This direct service test does not establish the complete normal
+graphical Start/hotplug/crash workflow, mixing, real routing, or ARM64 behavior.
+Those remain separate gates. Platform focus/route policy follows
+[Android audio focus](https://developer.android.com/media/optimize/audio-focus).
 
 The caller provides an existing FIFO beneath `Context.getFilesDir()`, owns the
 producer, and must call `close()` even after worker EOF or failure. Android's

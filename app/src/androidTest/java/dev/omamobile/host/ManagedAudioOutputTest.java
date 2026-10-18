@@ -121,7 +121,7 @@ public final class ManagedAudioOutputTest {
     }
     @Test public void focusLossReleasesTrackAndIdleRearmsPlayback() throws Exception {
         play(15);
-        await(() -> snapshot().submittedFrames() > 0);
+        await(() -> snapshot().submittedFrames() == 15L * 3840 / 4);
         onOwner(() -> { focus.listener.accept(AudioManager.AUDIOFOCUS_LOSS); return null; });
         assertFalse(snapshot().track());
         long submitted = snapshot().submittedFrames();
@@ -133,5 +133,18 @@ public final class ManagedAudioOutputTest {
         play(15);
         await(() -> snapshot().submittedFrames() > submitted);
         assertEquals(2, (int) onOwner(() -> focus.requests));
+    }
+    @Test public void stoppingSilencesWithoutRearmingWhileGraphFinishes() throws Exception {
+        play(15);
+        await(() -> snapshot().submittedFrames() > 0);
+        onOwner(() -> { output.silenceForStop(); return null; });
+        assertFalse(snapshot().track());
+        assertFalse(snapshot().focus());
+        long frames = snapshot().submittedFrames();
+        play(35);
+        Thread.sleep(ManagedAudioOutput.IDLE_MS + 250);
+        assertFalse(snapshot().track());
+        assertEquals(frames, snapshot().submittedFrames());
+        assertEquals(1, (int) onOwner(() -> focus.requests));
     }
 }
