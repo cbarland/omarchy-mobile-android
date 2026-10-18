@@ -57,9 +57,10 @@ release, child reaping and exclusive-installation access after stop.
 
 Normal host controls also passed playback before/after a real integration update,
 idle release, unchanged audio ownership across graphics-mode switching and
-external-display reconnect, and cleanup after main-process death. The combined
-run's early screenshots were incomplete; graphical readiness and painting are
-tracked separately from this audio pipeline result.
+external-display reconnect, and cleanup after main-process death. After waiting
+for shell readiness, the same build displayed Mobile widgets on the phone and
+the desktop bar/background on the external output, including after reconnect.
+Existing startup, IPC and capability diagnostics remain outside this audio gate.
 
 These checks observe bytes, submitted frames and advancing public playback-head
 positions. They do not establish speaker audibility, physical Bluetooth/USB
