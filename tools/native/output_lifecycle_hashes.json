@@ -1,0 +1,22 @@
+{
+  "src/android/Embed.cpp": {
+    "phase1": "5dc22068ffacd69e444e4367b2b762efc594d8cdff75fb05e7dc5b29805709d7",
+    "phase2": "e4c164e0255ffabf038e09bf044cb7569f1ee95f6fc87cb87116b0097de8aebb"
+  },
+  "src/android/Embed.h": {
+    "phase1": "35e199540cf9e029cac3991b69b74ea3eaaa35c8b9ac9648f31d9d4e12544eaf",
+    "phase2": "72110efa4afb49b9cf677255a77b13b30338de35cc03f37656945672e1a59d1c"
+  },
+  "src/devices/TouchDevice.cpp": {
+    "phase1": "3ca5620006918aba5ceaaac07ad0732fa7c61f55d7839af1fcb7c5753d57899e",
+    "phase2": "a5fa4b5be1b3f1eac51955440bfb2621e5f0fecdb27a23c35e3621117eedc1a8"
+  },
+  "subprojects/aquamarine/include/aquamarine/backend/Android.hpp": {
+    "phase1": "41be64825d2e729f3502ae0b22996b7e94be1d2650a6cdb57d3f385a21fef127",
+    "phase2": "269b5587997ad99419ab1b93e279d0708f5eda13b4c9539c2c965e28bd94456f"
+  },
+  "subprojects/aquamarine/src/backend/Android.cpp": {
+    "phase1": "d71efc3a9a2c6cde7d95df2f8ba36eae7165a77f2add3b877c0661d24b485f23",
+    "phase2": "7a62c209529b63e28460e7d4648d8afce19ea138dc9b5a3b891744be42664342"
+  }
+}

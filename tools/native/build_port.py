@@ -5,6 +5,7 @@ Requires the matching Linux NDK and tools in docs/GRAPHICS.md. No Android device
 modifications are involved. The stock Arch userland remains a separate ABI.
 """
 import argparse
+import hashlib
 import os
 from pathlib import Path
 import platform
@@ -13,6 +14,8 @@ import shutil
 import subprocess
 import sys
 from fetch_termux import default_lock, load_lock
+from patch_multi_output import apply as apply_multi_output
+from patch_output_lifecycle import apply as apply_output_lifecycle
 
 PIN = "bc13ae5859097791b3e93a32632727a7f7075354"
 ROOT = Path(__file__).resolve().parents[2]
@@ -96,6 +99,10 @@ for filename in ["build-deps.py", "build-core.py"]:
         text = text.replace('flags += [f"-DCMAKE_PREFIX_PATH={HOST}"]',
                             'flags += [f"-DCMAKE_PREFIX_PATH={HOST}", "-DCMAKE_C_COMPILER=/usr/bin/gcc-14", "-DCMAKE_CXX_COMPILER=/usr/bin/g++-14"]')
     path.write_text(text)
+# Aquamarine is built below, so install the exact patched Android backend
+# header and library before configuring the compositor against that prefix.
+apply_multi_output(source)
+apply_output_lifecycle(source)
 env = os.environ.copy()
 env.update(ARLINUX_DIR=str(base), ANDROID_NDK_HOME=str(args.ndk), JOBS=env.get("JOBS", "4"), ARLINUX_ANDROID_API="29")
 env["PATH"] = str(args.cache / "venv/bin") + os.pathsep + env["PATH"]
@@ -142,8 +149,18 @@ dependencies = ["scanner", "hyprutils", "hyprlang", "glslang", "muparser", "toml
                 "wayland-protocols", "hyprcursor", "hyprgraphics", "aquamarine"]
 if args.from_dependency:
     dependencies = dependencies[dependencies.index(args.from_dependency):]
-if not args.core_only:
+aquamarine_inputs = (source / "subprojects/aquamarine/include/aquamarine/backend/Android.hpp",
+                    source / "subprojects/aquamarine/src/backend/Android.cpp")
+aquamarine_digest = hashlib.sha256(b"".join(path.read_bytes() for path in aquamarine_inputs)).hexdigest()
+aquamarine_receipt = prefix / ".omamobile-aquamarine-source-sha256"
+if args.core_only:
+    if not aquamarine_receipt.is_file() or aquamarine_receipt.read_text().strip() != aquamarine_digest:
+        run([sys.executable, source / "android/build-deps.py", "aquamarine"], env=env)
+        aquamarine_receipt.write_text(aquamarine_digest + "\n")
+else:
     run([sys.executable, source / "android/build-deps.py", *dependencies], env=env)
+    if "aquamarine" in dependencies:
+        aquamarine_receipt.write_text(aquamarine_digest + "\n")
 from patch_port import apply, apply_renderer
 apply(source)
 apply_renderer(source)
