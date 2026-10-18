@@ -24,6 +24,9 @@ def compose(relative: str, data: bytes) -> bytes:
         return data
     text = data.decode("utf-8")
     if relative == "shell/shell.qml":
+        text = once(text, '      if (configured) return configured\n',
+            '      if (configured && !(shell.unifiedOutputs && configured === '
+            'Util.canonicalWidgetId(String(shell.mobileBarConfig.id || "")))) return configured\n', relative)
         text = once(text, '    return String(pluginId || "") === shell.activeBarId\n',
             '    var id = String(pluginId || "")\n'
             '    return id === shell.activeBarId || (shell.unifiedOutputs && id === String(shell.mobileBarConfig.id || ""))\n', relative)
@@ -63,6 +66,16 @@ def compose(relative: str, data: bytes) -> bytes:
             '          && Util.isPlainObject(config) && Util.isPlainObject(config.mobileBar)\n'
             '          ? Util.canonicalWidgetId(String(config.mobileBar.id || "")) : ""\n'
             '        return selectedBar === key || mobileBar === key\n', relative)
+        text = once(text, '    var manifest = installedPlugins[key]\n    if (value && !manifest) {\n',
+            '    var manifest = installedPlugins[key]\n'
+            '    var currentConfig = shellConfigProvider ? shellConfigProvider() : null\n'
+            '    if (Quickshell.env("OMAMOBILE_PROFILE") === "unified"\n'
+            '        && Util.isPlainObject(currentConfig) && Util.isPlainObject(currentConfig.mobileBar)\n'
+            '        && key === Util.canonicalWidgetId(String(currentConfig.mobileBar.id || ""))) {\n'
+            '      lastEnableError = "phone bar is reserved for ANDROID-1"\n'
+            '      return false\n'
+            '    }\n'
+            '    if (value && !manifest) {\n', relative)
     elif relative == "bin/omarchy-hyprland-monitor-scaling":
         text = once(text, '  local new_scale="$(clean_scale "$requested_scale" "$width" "$height")"\n', '''  local monitor_lua="$HOME/.config/hypr/monitors.lua"
   local unified_variable=""
@@ -170,6 +183,11 @@ def compose(relative: str, data: bytes) -> bytes:
                  if "quicksettings" in relative else '    visible: !!root.phoneScreen && root.opened\n')
         text = once(text, visible, gated, relative)
         if "quicksettings" in relative:
-            text = once(text, '${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/shell.json',
-                '${OMARCHY_SHELL_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/shell.json}', relative)
+            command = [line for line in text.splitlines(keepends=True)
+                       if line.lstrip().startswith('command: ["sh", "-c", "grep -o ')]
+            if len(command) != 1:
+                raise ValueError(f"{relative}: expected one upstream clock reader")
+            text = once(text, command[0],
+                '''    command: ["sh", "-c", "jq -r '(.mobileBar // .bar).clockFormat // \\"\\"' \\"${OMARCHY_SHELL_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/shell.json}\\""]
+''', relative)
     return text.encode("utf-8")
