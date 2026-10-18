@@ -36,6 +36,29 @@ public class SessionRuntimeTest {
         assertTrue(Files.isSymbolicLink(files.resolve("s")));
     }
 
+    @Test public void thirdRuntimeHasPrivateIdempotentAliasWithoutChangingExistingProfiles() throws Exception {
+        Path files = temporary.newFolder().toPath();
+        Path root = files.resolve("root");
+        Files.createDirectories(root);
+
+        Path phone = SessionRuntime.prepare(files, root, "phone");
+        Path desktop = SessionRuntime.prepare(files, root, "desktop");
+        Path unified = SessionRuntime.prepare(files, root, "unified");
+
+        assertEquals(GuestPaths.resolve(root, "/run/omamobile/p"), phone.toRealPath());
+        assertEquals(GuestPaths.resolve(root, "/run/omamobile/d"), desktop.toRealPath());
+        assertEquals(GuestPaths.resolve(root, "/run/omamobile/u"), unified.toRealPath());
+        assertEquals(unified, SessionRuntime.prepare(files, root, "unified"));
+        assertEquals(GuestPaths.resolve(root, "/run/omamobile"), files.resolve("s").toRealPath());
+    }
+
+    @Test public void unknownProfileIsRejected() throws Exception {
+        Path files = temporary.newFolder().toPath();
+        Path root = files.resolve("root");
+        Files.createDirectories(root);
+        assertThrows(IllegalArgumentException.class, () -> SessionRuntime.prepare(files, root, "tablet"));
+    }
+
     @Test public void foreignAliasIsPreservedAndRejected() throws Exception {
         Path files = temporary.newFolder().toPath();
         Path root = files.resolve("root");
