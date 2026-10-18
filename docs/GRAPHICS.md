@@ -79,7 +79,8 @@ the logical output name even if Android assigns a new display ID.
 
 The preview runs one Quickshell host with the Mobile bar, home widgets, launcher,
 and quick settings on the phone, and the Omarchy desktop bar and panels on the
-external output. Its editable config and logs live in `files/graphics/unified/`,
+external output. With no active external output, Omarchy panels can open on the
+phone so display controls remain reachable. Its editable config and logs live in `files/graphics/unified/`,
 and its Linux runtime is `/run/omamobile/u`. The shared shell config is
 `~/.local/share/omamobile/profiles/unified.json`; Mobile home/widget state remains
 in `~/.config/omamobile/`. Each output has its own persisted scale in the shared

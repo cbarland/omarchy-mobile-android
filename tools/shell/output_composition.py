@@ -113,9 +113,11 @@ def compose(relative: str, data: bytes) -> bytes:
     elif relative == "shell/Ui/OverlayWindow.qml":
         text = once(text, '  function focusedScreen() {\n', '''  function focusedScreen() {
     if (Quickshell.env("OMAMOBILE_PROFILE") === "unified") {
+      var phone = null
       for (var i = 0; i < Quickshell.screens.length; i++)
         if (Quickshell.screens[i].name === "ANDROID-2") return Quickshell.screens[i]
-      return null
+        else if (Quickshell.screens[i].name === "ANDROID-1") phone = Quickshell.screens[i]
+      return phone
     }
 ''', relative)
     elif relative == "packages/omamobile-shell/plugins/omamobile.bar/Bar.qml":
