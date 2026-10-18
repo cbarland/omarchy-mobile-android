@@ -58,12 +58,12 @@ final class DisplaySettings {
         shown = outputs;
         shownPreference = saved;
         content.removeAllViews();
-        addText("One external desktop is supported. Windows cannot move between phone and desktop.");
-        addText("For desktop scaling, open Omarchy’s Display panel: Super + Ctrl + D. Android modes and rotation are read-only here.");
+        addText("The phone and external desktop share one compositor; windows can move between them.");
+        addText("For display scaling, open Omarchy’s Display panel: Super + Ctrl + D. Android modes and rotation are read-only here.");
         preview = new DisplayPreviewController(activity);
         addScaleControls();
         addText(DisplayCatalog.selectionSummary(activity, outputs));
-        addText("Choose the desktop display. Apply with Stop screens, then Start screens. The phone keeps its Mobile profile.");
+        addText("Choose the external display. Apply with Stop screens, then Start screens. The phone and desktop keep independent display profiles.");
         RadioGroup choices = new RadioGroup(activity);
         RadioButton automatic = new RadioButton(activity);
         automatic.setText("Automatic external display");

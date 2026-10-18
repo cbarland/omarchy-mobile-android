@@ -16,7 +16,8 @@ final class ProfileMonitorConfig {
     }
 
     static Result prepare(Path root, Path nativeConfig, String profile, List<String> generatedSeeds, int scale) throws IOException {
-        if (!profile.equals("phone") && !profile.equals("desktop")) throw new IllegalArgumentException("Unknown display profile");
+        if (!profile.equals("phone") && !profile.equals("desktop") && !profile.equals("unified"))
+            throw new IllegalArgumentException("Unknown display profile");
         Path directory = root.resolve("root/.local/share/omamobile/profiles/" + profile + "/hypr");
         Path monitor = directory.resolve("monitors.lua");
         if (Files.isSymbolicLink(nativeConfig)) return new Result(null, "runtime-only: custom native config symlink preserved");
@@ -62,7 +63,9 @@ final class ProfileMonitorConfig {
             // This is the generic form recognized by the unchanged upstream
             // scaling helper. Its sed -i writes stay inside this bound directory.
             // Scope is Wayland output scale; GTK text scaling remains separate.
-            String text = "-- Per-profile Wayland output scale; GTK text scale is separate.\n"
+            String text = profile.equals("unified")
+                    ? unifiedMonitorConfig(matchedSeed)
+                    : "-- Per-profile Wayland output scale; GTK text scale is separate.\n"
                     + "local omarchy_monitor_scale = " + scale + "\n"
                     + "hl.monitor({ output = \"\", mode = \"preferred\", position = \"auto\", scale = omarchy_monitor_scale })\n";
             Files.write(monitor, text.getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE_NEW);
@@ -82,10 +85,27 @@ final class ProfileMonitorConfig {
     private static String managedConfig(String seed, Path monitor) {
         int firstLine = seed.indexOf('\n');
         if (firstLine < 0 || !seed.startsWith("hl.monitor(")) throw new IllegalArgumentException("Expected generated monitor seed");
+        int monitorEnd = 0;
+        while (monitorEnd < seed.length() && seed.startsWith("hl.monitor(", monitorEnd)) {
+            int next = seed.indexOf('\n', monitorEnd);
+            if (next < 0) throw new IllegalArgumentException("Expected generated monitor seed");
+            monitorEnd = next + 1;
+        }
         String path = monitor.toString().replace("\\", "\\\\").replace("\"", "\\\"");
         // Hyprland tracks explicit require() paths for reload, including the
         // atomic rename performed by upstream sed -i. JNI sees the real path.
-        return "require(\"" + path + "\")\n" + seed.substring(firstLine + 1);
+        return "require(\"" + path + "\")\n" + seed.substring(monitorEnd);
+    }
+
+    private static String unifiedMonitorConfig(String seed) {
+        int end = 0;
+        while (end < seed.length() && seed.startsWith("hl.monitor(", end)) {
+            int next = seed.indexOf('\n', end);
+            if (next < 0) throw new IllegalArgumentException("Expected generated monitor seed");
+            end = next + 1;
+        }
+        if (end == 0) throw new IllegalArgumentException("Expected generated monitor seed");
+        return seed.substring(0, end);
     }
 
     private static void atomicWrite(Path path, String text) throws IOException {

@@ -81,8 +81,6 @@ public final class DesktopService extends Service {
         if (intent != null && (PREVIEW_SCALE.equals(intent.getAction())
                 || KEEP_PREVIEW.equals(intent.getAction()) || REVERT_PREVIEW.equals(intent.getAction()))) {
             try {
-                if (mode == Mode.UNIFIED)
-                    throw new java.io.IOException("Desktop display preview is unavailable in shared compositor mode");
                 if (!running) throw new java.io.IOException("Start Omarchy screens before previewing desktop scale");
                 switch (intent.getAction()) {
                     case PREVIEW_SCALE -> preview.preview(intent.getIntExtra("scale", -1), System.currentTimeMillis());
@@ -112,13 +110,15 @@ public final class DesktopService extends Service {
     private void startScreens(Mode requested) {
         if (running && mode != requested) {
             Mode previous = mode;
-            if (previous == Mode.LEGACY && requested == Mode.UNIFIED) {
-                previewHandler.removeCallbacksAndMessages(null);
-                revertPreview();
-            }
+            previewHandler.removeCallbacksAndMessages(null);
+            revertPreview();
             running = false;
             mode = null;
             stopMode(previous);
+        }
+        try { preview.selectProfile(requested == Mode.UNIFIED ? "unified" : "desktop"); }
+        catch (java.io.IOException error) {
+            android.util.Log.w("OmamobileDisplay", "Cannot select display preview target", error);
         }
         running = true;
         mode = requested;

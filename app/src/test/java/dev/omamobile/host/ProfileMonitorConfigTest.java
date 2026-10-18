@@ -28,6 +28,22 @@ public class ProfileMonitorConfigTest {
         return ProfileMonitorConfig.prepare(root, config, profile, List.of(seed(scale)), scale);
     }
 
+    @Test public void unifiedSeedMovesBothNamedOutputsIntoManagedMonitorFile() throws Exception {
+        Path root = temporary.newFolder("unified-rootfs").toPath();
+        Path config = temporary.getRoot().toPath().resolve("unified.lua");
+        String unified = "hl.monitor({ output = \"ANDROID-1\", mode = \"preferred\", position = \"0x0\", scale = 3 })\n"
+                + "hl.monitor({ output = \"ANDROID-2\", mode = \"preferred\", position = \"auto\", scale = 1 })\n"
+                + "hl.bind(\"SUPER + CTRL + D\", hl.dsp.exec_cmd(\"omarchy-shell shell toggle omarchy.monitor\"))\n";
+        write(config, unified);
+        var result = ProfileMonitorConfig.prepare(root, config, "unified", List.of(unified), 3);
+        assertTrue(result.enabled());
+        assertTrue(read(result.directory().resolve("monitors.lua")).contains("ANDROID-1\""));
+        assertTrue(read(result.directory().resolve("monitors.lua")).contains("ANDROID-2\""));
+        assertTrue(read(config).startsWith("require(\""));
+        assertTrue(read(config).contains("hl.bind("));
+        assertFalse(read(config).contains("hl.monitor("));
+    }
+
     @Test public void outputScalesAreIsolatedAndSurviveAtomicReplacementAndReopen() throws Exception {
         Path root = temporary.newFolder("rootfs").toPath();
         Path phoneConfig = temporary.getRoot().toPath().resolve("phone.lua");
