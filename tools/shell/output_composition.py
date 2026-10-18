@@ -11,6 +11,7 @@ def once(text: str, before: str, after: str, name: str) -> str:
 def compose(relative: str, data: bytes) -> bytes:
     targets = {
         "shell/shell.qml", "shell/plugins/bar/Bar.qml", "shell/Ui/OverlayWindow.qml",
+        "shell/services/PluginRegistry.qml",
         "bin/omarchy-hyprland-monitor-scaling",
         "packages/omamobile-shell/plugins/omamobile.bar/Bar.qml",
         "packages/omamobile-shell/plugins/omamobile.home/Home.qml",
@@ -23,6 +24,9 @@ def compose(relative: str, data: bytes) -> bytes:
         return data
     text = data.decode("utf-8")
     if relative == "shell/shell.qml":
+        text = once(text, '    return String(pluginId || "") === shell.activeBarId\n',
+            '    var id = String(pluginId || "")\n'
+            '    return id === shell.activeBarId || (shell.unifiedOutputs && id === String(shell.mobileBarConfig.id || ""))\n', relative)
         text = once(text, '  property var bar: null\n', '''  property var bar: null
   readonly property bool unifiedOutputs: Quickshell.env("OMAMOBILE_PROFILE") === "unified"
   readonly property var mobileBarConfig: shellConfig && Util.isPlainObject(shellConfig.mobileBar)
@@ -53,6 +57,12 @@ def compose(relative: str, data: bytes) -> bytes:
 
   // ------------------------------------------------------------- services
 ''', relative)
+    elif relative == "shell/services/PluginRegistry.qml":
+        text = once(text, '        return selectedBar === key\n',
+            '        var mobileBar = Quickshell.env("OMAMOBILE_PROFILE") === "unified"\n'
+            '          && Util.isPlainObject(config) && Util.isPlainObject(config.mobileBar)\n'
+            '          ? Util.canonicalWidgetId(String(config.mobileBar.id || "")) : ""\n'
+            '        return selectedBar === key || mobileBar === key\n', relative)
     elif relative == "bin/omarchy-hyprland-monitor-scaling":
         text = once(text, '  local new_scale="$(clean_scale "$requested_scale" "$width" "$height")"\n', '''  local monitor_lua="$HOME/.config/hypr/monitors.lua"
   local unified_variable=""
@@ -156,8 +166,9 @@ def compose(relative: str, data: bytes) -> bytes:
         marker = '    id: window\n' if "quicksettings" in relative else '    id: overlay\n'
         text = once(text, marker, marker + '    screen: root.phoneScreen\n', relative)
         visible = '    visible: root.opened || root.reveal > 0\n' if "quicksettings" in relative else '    visible: root.opened\n'
-        text = once(text, visible,
-            visible.replace('visible: ', 'visible: !!root.phoneScreen && '), relative)
+        gated = ('    visible: !!root.phoneScreen && (root.opened || root.reveal > 0)\n'
+                 if "quicksettings" in relative else '    visible: !!root.phoneScreen && root.opened\n')
+        text = once(text, visible, gated, relative)
         if "quicksettings" in relative:
             text = once(text, '${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/shell.json',
                 '${OMARCHY_SHELL_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/shell.json}', relative)

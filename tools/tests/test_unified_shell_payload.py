@@ -24,7 +24,10 @@ def verify(path):
         assert shell.count("PluginRegistry { }") == 1
         assert shell.count("id: mobileBarLoader") == 1
         assert 'shell.unifiedOutputs && !shell.pluginReloading' in shell
+        assert 'id === shell.activeBarId || (shell.unifiedOutputs && id === String(shell.mobileBarConfig.id || ""))' in shell
         assert 'shell.bar = target' in shell  # desktop bar keeps the host slot
+        registry = read("root/.local/share/omarchy/shell/services/PluginRegistry.qml")
+        assert 'return selectedBar === key || mobileBar === key' in registry
         assert 'OMAMOBILE_PROFILE=$profile' in read("root/.local/share/omamobile/start-shell")
 
         routes = {
@@ -38,6 +41,8 @@ def verify(path):
         }
         for name, output in routes.items():
             assert output in read(name), name
+        quick_settings = read("usr/share/omamobile/shell/plugins/omamobile.quicksettings/QuickSettings.qml")
+        assert 'visible: !!root.phoneScreen && (root.opened || root.reveal > 0)' in quick_settings
         for name in ["omamobile.home/Home.qml", "omamobile.home/ClockWidget.qml",
                      "omamobile.launcher/Launcher.qml"]:
             assert 'Quickshell.env("OMARCHY_SHELL_CONFIG")' in read(
