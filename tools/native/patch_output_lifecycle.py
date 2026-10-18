@@ -8,6 +8,22 @@ import subprocess
 HERE = Path(__file__).resolve().parent
 
 
+def is_applied(source: Path) -> bool:
+    hashes = json.loads((HERE / "output_lifecycle_hashes.json").read_text())
+    return all(
+        hashlib.sha256((source / name).read_bytes().replace(b"\r\n", b"\n")).hexdigest() == expected["phase2"]
+        for name, expected in hashes.items()
+    )
+
+
+def prepare(source: Path) -> None:
+    if is_applied(source):
+        return
+    from patch_multi_output import apply as apply_multi_output
+    apply_multi_output(source)
+    apply(source)
+
+
 def apply(source: Path) -> None:
     hashes = json.loads((HERE / "output_lifecycle_hashes.json").read_text())
     normalized = {name: (source / name).read_bytes().replace(b"\r\n", b"\n") for name in hashes}

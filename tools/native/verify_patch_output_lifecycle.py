@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 
 import patch_output_lifecycle
-from patch_output_lifecycle import apply
+from patch_output_lifecycle import apply, prepare
 from generate_phase2_patch import original, SOURCE
 
 HERE = Path(__file__).resolve().parent
@@ -25,15 +25,9 @@ def main(committed=False):
             target = root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(original(relative))
-        try:
-            apply(root)
-        except Exception:
-            actual = (root / "src/devices/TouchDevice.cpp").read_bytes()
-            expected = (SOURCE / "src/devices/TouchDevice.cpp").read_bytes()
-            print("touch size/newlines", len(actual), actual.count(b"\r\n"), len(expected), expected.count(b"\r\n"))
-            print("first difference", next(((i, actual[i:i+40], expected[i:i+40]) for i in range(min(len(actual), len(expected))) if actual[i] != expected[i]), None))
-            raise
         apply(root)
+        apply(root)
+        prepare(root)
         for relative in hashes:
             assert (root / relative).read_bytes().replace(b"\r\n", b"\n") == (SOURCE / relative).read_bytes().replace(b"\r\n", b"\n"), relative
         target = root / "src/android/Embed.h"
