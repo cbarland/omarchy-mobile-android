@@ -43,6 +43,11 @@ def verify(path):
         }
         for name, output in routes.items():
             assert output in read(name), name
+        desktop_bar = read("root/.local/share/omarchy/shell/plugins/bar/Bar.qml")
+        assert desktop_bar.count("      BarPanel {") == 1
+        assert 'Quickshell.screens.filter(function(screen) { return screen && screen.name === "ANDROID-1" })' in desktop_bar
+        assert 'visible: !(Quickshell.env("OMAMOBILE_PROFILE") === "unified" && screen.name === "ANDROID-1")' in desktop_bar
+        assert '|| root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto' in desktop_bar
         quick_settings = read("usr/share/omamobile/shell/plugins/omamobile.quicksettings/QuickSettings.qml")
         assert 'visible: !!root.phoneScreen && (root.opened || root.reveal > 0)' in quick_settings
         assert 'jq -r \'(.mobileBar // .bar).clockFormat // \\"\\"\'' in quick_settings

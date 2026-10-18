@@ -104,12 +104,27 @@ def compose(relative: str, data: bytes) -> bytes:
 
 ''', relative)
     elif relative == "shell/plugins/bar/Bar.qml":
+        text = once(text, '  Variants {\n    model: Quickshell.screens\n\n    delegate: Component {\n      BarPanel {', '''  Variants {
+    model: Quickshell.env("OMAMOBILE_PROFILE") === "unified"
+      ? (Quickshell.screens.filter(function(screen) { return screen && screen.name === "ANDROID-2" }).length
+          ? Quickshell.screens.filter(function(screen) { return screen && screen.name === "ANDROID-2" })
+          : Quickshell.screens.filter(function(screen) { return screen && screen.name === "ANDROID-1" }))
+      : Quickshell.screens
+
+    delegate: Component {
+      BarPanel {''', relative)
         text = text.replace('model: Quickshell.screens',
             'model: Quickshell.env("OMAMOBILE_PROFILE") === "unified"\n'
             '      ? Quickshell.screens.filter(function(screen) { return screen && screen.name === "ANDROID-2" })\n'
             '      : Quickshell.screens')
-        if text.count('screen.name === "ANDROID-2"') != 3:
-            raise ValueError("desktop bar: expected three screen models")
+        if text.count('screen.name === "ANDROID-2"') != 4:
+            raise ValueError("desktop bar: expected one fallback and two ghost models")
+        text = once(text, '    visible: !remapGuard.remapping && (cutoutWaitOver || !cutoutPending)\n',
+            '    visible: !(Quickshell.env("OMAMOBILE_PROFILE") === "unified" && screen.name === "ANDROID-1")\n'
+            '      && !remapGuard.remapping && (cutoutWaitOver || !cutoutPending)\n', relative)
+        text = once(text, '    exclusionMode: root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto\n',
+            '    exclusionMode: (Quickshell.env("OMAMOBILE_PROFILE") === "unified" && screen.name === "ANDROID-1")\n'
+            '      || root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto\n', relative)
     elif relative == "shell/Ui/OverlayWindow.qml":
         text = once(text, '  function focusedScreen() {\n', '''  function focusedScreen() {
     if (Quickshell.env("OMAMOBILE_PROFILE") === "unified") {
