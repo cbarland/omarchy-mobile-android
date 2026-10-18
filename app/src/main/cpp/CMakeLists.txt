@@ -20,6 +20,10 @@ if(HYPRLAND_INPUT)
     target_compile_options(omamobile_hyprland PRIVATE -O2 -Wall -Wextra)
     target_link_options(omamobile_hyprland PRIVATE -Wl,-z,max-page-size=16384)
     target_link_libraries(omamobile_hyprland anhyprland android log)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_sources(omamobile_hyprland PRIVATE ../../debug/cpp/unified_spike.cpp)
+        target_link_libraries(omamobile_hyprland dl)
+    endif()
 endif()
 # MIT upstream runtime plus the recorded outbound-credential adapter.
 # Stable ET_EXEC address is part of its seccomp ABI.
