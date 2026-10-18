@@ -86,6 +86,12 @@ public final class MainActivity extends Activity {
         screens.setText(R.string.start_screens);
         screens.setOnClickListener(v -> startForegroundService(new Intent(this, DesktopService.class)));
         layout.addView(screens);
+        Button unifiedPreview = new Button(this);
+        unifiedPreview.setText(R.string.start_shared_compositor_preview);
+        unifiedPreview.setOnClickListener(v -> startForegroundService(new Intent(this, DesktopService.class)
+                .setAction(DesktopService.START_UNIFIED)));
+        layout.addView(unifiedPreview);
+        layout.addView(text(getString(R.string.shared_compositor_preview_caption), 14));
         Button stopScreens = new Button(this);
         stopScreens.setText(R.string.stop_screens);
         stopScreens.setOnClickListener(v -> startService(new Intent(this, DesktopService.class).setAction(DesktopService.STOP_SCREENS)));

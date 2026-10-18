@@ -6,6 +6,8 @@
     <string name="run_command">Run in shared Linux</string>
     <string name="stop_command">Stop</string>
     <string name="start_screens">Start Omarchy screens</string>
+    <string name="start_shared_compositor_preview">Start shared compositor preview</string>
+    <string name="shared_compositor_preview_caption">One shared compositor; Desktop layout on the phone and external display.</string>
     <string name="stop_screens">Stop graphical sessions</string>
     <string name="default_command" translatable="false">uname -m; cat /etc/os-release; id; ls /android/shared</string>
 </resources>
