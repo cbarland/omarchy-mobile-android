@@ -12,7 +12,7 @@ SCRIPT = Path(__file__).parents[1] / "emulator-linux.py"
 
 
 class EmulatorHelperTests(unittest.TestCase):
-    def test_unified_session_uses_its_runtime_and_desktop_shell_environment(self):
+    def test_unified_session_uses_its_runtime_and_unified_shell_environment(self):
         commands = []
         def output(command, **kwargs):
             if command[-1].endswith("ready.properties"):
@@ -30,7 +30,7 @@ class EmulatorHelperTests(unittest.TestCase):
         self.assertEqual(ended.exception.code, 0)
         self.assertEqual(len(commands), 1)
         self.assertIn("XDG_RUNTIME_DIR=/run/omamobile/u", commands[0][-1])
-        self.assertIn("OMAMOBILE_PROFILE=desktop", commands[0][-1])
+        self.assertIn("OMAMOBILE_PROFILE=unified", commands[0][-1])
 
     def test_stop_reveals_scrolled_control_before_pressing_enter(self):
         views = iter([
