@@ -139,6 +139,19 @@ def compose(relative: str, data: bytes) -> bytes:
     readonly property bool phoneFallback: Quickshell.env("OMAMOBILE_PROFILE") === "unified"
       && root.unifiedBarScreen && root.unifiedBarScreen.name === "ANDROID-1"
 ''', relative)
+        text = once(text, '    ScreenMoveRemap {\n      id: remapGuard\n      window: barWindow\n    }\n', '''    ScreenMoveRemap {
+      id: remapGuard
+      window: barWindow
+    }
+
+    Connections {
+      target: root
+      function onUnifiedBarScreenChanged() {
+        if (Quickshell.env("OMAMOBILE_PROFILE") === "unified" && root.unifiedBarScreen)
+          remapGuard.scheduleRemap()
+      }
+    }
+''', relative)
         text = once(text, '    visible: !remapGuard.remapping && (cutoutWaitOver || !cutoutPending)\n',
             '    visible: (Quickshell.env("OMAMOBILE_PROFILE") !== "unified" || !!root.unifiedBarScreen)\n'
             '      && !remapGuard.remapping && (cutoutWaitOver || !cutoutPending)\n', relative)
@@ -159,18 +172,12 @@ def compose(relative: str, data: bytes) -> bytes:
     }
 ''', relative)
     elif relative == "shell/Ui/ScreenMoveRemap.qml":
-        text = once(text, 'import QtQuick\n', 'import QtQuick\nimport Quickshell\n', relative)
-        text = once(text, '  Connections {\n    target: root.screen\n', '''  Connections {
-    target: root.window
-    function onScreenChanged() {
-      if (Quickshell.env("OMAMOBILE_PROFILE") === "unified" && root.screen)
-        settleTimer.restart()
-    }
-  }
+        text = once(text, '  visible: false\n', '''  visible: false
 
-  Connections {
-    target: root.screen
+  function scheduleRemap() { settleTimer.restart() }
 ''', relative)
+        text = once(text, 'function onXChanged() { settleTimer.restart() }\n    function onYChanged() { settleTimer.restart() }',
+            'function onXChanged() { root.scheduleRemap() }\n    function onYChanged() { root.scheduleRemap() }', relative)
     elif relative == "packages/omamobile-shell/plugins/omamobile.bar/Bar.qml":
         text = once(text, '    model: Quickshell.screens\n',
             '    model: Quickshell.env("OMAMOBILE_PROFILE") === "unified"\n'
