@@ -1,22 +1,22 @@
 {
   "src/android/Embed.cpp": {
-    "phase1": "5dc22068ffacd69e444e4367b2b762efc594d8cdff75fb05e7dc5b29805709d7",
-    "phase2": "e4c164e0255ffabf038e09bf044cb7569f1ee95f6fc87cb87116b0097de8aebb"
+    "phase1": "ee6ec627ae2e25f2ace0b832406281e0e11c9fcd43dc519b15f39b5f0f584ac4",
+    "phase2": "f5d57bf21e3f6c7b146bb9a222717154c729257f3cbc896f12df6b7cb4cb6ecd"
   },
   "src/android/Embed.h": {
-    "phase1": "35e199540cf9e029cac3991b69b74ea3eaaa35c8b9ac9648f31d9d4e12544eaf",
-    "phase2": "72110efa4afb49b9cf677255a77b13b30338de35cc03f37656945672e1a59d1c"
+    "phase1": "05a0fd4bf3a278842ae5c7f61ae2819fd46fa1dd04f1ff0472511efb7ce1ff0c",
+    "phase2": "6e60a0e3d21dfa464074ffb475410c9e77459ae1fdcdb91400859a7612a98639"
   },
   "src/devices/TouchDevice.cpp": {
     "phase1": "3ca5620006918aba5ceaaac07ad0732fa7c61f55d7839af1fcb7c5753d57899e",
-    "phase2": "a5fa4b5be1b3f1eac51955440bfb2621e5f0fecdb27a23c35e3621117eedc1a8"
+    "phase2": "fc94606f50775f62e694bbf40b6f61c149a7036c288a4c614121e3d7c416510e"
   },
   "subprojects/aquamarine/include/aquamarine/backend/Android.hpp": {
-    "phase1": "41be64825d2e729f3502ae0b22996b7e94be1d2650a6cdb57d3f385a21fef127",
-    "phase2": "269b5587997ad99419ab1b93e279d0708f5eda13b4c9539c2c965e28bd94456f"
+    "phase1": "d05345e6b870e08839b713a9692cce5072fd13d6b6e7d1620ed9a041dd265a49",
+    "phase2": "38aa5562c8cc310325f979d2cd21733fabb2a92de425d7920265dd3ab28c3c06"
   },
   "subprojects/aquamarine/src/backend/Android.cpp": {
-    "phase1": "d71efc3a9a2c6cde7d95df2f8ba36eae7165a77f2add3b877c0661d24b485f23",
-    "phase2": "7a62c209529b63e28460e7d4648d8afce19ea138dc9b5a3b891744be42664342"
+    "phase1": "cb426c9171ff7f8e2b4d98664260099c8579bbc6e6afe1047df18c38b17f3d95",
+    "phase2": "21012e5d4dd641c30d64b46e3369b8e51dc6bbc71bdbf0e15adc76d2096ffde6"
   }
 }

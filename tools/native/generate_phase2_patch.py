@@ -28,8 +28,8 @@ def main():
     patch = []
     hashes = {}
     for relative in FILES:
-        before = original(relative)
-        after = (SOURCE / relative).read_bytes()
+        before = original(relative).replace(b"\r\n", b"\n")
+        after = (SOURCE / relative).read_bytes().replace(b"\r\n", b"\n")
         hashes[relative] = {
             "phase1": hashlib.sha256(before).hexdigest(),
             "phase2": hashlib.sha256(after).hexdigest(),
