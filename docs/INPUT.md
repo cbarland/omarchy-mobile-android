@@ -1,14 +1,15 @@
 # Input and keyboard quick reference
 
-What the Android host does with touch, hardware keys and the phone IME, so a
+How touch, hardware keys and the native phone keyboard reach Linux, so a
 new user can get a Linux window focused and typed into without reading the
 graphics implementation notes. For rendering, displays and sessions see
 [GRAPHICS.md](GRAPHICS.md); for Android app windows see
 [ANDROID-APPS.md](ANDROID-APPS.md).
 
-Source of truth: the activity in
-`app/src/main/java/dev/omamobile/host/CompositorActivity.java` (pointer capture,
-key mapping, IME) and `docs/VERIFICATION.md` for what was actually verified.
+The Android input adapter is
+`app/src/main/java/dev/omamobile/host/CompositorActivity.java`; native keyboard
+startup is in `tools/linux/start-shell`, using Mobile's pinned keyboard helpers.
+See `docs/VERIFICATION.md` for what was actually verified.
 
 ## Focusing a Linux window
 
@@ -48,7 +49,39 @@ such as dismissing the keyboard or navigating according to Android. It does not
 become a Linux Escape event. Use Escape for Linux-side cancel and Back for
 Android-side navigation.
 
-## Android IME
+## Native phone keyboard
+
+The phone uses Omarchy Mobile's Squeekboard keyboard inside Wayland. Supported
+text fields request it automatically; the **Keyboard** tile in expanded Mobile
+quick settings opens it on demand. The tile may be on the second page. Mobile's
+small hide button above the keyboard dismisses it. Android Back retains its
+Android meaning; use the native hide button to fold Squeekboard.
+
+Mobile's unchanged terminal layout includes Esc, Tab, Ctrl, Alt and arrows.
+Ctrl and Alt toggle: tap a modifier again to release it after the shortcut.
+The keyboard reserves Linux workspace space without resizing the Android
+Surface. The phone and shared profiles start one keyboard with their shell;
+the separate desktop profile does not start another. Neither root nor Shizuku
+is needed.
+
+The graphics preparation step installs the signed `squeekboard` package. For
+an existing installation, update the prepared Linux payload and install that
+package, then prepare the shell profiles again. Existing custom profiles are
+preserved: enable the `omamobile.keyboard` helper in the phone/shared plugin
+configuration if it is absent. User keyboard settings and terminal layouts
+are preserved. An unset screen-keyboard preference is enabled on preparation;
+an explicit disabled preference remains disabled.
+
+Automatic opening depends on the application's Wayland text-input support.
+An application without that support can still use the Keyboard tile. Other
+languages, applications and physical devices need their own verification;
+see [VERIFICATION.md](VERIFICATION.md) for the tested paths.
+
+## Android input connection compatibility
+
+The host retains its Android InputConnection for input compatibility, but the
+phone starts with Android's software keyboard hidden so it does not overlap
+Squeekboard. The following records the separate Android IME transport contract.
 
 Text typed with the Android keyboard reaches the focused Linux client as
 committed Unicode: the IME keeps only a small local pending draft, and on

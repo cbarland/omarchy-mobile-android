@@ -1,5 +1,50 @@
 # Verification record
 
+## Native Squeekboard integration — partial verification, 2026-10-18
+
+The API35 x86_64 disposable emulator ran the native Squeekboard 1.43.1-6
+package with Mobile's pinned terminal layout and keyboard helper. Runtime
+source: `e2f7249ce924db5310302cfc39eb7717cef5d711`; private staged APK SHA-256:
+`d3eddab5a2457c07d25eed116d6928cad247847cbca2a03b974790714b1d68ee`.
+
+The legacy phone/desktop path passed real software-key input checks:
+
+- Tapping Mobile's search field opened Squeekboard automatically; typing
+  `foot` changed the launcher query. Mobile's native hide button dismissed it.
+- The unchanged Keyboard tile opened the native terminal layout. In Foot,
+  Ctrl+A, left/right arrows, Backspace and ordinary typing edited a line to
+  `date`; Enter submitted it and the fixture executed `date -I`.
+- Esc followed by Alt+b delivered the exact terminal bytes `1b1b62`.
+  Ctrl and Alt were explicitly toggled off after their shortcuts.
+- Phone output size remained 1080×2424 at scale 3. Its reserved bottom space
+  changed from 72 to 282 logical pixels while the keyboard was shown, then
+  returned to 72. Android's software keyboard stayed hidden.
+- Normal stop/reopen left one new Squeekboard process, without a duplicate.
+
+In the shared compositor, automatic opening, launcher typing, the Keyboard tile,
+the phone-only keyboard/hide-button placement, and an unchanged external desktop
+size/scale/reservation passed. **Shared terminal acceptance remains open:** the
+same mixed typing/shortcut sequence produced `dae` rather than `date` on one
+run. A PTY input trace is prepared to distinguish missed input from editing or
+protocol ordering; that trace has not completed. Do not treat this as a full
+two-mode keyboard pass or a physical-device result.
+
+Debug/test APK builds, JVM checks, lint and the staged mechanical audit passed.
+Three POSIX session-ownership checks passed, including child cleanup on exit
+and termination. The canonical payload comparison passed for 1309 members,
+including the unmodified GPL terminal layout and its license; the prepared
+shared-profile routing check passed for eight components. Two unrelated
+Node-dependent host checks could not run in WSL without Node and passed
+separately on Windows.
+
+Private runtime receipts, failed attempts and captures are retained beneath
+`.build-tools/omamobile-dev-20261017/native-keyboard-runtime/` in the parent
+workspace. The completed legacy/shared investigation run restored its original
+APK, data identity, configuration and Android grants. A later interrupted trace
+also restored those bytes and grants, but its final phone-shell startup check
+failed; follow-up baseline recovery is pending. All seven native binary
+publication holds remain; no graphical APK has been published for this change.
+
 ## Direct IME composition contract — 2026-10-16
 
 On emulator `emulator-5556` (API 35, signed `wev` installed and the approved
