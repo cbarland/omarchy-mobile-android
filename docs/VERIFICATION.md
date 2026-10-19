@@ -987,3 +987,43 @@ compared with their staged manifest SHA-256 and byte metadata. Duplicate or
 missing ZIP entries and malformed payload manifests fail closed. Android
 platform libraries and AGP-supplied `libc++_shared.so` remain outside this
 staged ownership check.
+
+## Integrated developer-preview candidate (2026-10-19)
+
+Private graphical APK SHA-256
+`c9672e5d517562108fe86770c253baaf3fd900e3852437d0a983ea0cfd25d461`
+combines shared audio, safe payload updates and native Squeekboard at functional
+source commit `dbe7137c1cd8bc217201de4bc79509157c3a435d`. Later preview-guide
+edits do not change its runtime code. Both ABI payloads passed mechanical
+candidate matching; execution below was on a prepared API 35 x86_64 emulator.
+
+Normal host controls passed busy-update rejection, custom-file conflict
+preflight, replacement of 20 changed stock paths plus one missing profile, and
+a repeated update with zero changes. Native audio playback worked before and
+after updating. The audio owner survived compositor-mode switching and actual
+external-display removal/recreation; main-process death cleaned it up. Phone
+widgets and the desktop bar/background were inspected after reconnect.
+
+The same APK passed all 11 audio instrumentation cases and the native keyboard
+gate in separate and shared modes: automatic Mobile search input, Keyboard tile,
+Foot editing/Enter, Ctrl/arrows/Backspace, Esc/Alt, native hide, phone-only workspace
+reservation and one replacement keyboard after stop/reopen. Shared-mode symbol
+input produced exactly `A1!π€√` in the terminal fixture. Both normal-control gates
+restored the original APK, test APK where changed, rootfs identity, backed-up
+files and Android grants; no Shizuku authorization was changed.
+
+An isolated fixture additionally exercised the candidate's session-entry script
+with the real Gio keyfile backend. It enabled missing defaults and preserved an
+explicit disabled preference, custom layout and dangling layout link. Upstream
+theme install/set/restore and session-settings persistence passed in a temporary
+home. This headless theme check does not establish rendered theme appearance.
+The fixture was removed and the original APK/user-file hashes remained identical.
+
+Full graphical build, JVM/lint checks, canonical comparison of 1,309 payload
+members and 19 socket-credential regressions passed. Source CI at `d5f6ec5`
+passed host contracts and all 125 JVM cases with zero ignored tests. The private
+source-evidence bundle was rebuilt and its 152 files rehashed; it retains SHA-256
+`166309462514fa6b8a38469eba9faed5418751707faa7cf114b9020e7328040f`.
+All seven public native source/relink holds remain. Physical ARM64 bootstrap,
+audio audibility/routes, work-policy/Wallet compatibility and power behavior
+still require the [device gate](DEVELOPER-PREVIEW.md).
