@@ -25,13 +25,15 @@ public final class LinuxService extends Service {
         boolean export = intent.getBooleanExtra("exportData", false);
         boolean recover = intent.getBooleanExtra("recoverData", false);
         boolean download = intent.getBooleanExtra("downloadBootstrap", false);
+        boolean update = intent.getBooleanExtra("updateIntegration", false);
         Runnable done = () -> {
             // A rejected duplicate start advances the start ID. An older
             // completion must not stop a newly accepted operation.
             if (!runtime.busy() && stopSelfResult(latestStartId)) stopForeground(STOP_FOREGROUND_REMOVE);
         };
         boolean accepted;
-        if (export) accepted = runtime.exportData(intent.getData(), done);
+        if (update) accepted = runtime.updateIntegration(done);
+        else if (export) accepted = runtime.exportData(intent.getData(), done);
         else if (recover) accepted = runtime.recoverData(intent.getData(), done);
         else if (download) accepted = runtime.installDownloaded(done);
         else accepted = runtime.submit(intent.getStringExtra("command"), intent.getData(), intent.getBooleanExtra("ando", false),
@@ -44,7 +46,7 @@ public final class LinuxService extends Service {
             }
             return START_NOT_STICKY;
         }
-        if (intent.getBooleanExtra("installOmarchy", false) || export || recover || download) {
+        if (intent.getBooleanExtra("installOmarchy", false) || export || recover || download || update) {
             setupWakeLock = getSystemService(android.os.PowerManager.class).newWakeLock(
                     android.os.PowerManager.PARTIAL_WAKE_LOCK, "omamobile:setup");
             setupWakeLock.setReferenceCounted(false);

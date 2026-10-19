@@ -21,7 +21,7 @@ public final class MainActivity extends Activity {
     private HostRuntime runtime;
     private TextView status, console;
     private EditText command;
-    private Button run, importImage, install, downloadInstall, exportData, recoverData, screens, unifiedPreview, stop;
+    private Button run, importImage, install, downloadInstall, exportData, recoverData, updateIntegration, screens, unifiedPreview, stop;
     private CheckBox ando, androidDns;
     private DisplaySettings displaySettings;
     private android.app.AlertDialog credits;
@@ -82,6 +82,12 @@ public final class MainActivity extends Activity {
                 .setType("application/gzip").addCategory(Intent.CATEGORY_OPENABLE)
                 .putExtra(Intent.EXTRA_TITLE, "Choose an Omamobile Linux user-data archive"), 14));
         layout.addView(recoverData);
+        updateIntegration = new Button(this);
+        updateIntegration.setText("Update Linux integration");
+        updateIntegration.setOnClickListener(v -> startForegroundService(new Intent(this, LinuxService.class)
+                .putExtra("updateIntegration", true)));
+        layout.addView(updateIntegration);
+        layout.addView(text("Updates the desktop integration while preserving your Linux data and existing profiles. Stop Linux sessions first.", 14));
         screens = new Button(this);
         screens.setText(R.string.start_screens);
         screens.setOnClickListener(v -> startForegroundService(new Intent(this, DesktopService.class)));
@@ -226,6 +232,7 @@ public final class MainActivity extends Activity {
         stop.setEnabled(runtime.busy());
         exportData.setEnabled(runtime.installed() && !runtime.busy());
         recoverData.setEnabled(runtime.installed() && !runtime.busy());
+        updateIntegration.setEnabled(runtime.installed() && InstallAssets.available(this) && !runtime.busy());
         displaySettings.refresh();
     }
 }

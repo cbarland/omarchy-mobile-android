@@ -79,8 +79,10 @@ tiles expose Android's fixed settings panels; see
 [Android radio UI](docs/ANDROID-RADIO-UI.md) and
 [Android network and Bluetooth settings](docs/ANDROID-SETTINGS.md).
 These battery and radio UI integrations are part of the fresh shell payload
-verified on an API 35 x86_64 emulator; replacing an APK does not migrate the
-shell or user profiles in an existing installation.
+verified on an API 35 x86_64 emulator. Replacing an APK leaves an existing Linux
+installation intact. Stop Linux screens/commands, then choose **Update Linux
+integration** to update changed stock shell files while preserving existing user
+profiles; see [payload upgrades and recovery](docs/PAYLOAD-UPGRADES.md).
 Linux clients now share one PipeWire/Pulse output with Android media focus and
 idle release. Native/Pulse mixing, focus recovery and audio-process rebinding
 have emulator verification; see [shared Linux audio](docs/AUDIO.md).
