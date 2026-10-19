@@ -14,5 +14,7 @@ public class RuntimeSpecTest {
         var environment = RuntimeSpec.graphicalEnvironment("unified", "/run/omamobile/u", "UTC");
         assertEquals("unified", environment.get("OMAMOBILE_PROFILE"));
         assertEquals("/run/omamobile/u", environment.get("XDG_RUNTIME_DIR"));
+        assertEquals("wayland", environment.get("GTK_IM_MODULE"));
+        assertEquals("wayland", environment.get("QT_IM_MODULE"));
     }
 }

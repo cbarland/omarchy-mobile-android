@@ -380,6 +380,9 @@ with tarfile.open(a.output, "w:gz") as archive:
     for name in ["WIDGETS.md", "OWL.md"]:
         put("usr/share/omamobile/shell/" + name, blob(package / "widgets" / name)[0])
     tree(package / "bin", "usr/bin")
+    tree(package / "squeekboard", "usr/share/omamobile/squeekboard")
+    put("usr/share/licenses/squeekboard-terminal-layout/COPYING",
+        (Path(__file__).parents[1] / "app/src/main/assets/licenses/squeekboard-layout.txt").read_bytes())
     put("usr/share/licenses/omamobile-shell/LICENSE", blob(package / "LICENSE")[0])
     put("usr/share/licenses/omamobile-shell/LICENSE-owl-guide", blob(package / "widgets/LICENSE-owl-guide")[0])
 
@@ -422,7 +425,7 @@ with tarfile.open(a.output, "w:gz") as archive:
     desktop["idle"] = {"screensaver": 0, "lock": 0}
     desktop["disabledPlugins"] = disabled + ["omarchy.network", "omarchy.bluetooth"]
     phone = json.loads(blob(package / "profile/shell.json")[0])
-    phone["plugins"] = [{"id": x} for x in ["omamobile.home", "omamobile.launcher", "omamobile.switcher", "omamobile.quicksettings", "omamobile.access"]]
+    phone["plugins"] = [{"id": x} for x in ["omamobile.home", "omamobile.launcher", "omamobile.switcher", "omamobile.quicksettings", "omamobile.access", "omamobile.keyboard"]]
     desktop_plugins = desktop.setdefault("plugins", [])
     if not any(isinstance(plugin, dict) and plugin.get("id") == "omamobile.access" for plugin in desktop_plugins):
         desktop_plugins.append({"id": "omamobile.access"})

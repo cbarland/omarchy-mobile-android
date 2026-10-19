@@ -29,7 +29,14 @@ class InstallAssetTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), item["sha256"])
         members = manifest["payloadMembers"]
         self.assertTrue(members)
-        self.assertFalse(any("squeekboard" in item["path"].lower() for item in members))
+        keyboard = {item["path"]: item["sha256"] for item in members
+                    if "squeekboard" in item["path"].lower()}
+        self.assertEqual(keyboard, {
+            "usr/share/omamobile/squeekboard/keyboards/terminal/us.yaml":
+                "430c56d179c8291c026cfa6f7f55336fc646f5a0aec4e41af322be5b3b11d65b",
+            "usr/share/licenses/squeekboard-terminal-layout/COPYING":
+                "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+        })
         self.assertEqual(manifest["gzipMtimeControlled"], False)
 
 
