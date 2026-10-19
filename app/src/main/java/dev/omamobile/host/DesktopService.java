@@ -44,6 +44,7 @@ public final class DesktopService extends Service {
     private final EnumMap<Owner, Binding> ownership = new EnumMap<>(Owner.class);
     private long ownershipGeneration;
     private boolean running;
+    private ServiceConnection audioOwnership;
     private Mode mode;
     private int externalId = -1;
     private AndroidAppPortal portal;
@@ -127,6 +128,7 @@ public final class DesktopService extends Service {
         }
         running = true;
         mode = requested;
+        bindAudio();
         Owner phoneOwner = requested == Mode.UNIFIED ? Owner.UNIFIED : Owner.PHONE;
         bindOwnership(phoneOwner);
         ActivityOptions phoneOutput = ActivityOptions.makeBasic().setLaunchDisplayId(Display.DEFAULT_DISPLAY);
@@ -243,6 +245,7 @@ public final class DesktopService extends Service {
     }
     private void stopScreens() {
         running = false;
+        unbindAudio();
         Mode stopped = mode;
         mode = null;
         stopMode(stopped);
@@ -258,6 +261,7 @@ public final class DesktopService extends Service {
     }
     @Override public void onDestroy() {
         running = false;
+        unbindAudio();
         Mode stopped = mode;
         mode = null;
         stopMode(stopped);
@@ -265,4 +269,35 @@ public final class DesktopService extends Service {
         portal.close(); AndroidShell.get(this).close(); super.onDestroy();
     }
     @Override public IBinder onBind(Intent intent) { return null; }
+
+    private void bindAudio() {
+        if (audioOwnership != null) return;
+        ServiceConnection connection = new ServiceConnection() {
+            @Override public void onServiceConnected(ComponentName name, IBinder service) {
+                android.util.Log.i("OmamobileAudio", "Shared audio owner connected");
+            }
+            @Override public void onServiceDisconnected(ComponentName name) {
+                android.util.Log.w("OmamobileAudio", "Shared audio owner disconnected");
+            }
+            @Override public void onBindingDied(ComponentName name) {
+                if (audioOwnership != this) return;
+                unbindAudio();
+                if (running) bindAudio();
+            }
+            @Override public void onNullBinding(ComponentName name) {
+                if (audioOwnership == this) unbindAudio();
+                android.util.Log.w("OmamobileAudio", "Shared audio owner unavailable");
+            }
+        };
+        if (bindService(new Intent(this, SharedAudioService.class), connection,
+                BIND_AUTO_CREATE | BIND_IMPORTANT | BIND_ABOVE_CLIENT)) audioOwnership = connection;
+        else android.util.Log.w("OmamobileAudio", "Cannot bind shared audio owner");
+    }
+    private void unbindAudio() {
+        if (audioOwnership == null) return;
+        ServiceConnection connection = audioOwnership;
+        audioOwnership = null;
+        try { unbindService(connection); }
+        catch (IllegalArgumentException gone) { android.util.Log.w("OmamobileAudio", "Audio owner already unbound", gone); }
+    }
 }

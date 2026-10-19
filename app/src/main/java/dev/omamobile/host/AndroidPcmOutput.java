@@ -34,6 +34,48 @@ final class AndroidPcmOutput implements AutoCloseable {
     private long finalPlaybackHead;
 
     static AndroidPcmOutput open(Context context, File fifo) throws IOException {
+        FileDescriptor input = null;
+        ParcelFileDescriptor[] cancel = null;
+        AudioTrack track = null;
+        AndroidPcmOutput output = null;
+        try {
+            input = openOwnedFifo(context, fifo, false);
+            cancel = ParcelFileDescriptor.createPipe();
+            int minimum = AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_STEREO,
+                    AudioFormat.ENCODING_PCM_16BIT);
+            if (minimum <= 0) throw new IOException("PCM output format unavailable: " + minimum);
+            track = new AudioTrack.Builder()
+                    .setAudioAttributes(attributes())
+                    .setAudioFormat(new AudioFormat.Builder().setSampleRate(RATE)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .setBufferSizeInBytes(Math.max(minimum, 4096)).build();
+            if (track.getState() != AudioTrack.STATE_INITIALIZED)
+                throw new IOException("PCM AudioTrack initialization failed");
+            track.play();
+            output = new AndroidPcmOutput(input, cancel, track);
+            return output;
+        } catch (RuntimeException error) {
+            throw new IOException("Cannot open PCM output", error);
+        } finally {
+            if (output == null) {
+                try { if (track != null) track.release(); }
+                finally {
+                    closeFd(input);
+                    if (cancel != null) try { cancel[0].close(); } finally { cancel[1].close(); }
+                }
+            }
+        }
+    }
+
+    static AudioAttributes attributes() {
+        return new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build();
+    }
+
+    /** A keep-alive probe never consumes playback data before focus is granted. */
+    static FileDescriptor openOwnedFifo(Context context, File fifo, boolean keepAlive) throws IOException {
         // Reject aliases in every component and paths outside this app's private files tree.
         File root = context.getFilesDir().getCanonicalFile();
         java.nio.file.Path contextRoot = context.getFilesDir().getAbsoluteFile().toPath();
@@ -45,47 +87,23 @@ final class AndroidPcmOutput implements AutoCloseable {
                         .equals(fifo.getCanonicalFile().toPath()))
             throw new IOException("PCM FIFO must be an unaliased private files path");
         FileDescriptor input = null;
-        ParcelFileDescriptor[] cancel = null;
-        AudioTrack track = null;
-        AndroidPcmOutput output = null;
+        boolean accepted = false;
         try {
             StructStat before = Os.lstat(absolute.getPath());
             if (!OsConstants.S_ISFIFO(before.st_mode) || before.st_uid != Process.myUid())
                 throw new IOException("PCM input must be an owned FIFO");
-            input = Os.open(absolute.getPath(), OsConstants.O_RDONLY | OsConstants.O_NONBLOCK
+            input = Os.open(absolute.getPath(), (keepAlive ? OsConstants.O_RDWR : OsConstants.O_RDONLY) | OsConstants.O_NONBLOCK
                     | OsConstants.O_CLOEXEC | OsConstants.O_NOFOLLOW, 0);
             StructStat actual = Os.fstat(input);
             if (!OsConstants.S_ISFIFO(actual.st_mode) || actual.st_uid != Process.myUid()
                     || before.st_dev != actual.st_dev || before.st_ino != actual.st_ino)
                 throw new IOException("PCM input must be an owned FIFO");
-            cancel = ParcelFileDescriptor.createPipe();
-            int minimum = AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_STEREO,
-                    AudioFormat.ENCODING_PCM_16BIT);
-            if (minimum <= 0) throw new IOException("PCM output format unavailable: " + minimum);
-            track = new AudioTrack.Builder()
-                    .setAudioAttributes(new AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-                    .setAudioFormat(new AudioFormat.Builder().setSampleRate(RATE)
-                            .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
-                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
-                    .setTransferMode(AudioTrack.MODE_STREAM)
-                    .setBufferSizeInBytes(Math.max(minimum, 4096)).build();
-            if (track.getState() != AudioTrack.STATE_INITIALIZED)
-                throw new IOException("PCM AudioTrack initialization failed");
-            track.play();
-            output = new AndroidPcmOutput(input, cancel, track);
-            return output;
+            accepted = true;
+            return input;
         } catch (ErrnoException | RuntimeException error) {
             throw new IOException("Cannot open PCM output", error);
         } finally {
-            if (output == null) {
-                try { if (track != null) track.release(); }
-                finally {
-                    closeFd(input);
-                    if (cancel != null) try { cancel[0].close(); } finally { cancel[1].close(); }
-                }
-            }
+            if (!accepted) closeFd(input);
         }
     }
     private AndroidPcmOutput(FileDescriptor input, ParcelFileDescriptor[] cancel, AudioTrack track) {

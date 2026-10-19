@@ -31,6 +31,8 @@ class EmulatorHelperTests(unittest.TestCase):
         self.assertEqual(len(commands), 1)
         self.assertIn("XDG_RUNTIME_DIR=/run/omamobile/u", commands[0][-1])
         self.assertIn("OMAMOBILE_PROFILE=unified", commands[0][-1])
+        self.assertIn("PIPEWIRE_RUNTIME_DIR=/run/omamobile/a-shared", commands[0][-1])
+        self.assertIn("PULSE_SERVER=unix:/run/omamobile/a-shared/pulse/native", commands[0][-1])
 
     def test_stop_reveals_scrolled_control_before_pressing_enter(self):
         views = iter([
