@@ -1,5 +1,67 @@
 # Verification record
 
+## Native Squeekboard keyboard — 2026-10-19
+
+Both the separate phone/desktop sessions and shared compositor passed the
+complete native keyboard flow on the API35 x86_64 disposable emulator, with
+Squeekboard 1.43.1-6 and Foot 1.28.0-2. Runtime implementation:
+`5a812ff5c0ec07fb269b941f1ba62831da6031d8`; private staged APK SHA-256:
+`b2dee0c21dd40ce0924ac11bf60db5facac408393ce981417680b5a5ddfa92ac`.
+
+Paired Wayland traces and PTY bytes isolated the earlier dropped letters:
+Squeekboard submitted them, but Foot discarded edits with older text-input-v3
+state serials. The terminal layout now selects native virtual-keyboard events
+for printable characters alongside its controls. Its views and geometry, other
+layouts' composition, and user overrides remain intact. No Foot binary is
+patched. The pinned input, derived layout hash, source references and retained
+GPL notices are recorded in [REFERENCES.md](REFERENCES.md#native-phone-keyboard).
+
+The final UI run used one trial per mode, 80 ms stationary presses, and no
+Wayland debug logging. Actual touch targets were inspected from framebuffers;
+the terminal fixture and PTY input records independently confirmed:
+
+- Tapping Mobile's search field opened Squeekboard automatically; native typing
+  changed the query to `foot`, and Mobile's hide button dismissed it.
+- The unchanged Keyboard tile opened the terminal layout. Ctrl+A, arrows,
+  Backspace and ordinary typing edited a line to `date`; Enter submitted it
+  and the fixture executed `date -I`. Esc/Alt+b delivered exactly `1b1b62`.
+- The shared-mode symbol views entered exactly `A1!π€√`.
+- Keyboard layers remained on the phone. Its output stayed 1080×2424 at
+  scale 3; reserved bottom space changed 72 → 282 → 72 logical pixels.
+  The shared external desktop's size, scale and reservation stayed unchanged.
+  Android's software keyboard remained hidden.
+- Normal stop/reopen produced one new Squeekboard process in each mode,
+  without duplicate keyboards. Original APK/test APK, rootfs identity,
+  configuration and Android grants were restored with no cleanup errors.
+  Settled captures confirmed the original phone widgets and external desktop.
+
+A separate terminal-only shared-mode check passed ten consecutive `date`
+editing/execution and Esc/Alt cycles without Wayland debug logging, using
+instantaneous taps and the same derived layout. That APK's SHA-256 was
+`9535cc08d995396ed7ae75344b29c3d20f07b96136c00571986ab9a89ef36ec5`.
+Its direct keyboard opening does not establish automatic popup or tile behavior;
+those passed in the final UI run above.
+That run's input proof passed, but screen restoration failed during an Android
+service restart and was recovered before final acceptance.
+
+Debug/test APK builds, JVM checks, lint, mechanical audit, four focused host
+tests, native `squeekboard-test-layout`, and the 1309-member canonical payload
+comparison passed. The unchanged session-ownership script had also passed three
+POSIX lifecycle checks during the initial integration.
+
+Private evidence is retained under the parent workspace's
+`.build-tools/omamobile-dev-20261017/`: the failing protocol trace is
+`native-keyboard-runtime/run-1792421458740695100`, the ten-cycle check is
+`run-1792422720451580800`, and final acceptance is `run-1792426943474705600`
+in the same runtime directory. Exact APK, generated native metadata and final
+runtime artifacts are sealed in `native-keyboard-fixed-artifacts/`.
+Interrupted runs remain recorded as failures: Android-wide ANRs and unreliable
+accessibility snapshots blocked testing before input. The final run followed
+a restart of that same disposable AVD with its data preserved and 6 GiB RAM.
+This is emulator evidence; physical ARM64 native-keyboard validation, other
+languages and broader client compatibility remain open. All seven native
+binary publication holds remain; no graphical APK was published for this change.
+
 ## Direct IME composition contract — 2026-10-16
 
 On emulator `emulator-5556` (API 35, signed `wev` installed and the approved

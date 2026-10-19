@@ -24,6 +24,12 @@ PINS = {
 # packaged compressed bytes unchanged so the runtime can verify their hash.
 PAYLOAD = "linux-shell.tgz"
 MANIFEST = "install-manifest.json"
+SQUEEKBOARD_SOURCE = {
+    "usr/share/omamobile/squeekboard/keyboards/terminal/us.yaml":
+        "225f52782379d66c3929303749fb3a65bf97a8f6de35ffc37a3bd1e27d601cfa",
+    "usr/share/licenses/squeekboard-terminal-layout/COPYING":
+        "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+}
 
 
 def run(command: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -62,10 +68,12 @@ def archive_entries(path: Path) -> list[dict[str, object]]:
         for member in archive.getmembers():
             if not member.isfile():
                 continue
-            if "squeekboard" in member.name.lower():
-                raise SystemExit(f"unexpected keyboard layout outside this adapter's payload: {member.name}")
             data = archive.extractfile(member).read()
             entries.append({"path": member.name, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data), "mode": member.mode & 0o777})
+    keyboard_source = {entry["path"]: entry["sha256"] for entry in entries
+                       if "squeekboard" in entry["path"].lower()}
+    if keyboard_source != SQUEEKBOARD_SOURCE:
+        raise SystemExit("Squeekboard layout/source license differs from the pinned payload")
     return entries
 
 

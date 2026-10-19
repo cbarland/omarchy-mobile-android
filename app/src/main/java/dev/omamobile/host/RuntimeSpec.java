@@ -64,6 +64,11 @@ final class RuntimeSpec {
         env.put("OMAMOBILE_SESSION_HOST", "android");
         env.put("OMAMOBILE_ACCESS_SHELL", "/root/.local/share/omamobile/omamobile-access-shell");
         env.put("NO_AT_BRIDGE", "1");
+        if (!profile.equals("desktop")) {
+            // Mobile's environment.d: native Wayland text input reaches Squeekboard.
+            env.put("GTK_IM_MODULE", "wayland");
+            env.put("QT_IM_MODULE", "wayland");
+        }
         env.put("DBUS_SESSION_BUS_ADDRESS", "unix:path=" + runtime + "/bus");
         return env;
     }

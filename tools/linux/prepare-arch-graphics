@@ -42,6 +42,6 @@ pacman -Syyu --noconfirm --needed hyprland quickshell mesa dbus fontconfig \
   ttf-dejavu qt6-wayland qt6-declarative qt6-svg qt6-5compat qt6-multimedia \
   qt6-imageformats foot ttf-cascadia-code-nerd jq git curl ca-certificates \
   python python-dbus python-gobject python-cairo xdg-desktop-portal inotify-tools socat xkeyboard-config \
-  adwaita-cursors imagemagick gtk3 gum xdg-terminal-exec fzf xdg-utils sudo neovim \
+  adwaita-cursors imagemagick gtk3 gum xdg-terminal-exec fzf xdg-utils sudo neovim squeekboard \
   pipewire pipewire-audio pipewire-pulse wireplumber
 pacman -Q hyprland quickshell glibc

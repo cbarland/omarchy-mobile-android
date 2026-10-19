@@ -19,4 +19,23 @@ export QS_DISABLE_FILE_WATCHER=1 QS_NO_RELOAD_POPUP=1
 # Android's Surface renderer owns GPU presentation. Standard Linux Qt clients
 # initially send wl_shm buffers; neither client-side EGL nor a DRM device is required.
 export QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software QSG_RENDER_LOOP=basic
-exec quickshell -n -p "$OMARCHY_PATH/shell"
+if [[ $profile == desktop ]] || ! command -v squeekboard >/dev/null; then
+  [[ $profile == desktop ]] || echo 'Squeekboard is missing; prepare the Linux graphics packages to enable the phone keyboard.' >&2
+  exec quickshell -n -p "$OMARCHY_PATH/shell"
+fi
+# Own both children so reopening a phone session cannot leave another OSK behind.
+children=()
+cleanup() {
+  if (( ${#children[@]} )); then
+    kill "${children[@]}" 2>/dev/null || true
+    wait "${children[@]}" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
+squeekboard &
+children+=("$!")
+quickshell -n -p "$OMARCHY_PATH/shell" &
+children+=("$!")
+wait "${children[1]}"

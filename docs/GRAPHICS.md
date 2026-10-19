@@ -205,7 +205,12 @@ firmware partitions are never modified.
 Install signed Arch packages: `hyprland quickshell mesa dbus fontconfig
 ttf-dejavu qt6-wayland qt6-declarative qt6-svg qt6-5compat qt6-multimedia
 qt6-imageformats foot ttf-cascadia-code-nerd jq git curl ca-certificates
-python python-gobject python-cairo neovim inotify-tools socat xkeyboard-config adwaita-cursors imagemagick gtk3 gum xdg-terminal-exec`.
+python python-gobject python-cairo neovim inotify-tools socat xkeyboard-config adwaita-cursors imagemagick gtk3 gum xdg-terminal-exec squeekboard`.
+
+The phone uses Mobile's native Squeekboard input method and terminal layout;
+see [INPUT.md](INPUT.md). Its process belongs to the phone/shared shell session.
+The existing Mobile D-Bus controls, text-input activation and hide helper remain
+Linux components; Android's software keyboard stays hidden on phone startup.
 
 The normal developer provisioning path configures the signed Omarchy repository,
 then runs `pacman -Syu --needed yay` when the standard removal picker is needed.
