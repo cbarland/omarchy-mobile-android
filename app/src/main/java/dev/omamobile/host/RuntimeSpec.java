@@ -38,6 +38,9 @@ final class RuntimeSpec {
         env.put("LANG", "C.UTF-8");
         env.put("TERM", "dumb"); // Pipe console, not a PTY.
         env.put("TMPDIR", "/tmp");
+        env.put("PIPEWIRE_RUNTIME_DIR", SharedAudioRuntime.GUEST);
+        env.put("PIPEWIRE_REMOTE", "pipewire-0");
+        env.put("PULSE_SERVER", "unix:" + SharedAudioRuntime.GUEST + "/pulse/native");
         if (ando) env.put("OMALAUNCHER_ANDO_SOCKET", "/run/omamobile-ando/ando.sock");
         return env;
     }

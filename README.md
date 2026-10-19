@@ -81,10 +81,11 @@ tiles expose Android's fixed settings panels; see
 These battery and radio UI integrations are part of the fresh shell payload
 verified on an API 35 x86_64 emulator; replacing an APK does not migrate the
 shell or user profiles in an existing installation.
-Real PipeWire-to-Android transport has passed opt-in emulator tests, but a normal shared audio
-owner, default device, volume, and focus integration is still pending; [AUDIO.md](docs/AUDIO.md)
-documents that foundation. Physical Bluetooth pairing, raw-radio access, and
-ordinary application audio routing remain pending.
+Linux clients now share one PipeWire/Pulse output with Android media focus and
+idle release. Native/Pulse mixing, focus recovery and audio-process rebinding
+have emulator verification; see [shared Linux audio](docs/AUDIO.md).
+Physical Bluetooth pairing, device audio routing, microphone input and raw-radio
+access remain pending.
 
 ## Develop
 

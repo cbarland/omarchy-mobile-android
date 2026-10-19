@@ -73,6 +73,8 @@ def session_adb_command(profile, session_text, *, metadata_timeout=30, deadline=
             "PATH=/usr/lib/omamobile/session-bin:/root/.local/share/omarchy/bin:/usr/local/bin:/usr/bin:/bin", "OMARCHY_PATH=/root/.local/share/omarchy",
             "OMAMOBILE_SESSION_HOST=android", "OMAMOBILE_PROFILE=" + profile, "GSETTINGS_BACKEND=keyfile",
             "XDG_RUNTIME_DIR=" + runtime, "WAYLAND_DISPLAY=" + ready["WAYLAND_DISPLAY"],
+            "PIPEWIRE_RUNTIME_DIR=/run/omamobile/a-shared", "PIPEWIRE_REMOTE=pipewire-0",
+            "PULSE_SERVER=unix:/run/omamobile/a-shared/pulse/native",
             "HYPRLAND_INSTANCE_SIGNATURE=" + ready["HYPRLAND_INSTANCE_SIGNATURE"], "DBUS_SESSION_BUS_ADDRESS=unix:path=" + runtime + "/bus",
             "QT_QPA_PLATFORM=wayland", "QT_QUICK_BACKEND=software", "QSG_RENDER_LOOP=basic",
             "/system/bin/sh", "-c", 'cd "$1" && shift && exec "$@"', "omamobile-session", root + "/root",
