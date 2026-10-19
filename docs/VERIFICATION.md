@@ -25,9 +25,21 @@ In the shared compositor, automatic opening, launcher typing, the Keyboard tile,
 the phone-only keyboard/hide-button placement, and an unchanged external desktop
 size/scale/reservation passed. **Shared terminal acceptance remains open:** the
 same mixed typing/shortcut sequence produced `dae` rather than `date` on one
-run. A PTY input trace is prepared to distinguish missed input from editing or
-protocol ordering; that trace has not completed. Do not treat this as a full
-two-mode keyboard pass or a physical-device result.
+run, and `at` on a later run. The later PTY trace contains the delivered
+shortcuts but omits two ordinary insertions. An explicit 80 ms stationary
+press/release comparison also failed (`ate`), with the final `d` absent before
+Enter; instantaneous test taps alone do not explain the problem.
+
+A focused terminal-only run with Squeekboard's Wayland client logging enabled
+passed the complete `date` edit, exact Esc/Alt bytes, hide/reservation restoration,
+and normal stop/reopen with one keyboard process. Both touch events and native
+input-method/virtual-keyboard requests were recorded. Debug logging changes
+scheduling, so this successful diagnostic does not establish that the
+intermittent loss is fixed. A later Foot-side trace stopped before typing when
+the Keyboard tile did not make the keyboard visible. The first incorrect
+decision in the failing text-input exchange has not yet been isolated.
+Do not treat these results as a full two-mode keyboard pass or a
+physical-device result.
 
 Debug/test APK builds, JVM checks, lint and the staged mechanical audit passed.
 Three POSIX session-ownership checks passed, including child cleanup on exit
@@ -40,10 +52,16 @@ separately on Windows.
 Private runtime receipts, failed attempts and captures are retained beneath
 `.build-tools/omamobile-dev-20261017/native-keyboard-runtime/` in the parent
 workspace. The completed legacy/shared investigation run restored its original
-APK, data identity, configuration and Android grants. A later interrupted trace
-also restored those bytes and grants, but its final phone-shell startup check
-failed; follow-up baseline recovery is pending. All seven native binary
-publication holds remain; no graphical APK has been published for this change.
+APK, data identity, configuration and Android grants. The earlier interrupted
+trace's phone-shell startup failure was subsequently recovered and the original
+phone widgets and external desktop were inspected. The focused successful trace
+and the failed 80 ms comparison both restored the baseline with no cleanup
+errors. The final Foot-side attempt also restored those files and grants;
+settled captures confirmed the original phone widgets and external desktop.
+The host approval service accepted the retry; a separate ADB-daemon
+startup interruption is retained as an infrastructure failure. All seven native
+binary publication holds remain; no graphical APK has been published for this
+change.
 
 ## Direct IME composition contract — 2026-10-16
 
