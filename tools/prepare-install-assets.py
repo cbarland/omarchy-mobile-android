@@ -26,7 +26,7 @@ PAYLOAD = "linux-shell.tgz"
 MANIFEST = "install-manifest.json"
 SQUEEKBOARD_SOURCE = {
     "usr/share/omamobile/squeekboard/keyboards/terminal/us.yaml":
-        "430c56d179c8291c026cfa6f7f55336fc646f5a0aec4e41af322be5b3b11d65b",
+        "225f52782379d66c3929303749fb3a65bf97a8f6de35ffc37a3bd1e27d601cfa",
     "usr/share/licenses/squeekboard-terminal-layout/COPYING":
         "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
 }

@@ -13,12 +13,14 @@ import subprocess
 import tarfile
 
 from shell.output_composition import compose
+from shell.terminal_keyboard import terminal_keycodes
 
 OMARCHY = "e71a816e9032f040225e086c7256f73e8080ae45"
 MOBILE = "953bcb3058347459cdf7faaa1e149f16e0f7cfa6"
 WIDGETS = "b63886b75e02ccef1a8a11baeef2d6eff7a374af"
 OMARCHY_DESKTOP_SHELL_HASH = "64f80ae8e7877018c20e9f0de65fa9c0a39311470b456209c52ed7f232c48f94"
 MOBILE_TRANSFORM_HASHES = {
+    "packages/omamobile-shell/squeekboard/keyboards/terminal/us.yaml": "430c56d179c8291c026cfa6f7f55336fc646f5a0aec4e41af322be5b3b11d65b",
     "packages/omamobile-shell/plugins/omamobile.bar/Bar.qml": "de1f04dd367758032b0d4e8ad09b3aeadcb1d44dde3c910c674b8c3476f849c0",
     "packages/omamobile-shell/plugins/omamobile.quicksettings/QuickSettings.qml": "db944640ddbcd6dfa736e3059cb2e5aa0c4ce56073fbf31868a91e1887896ff7",
     "shell/plugins/panels/power/Panel.qml": "57fbff9e60bbc4111012f20079c529e832e8e5ef70754067489dc949332b0c96",
@@ -63,6 +65,8 @@ def mobile_transform(relative, data):
     actual = hashlib.sha256(data).hexdigest()
     if actual != expected:
         raise SystemExit(f"Pinned mobile transform input changed for {relative}: {actual}")
+    if relative.endswith("squeekboard/keyboards/terminal/us.yaml"):
+        return terminal_keycodes(data)
     text = data.decode("utf-8")
     if relative.endswith("omamobile.bar/Bar.qml"):
         text = text.replace('import "StatusModel.js" as StatusModel\n',

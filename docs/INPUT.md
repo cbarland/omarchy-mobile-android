@@ -57,7 +57,11 @@ quick settings opens it on demand. The tile may be on the second page. Mobile's
 small hide button above the keyboard dismisses it. Android Back retains its
 Android meaning; use the native hide button to fold Squeekboard.
 
-Mobile's unchanged terminal layout includes Esc, Tab, Ctrl, Alt and arrows.
+Mobile's terminal layout includes Esc, Tab, Ctrl, Alt and arrows. The Android
+adapter preserves its views and key sizes, and sends terminal characters and
+shortcuts through Squeekboard's native virtual keyboard. This avoids Foot 1.28
+discarding text-input edits with older state serials. Other text fields retain
+normal Wayland text-input composition and automatic keyboard activation.
 Ctrl and Alt toggle: tap a modifier again to release it after the shortcut.
 The keyboard reserves Linux workspace space without resizing the Android
 Surface. The phone and shared profiles start one keyboard with their shell;
