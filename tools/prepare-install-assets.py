@@ -70,10 +70,6 @@ def archive_entries(path: Path) -> list[dict[str, object]]:
                 continue
             data = archive.extractfile(member).read()
             entries.append({"path": member.name, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data), "mode": member.mode & 0o777})
-    keyboard_source = {entry["path"]: entry["sha256"] for entry in entries
-                       if "squeekboard" in entry["path"].lower()}
-    if keyboard_source != SQUEEKBOARD_SOURCE:
-        raise SystemExit("Squeekboard layout/source license differs from the pinned payload")
     return entries
 
 
@@ -108,6 +104,10 @@ def main() -> int:
             raise SystemExit(completed.stderr or completed.stdout or "Linux shell packaging failed")
 
         payload_entries = archive_entries(temp_payload)
+        keyboard_source = {entry["path"]: entry["sha256"] for entry in payload_entries
+                           if "squeekboard" in entry["path"].lower()}
+        if keyboard_source != SQUEEKBOARD_SOURCE:
+            raise SystemExit("Squeekboard layout/source license differs from the pinned payload")
         script_entries = []
         for name in ("prepare-arch-graphics", "configure-omarchy-repository"):
             source = root / "tools/linux" / name
