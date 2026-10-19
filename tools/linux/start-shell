@@ -23,6 +23,21 @@ if [[ $profile == desktop ]] || ! command -v squeekboard >/dev/null; then
   [[ $profile == desktop ]] || echo 'Squeekboard is missing; prepare the Linux graphics packages to enable the phone keyboard.' >&2
   exec quickshell -n -p "$OMARCHY_PATH/shell"
 fi
+# Initialize missing defaults on session entry too: payload updates preserve user profiles
+# and do not rerun first-install setup. Existing settings and layouts remain authoritative.
+# Mobile's native input method and terminal controls; keep user choices intact.
+python - <<'PY'
+from gi.repository import Gio
+settings = Gio.Settings.new('org.gnome.desktop.a11y.applications')
+if settings.get_user_value('screen-keyboard-enabled') is None:
+    settings.set_boolean('screen-keyboard-enabled', True)
+    Gio.Settings.sync()
+PY
+keyboard_layout=${XDG_DATA_HOME:-$HOME/.local/share}/squeekboard/keyboards/terminal
+if [[ ! -e $keyboard_layout/us.yaml && ! -L $keyboard_layout/us.yaml ]]; then
+  mkdir -p "$keyboard_layout"
+  ln -s /usr/share/omamobile/squeekboard/keyboards/terminal/us.yaml "$keyboard_layout/us.yaml"
+fi
 # Own both children so reopening a phone session cannot leave another OSK behind.
 children=()
 cleanup() {

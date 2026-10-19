@@ -35,6 +35,10 @@ while not (name == 'quickshell' and pathlib.Path(os.environ['RELEASE']).exists()
             path = self.bin / name
             path.write_text(program)
             path.chmod(0o755)
+        # Session ownership does not require the guest's PyGObject dependency.
+        settings = self.bin / "python"
+        settings.write_text("#!/bin/sh\ncat >/dev/null\n")
+        settings.chmod(0o755)
         self.env = dict(os.environ, HOME=str(self.home), OMARCHY_PATH=str(self.home),
                         EVENTS=str(self.events), RELEASE=str(self.release))
 
@@ -73,6 +77,9 @@ while not (name == 'quickshell' and pathlib.Path(os.environ['RELEASE']).exists()
                 self.release.unlink(missing_ok=True)
                 process = self.session(profile)
                 events = self.started(2)
+                layout = self.home / ".local/share/squeekboard/keyboards/terminal/us.yaml"
+                self.assertTrue(layout.is_symlink())
+                self.assertEqual(os.readlink(layout), "/usr/share/omamobile/squeekboard/keyboards/terminal/us.yaml")
                 self.assertCountEqual([event["name"] for event in events], ["quickshell", "squeekboard"])
                 self.assertTrue(all(event["profile"] == profile for event in events))
                 self.release.touch()
@@ -88,9 +95,24 @@ while not (name == 'quickshell' and pathlib.Path(os.environ['RELEASE']).exists()
         self.assert_exited(events)
         process.communicate()
 
+    def test_session_entry_preserves_a_custom_terminal_layout(self):
+        directory = self.home / "custom-data/squeekboard/keyboards/terminal"
+        directory.mkdir(parents=True)
+        layout = directory / "us.yaml"
+        layout.write_text("custom layout\n")
+        self.env["XDG_DATA_HOME"] = str(self.home / "custom-data")
+        process = self.session("phone")
+        self.started(2)
+        self.release.touch()
+        self.assertEqual(process.wait(timeout=5), 0)
+        self.assertEqual(layout.read_text(), "custom layout\n")
+        self.assertFalse(layout.is_symlink())
+        process.communicate()
+
     def test_separate_desktop_does_not_start_a_phone_keyboard(self):
         process = self.session("desktop")
         events = self.started(1)
+        self.assertFalse((self.home / ".local/share/squeekboard").exists())
         self.assertEqual([event["name"] for event in events], ["quickshell"])
         self.release.touch()
         self.assertEqual(process.wait(timeout=5), 0)

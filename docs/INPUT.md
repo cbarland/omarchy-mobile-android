@@ -69,11 +69,11 @@ the separate desktop profile does not start another. Neither root nor Shizuku
 is needed.
 
 The graphics preparation step installs the signed `squeekboard` package. For
-an existing installation, update the prepared Linux payload and install that
-package, then prepare the shell profiles again. Existing custom profiles are
+an existing installation, use **Update Linux integration**, install that
+package if missing, then reopen the phone/shared session. Existing custom profiles are
 preserved: enable the `omamobile.keyboard` helper in the phone/shared plugin
 configuration if it is absent. User keyboard settings and terminal layouts
-are preserved. An unset screen-keyboard preference is enabled on preparation;
+are preserved. An unset screen-keyboard preference is enabled on session entry;
 an explicit disabled preference remains disabled.
 
 Automatic opening depends on the application's Wayland text-input support.

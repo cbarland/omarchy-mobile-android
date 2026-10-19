@@ -119,7 +119,7 @@ def main(wakeup):
         raise RuntimeError('existing app-owned runtime and FIFO required')
     for binary in ('pipewire', 'wireplumber', 'pipewire-pulse', 'pactl'):
         if not (Path('/usr/bin') / binary).is_file():
-            raise RuntimeError('Missing signed Linux package for ' + binary + '; update Linux integration first')
+            raise RuntimeError('Missing signed Linux package for ' + binary + '; install pipewire, pipewire-audio, pipewire-pulse and wireplumber with pacman; Update Linux integration only updates adapter files')
     for name in ('home', 'config', 'cache', 'state'):
         (ROOT / name).mkdir(mode=0o700)
     pulse = ROOT / 'config/pipewire/pipewire-pulse.conf.d'

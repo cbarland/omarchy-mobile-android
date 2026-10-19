@@ -17,20 +17,6 @@ fi
 for plugin in /usr/share/omamobile/shell/plugins/omamobile.*; do
   ln -sfn "$plugin" ~/.config/omarchy/plugins/"${plugin##*/}"
 done
-# Mobile's native input method and terminal controls; keep user choices intact.
-export GSETTINGS_BACKEND=${GSETTINGS_BACKEND:-keyfile}
-python - <<'PY'
-from gi.repository import Gio
-settings = Gio.Settings.new('org.gnome.desktop.a11y.applications')
-if settings.get_user_value('screen-keyboard-enabled') is None:
-    settings.set_boolean('screen-keyboard-enabled', True)
-    Gio.Settings.sync()
-PY
-keyboard_layout=${XDG_DATA_HOME:-$HOME/.local/share}/squeekboard/keyboards/terminal
-if [[ ! -e $keyboard_layout/us.yaml && ! -L $keyboard_layout/us.yaml ]]; then
-  mkdir -p "$keyboard_layout"
-  ln -s /usr/share/omamobile/squeekboard/keyboards/terminal/us.yaml "$keyboard_layout/us.yaml"
-fi
 for profile in phone desktop unified; do
   target=$HOME/.local/share/omamobile/profiles/$profile.json
   [[ -e $target ]] || cp /usr/share/omamobile/android/$profile.json "$target"
