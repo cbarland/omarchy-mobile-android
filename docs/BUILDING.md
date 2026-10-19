@@ -68,7 +68,7 @@ therefore proves neither compositor packaging nor desktop rendering.
 
 ## Host checks
 
-Use Linux or WSL with Python 3.11+, Bash, a C compiler, and the standard Unix
+Use Linux or WSL with Python 3.11+, Node.js, Bash, a C compiler, and the standard Unix
 utilities. These checks do not connect to Android or require Shizuku:
 
 ```sh

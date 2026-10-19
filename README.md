@@ -92,6 +92,8 @@ access remain pending.
 ## Develop
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) and [the build guide](docs/BUILDING.md).
+The [developer preview gate](docs/DEVELOPER-PREVIEW.md) covers candidate checks,
+device installation, recovery and the remaining public binary release requirements.
 The repository contains the Android adapter, native integration patches,
 dependency provenance and host tests. Native graphics and Linux source payloads
 are generated from public pinned references rather than committed binaries.
