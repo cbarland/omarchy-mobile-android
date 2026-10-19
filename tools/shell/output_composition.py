@@ -227,10 +227,13 @@ def compose(relative: str, data: bytes) -> bytes:
         text = once(text, 'path: Quickshell.env("HOME") + "/.config/omarchy/shell.json"',
             'path: Quickshell.env("OMARCHY_SHELL_CONFIG") || Quickshell.env("HOME") + "/.config/omarchy/shell.json"', relative)
     elif relative == "packages/omamobile-shell/plugins/omamobile.keyboard/Keyboard.qml":
-        text = once(text, '    visible: root.oskOpen\n', '''    screen: Quickshell.env("OMAMOBILE_PROFILE") === "unified"
-      ? Quickshell.screens.find(function(screen) { return screen.name === "ANDROID-1" }) || null
-      : (Quickshell.screens.length ? Quickshell.screens[0] : null)
-    visible: !!screen && root.oskOpen
+        text = once(text, '  id: root\n', '''  id: root
+  readonly property var phoneScreen: Quickshell.env("OMAMOBILE_PROFILE") === "unified"
+    ? Quickshell.screens.find(function(screen) { return screen.name === "ANDROID-1" }) || null
+    : (Quickshell.screens.length ? Quickshell.screens[0] : null)
+''', relative)
+        text = once(text, '    visible: root.oskOpen\n', '''    screen: root.phoneScreen
+    visible: !!root.phoneScreen && root.oskOpen
 ''', relative)
     elif relative in ("packages/omamobile-shell/plugins/omamobile.quicksettings/QuickSettings.qml",
                       "packages/omamobile-shell/plugins/omamobile.switcher/Switcher.qml"):
