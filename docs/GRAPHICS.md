@@ -89,8 +89,11 @@ Revert, and timeout recovery in either mode. Custom monitor files are preserved.
 
 This preview requires Linux prepared from the updated APK's pinned shell payload.
 Installing an APK over an existing prepared image does not replace its upstream
-QML or user configuration. Existing images need a deliberate shell-payload update;
-the automatic adapter refresh only updates the Android command helper.
+QML or user configuration. Stop Linux screens and commands, then use
+**Update Linux integration** to apply changed stock files from the new APK.
+Existing user profiles are preserved; customized stock files can block an update.
+See [payload upgrades and recovery](PAYLOAD-UPGRADES.md). The automatic adapter
+refresh only updates the Android command helper.
 
 An exclusive graphical-mode lease prevents both modes from
 running against the shared Linux configuration at once; normal Start and Stop

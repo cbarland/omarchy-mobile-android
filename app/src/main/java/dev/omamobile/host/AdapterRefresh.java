@@ -103,6 +103,8 @@ final class AdapterRefresh {
         GuestPaths.noSymlinkParents(anchor, anchor.resolve("linux/rootfs/.installation-path-check"));
         if (!Files.isDirectory(anchor.resolve("linux/rootfs"), LinkOption.NOFOLLOW_LINKS))
             throw new IOException("Linux installation is not available");
+        if (Files.exists(anchor.resolve("linux/" + ShellPayloadUpdate.TRANSACTION), LinkOption.NOFOLLOW_LINKS))
+            throw new IOException("Linux integration update needs recovery; use Update Linux integration before starting Linux");
     }
 
     private static void safeHelperParents(Path anchor, Path helper) throws IOException {
