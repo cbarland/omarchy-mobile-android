@@ -66,7 +66,7 @@ XERJ's shared local indexes were used for concrete mechanism lookup, followed by
 - Repository: https://github.com/derekross/omarchy-mobile
 - Revision: `953bcb3058347459cdf7faaa1e149f16e0f7cfa6`
 - Included in the pinned installer payload: phone shell plugins, profiles, QML widgets and setup helpers. XERJ's shell scope located the package/profile mechanisms before direct source inspection. The payload is staged into the shared Linux installation.
-- Main project MIT; retained shell and OWL-guide notices accompany the payload. The package also declares GPL-3.0-or-later for its squeekboard layout, which this payload does not include. The Android APK's installed credits name this upstream foundation prominently.
+- Main project MIT; retained shell and OWL-guide notices accompany the payload. Mobile's Squeekboard terminal layout is included as derived source under GPL-3.0-or-later, with its SPDX/copyright header, a modification notice and the complete GPL text. The Android APK's installed credits name this upstream foundation prominently.
 - The Android app is an adapter project, not a fork of the Linux phone hardware stack. Upstream device flashing scripts are not used.
 - Session launch reference: XERJ `ax-omamobile-shell-docs` retrieved
   `test/launch.py` and `test/all`, then source inspection verified
@@ -99,7 +99,31 @@ The Linux image is user-supplied, not embedded in the APK. Its packages and lice
 
 - Omarchy: https://github.com/omacom/omarchy at `e71a816e9032f040225e086c7256f73e8080ae45`; MIT license retained in the staged Linux checkout.
 - Omarchy Mobile: https://github.com/derekross/omarchy-mobile at `953bcb3058347459cdf7faaa1e149f16e0f7cfa6`. Its MIT shell plugins, native QML widgets and widget authoring documentation are now staged into Linux. `HomeModel.js:346` / `defaultLayout` was located through XERJ and checked against source. Phone widget rendering and swipe behavior are verified.
-- The earlier reference-only description above records milestone 1. The current Linux payload includes these upstream userland sources and their MIT notices. It does not copy the GPL squeekboard keyboard layout, hardware services, flashing tools or kernel/firmware stack into the host.
+- The earlier reference-only description above records milestone 1. The current Linux payload includes these upstream userland sources and their MIT notices, plus Mobile's GPL-3.0-or-later Squeekboard terminal layout as source. It does not copy hardware services, flashing tools or the kernel/firmware stack into the host.
+
+### Native phone keyboard
+
+- Squeekboard: https://gitlab.gnome.org/World/Phosh/squeekboard, GPL-3.0-or-later.
+- Reference tag `v1.43.1`, commit `15569da021824b6da5c337ba9875c5002158f43e`.
+- Mobile's pinned `omamobile-setup-user` and `environment.d/20-omamobile-osk.conf`
+  inform session startup and Wayland text-input selection. The upstream
+  `omamobile.keyboard` helper and quick-settings tile retain their D-Bus interface.
+- Canonical `squeekboard/keyboards/terminal/us.yaml` from the Mobile revision above
+  is checked before transformation (SHA-256 `430c56d179c8291c026cfa6f7f55336fc646f5a0aec4e41af322be5b3b11d65b`).
+  It adds Esc to Squeekboard's terminal controls. The adapter preserves the views
+  and geometry, and selects native keysyms for terminal text so characters and
+  shortcuts share the virtual-keyboard protocol. The generated layout SHA-256 is
+  `225f52782379d66c3929303749fb3a65bf97a8f6de35ffc37a3bd1e27d601cfa`.
+  Other keyboard layouts and user overrides are preserved. The YAML is its source form;
+  its GPL text is packaged in the APK and Linux license tree. The Squeekboard
+  executable comes from the official signed Arch/Arch ARM repositories.
+- Foot reference: https://codeberg.org/dnkl/foot at
+  `cb2771788998f6a6288e2de8273c55a8214551e0` (MIT), `ime.c` / `done`.
+  The installed signed Foot 1.28.0-2 discarded edits after receiving older
+  text-input-v3 `done` serials. Paired Squeekboard/Foot protocol traces and PTY
+  bytes confirmed the loss. The Wayland text-input-v3 `done` contract requires
+  applying edits even with an older serial. The terminal-layout adaptation uses
+  Squeekboard's supported keycode path; no Foot source or binary is bundled or patched.
 - `tools/prepare-linux-shell.py` archives canonical pinned Git content with `core.autocrlf=false` / LF endings and Git file modes. It patches one upstream integration point: the per-display `OMARCHY_SHELL_CONFIG` override in `shell.qml`. Omarchy's `AppLibrary.qml` and Mobile's `omamobile-launch` remain unchanged; Android-hosted sessions provide the original launcher's `uwsm-app` entry through a session-only PATH adapter. Standard GTK desktop-entry resolution and Hyprland launch rules remain upstream mechanisms. Other hosts retain upstream behavior.
 - Linux initial setup and launch scripts seed user configuration once. A temporary `NO_AT_BRIDGE=1` avoids activating an absent Linux accessibility bus; Android accessibility integration remains open. The source payload manifest records the upstream revisions and patch scope.
 

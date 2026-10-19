@@ -40,6 +40,11 @@ public abstract class CompositorActivity extends Activity {
         controller = endpoint();
         FrameLayout layout = new FrameLayout(this);
         layout.setBackgroundColor(Color.BLACK);
+        if (phone()) {
+            // The Linux input method owns the phone keyboard and reserved space.
+            getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
+                    | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
+        }
         surface = new LinuxSurface(this);
         layout.addView(surface, new FrameLayout.LayoutParams(-1, -1));
         status = new TextView(this);

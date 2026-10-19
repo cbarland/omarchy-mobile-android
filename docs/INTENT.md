@@ -20,6 +20,11 @@ Baseline ARM64 installation, shared Arch Linux ARM execution and concurrent phon
 
 These are engineering goals, not additional acceptance gates. Omalauncher and Omalateral are references/migration sources; neither is the foundation of this new host. The existing upstream Omalauncher bridge PR stays frozen.
 
+Prefer upstream Linux interfaces and services wherever they can run rootlessly.
+The integration layer supplies platform capabilities beneath that experience.
+This includes Mobile's native Squeekboard input method and keyboard controls;
+Android-specific interfaces serve Android-owned capabilities and explicit fallbacks.
+
 ## Adapter boundaries
 
 - **Runtime:** pinned TAWC/tawcroot backend, one app-private rootfs. Do not patch distro executables for a private installation prefix.

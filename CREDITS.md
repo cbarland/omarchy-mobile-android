@@ -48,6 +48,15 @@ authorized Android shell service mechanism. It is not required for Linux itself.
 
 <h2>Shells, widgets, packages and supporting projects</h2>
 
+<p><a href="https://gitlab.gnome.org/World/Phosh/squeekboard">Squeekboard</a>,
+by Purism and contributors, provides Mobile's native Wayland touch keyboard.
+The signed Linux package is installed separately. Mobile's GPL-3.0-or-later
+terminal layout, based on Squeekboard v1.43.1 with its added Esc key, is included
+as derived source. The Android adapter preserves its views and geometry while
+submitting terminal text through native virtual-keyboard events. Its source
+notices and GPL text accompany the layout in
+<code>licenses/squeekboard-layout.txt</code>.</p>
+
 <p><a href="https://quickshell.org/">Quickshell</a> runs the upstream QML shells.
 <a href="https://archlinuxarm.org/">Arch Linux ARM</a> and
 <a href="https://archlinux.org/">Arch Linux</a> supply the ordinary Linux userland

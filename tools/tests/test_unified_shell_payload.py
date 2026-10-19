@@ -19,7 +19,7 @@ def verify(path):
         assert config["mobileBar"]["id"] == "omamobile.bar"
         enabled = {entry["id"] for entry in config["plugins"]}
         assert {"omamobile.home", "omamobile.launcher", "omamobile.switcher",
-                "omamobile.quicksettings", "omamobile.access"} <= enabled
+                "omamobile.quicksettings", "omamobile.access", "omamobile.keyboard"} <= enabled
         shell = read("root/.local/share/omarchy/shell/shell.qml")
         assert shell.count("PluginRegistry { }") == 1
         assert shell.count("id: mobileBarLoader") == 1
@@ -40,6 +40,7 @@ def verify(path):
             "usr/share/omamobile/shell/plugins/omamobile.launcher/Launcher.qml": "ANDROID-1",
             "usr/share/omamobile/shell/plugins/omamobile.quicksettings/QuickSettings.qml": "ANDROID-1",
             "usr/share/omamobile/shell/plugins/omamobile.switcher/Switcher.qml": "ANDROID-1",
+            "usr/share/omamobile/shell/plugins/omamobile.keyboard/Keyboard.qml": "ANDROID-1",
         }
         for name, output in routes.items():
             assert output in read(name), name

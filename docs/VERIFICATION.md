@@ -1,5 +1,67 @@
 # Verification record
 
+## Native Squeekboard keyboard — 2026-10-19
+
+Both the separate phone/desktop sessions and shared compositor passed the
+complete native keyboard flow on the API35 x86_64 disposable emulator, with
+Squeekboard 1.43.1-6 and Foot 1.28.0-2. Runtime implementation:
+`5a812ff5c0ec07fb269b941f1ba62831da6031d8`; private staged APK SHA-256:
+`b2dee0c21dd40ce0924ac11bf60db5facac408393ce981417680b5a5ddfa92ac`.
+
+Paired Wayland traces and PTY bytes isolated the earlier dropped letters:
+Squeekboard submitted them, but Foot discarded edits with older text-input-v3
+state serials. The terminal layout now selects native virtual-keyboard events
+for printable characters alongside its controls. Its views and geometry, other
+layouts' composition, and user overrides remain intact. No Foot binary is
+patched. The pinned input, derived layout hash, source references and retained
+GPL notices are recorded in [REFERENCES.md](REFERENCES.md#native-phone-keyboard).
+
+The final UI run used one trial per mode, 80 ms stationary presses, and no
+Wayland debug logging. Actual touch targets were inspected from framebuffers;
+the terminal fixture and PTY input records independently confirmed:
+
+- Tapping Mobile's search field opened Squeekboard automatically; native typing
+  changed the query to `foot`, and Mobile's hide button dismissed it.
+- The unchanged Keyboard tile opened the terminal layout. Ctrl+A, arrows,
+  Backspace and ordinary typing edited a line to `date`; Enter submitted it
+  and the fixture executed `date -I`. Esc/Alt+b delivered exactly `1b1b62`.
+- The shared-mode symbol views entered exactly `A1!π€√`.
+- Keyboard layers remained on the phone. Its output stayed 1080×2424 at
+  scale 3; reserved bottom space changed 72 → 282 → 72 logical pixels.
+  The shared external desktop's size, scale and reservation stayed unchanged.
+  Android's software keyboard remained hidden.
+- Normal stop/reopen produced one new Squeekboard process in each mode,
+  without duplicate keyboards. Original APK/test APK, rootfs identity,
+  configuration and Android grants were restored with no cleanup errors.
+  Settled captures confirmed the original phone widgets and external desktop.
+
+A separate terminal-only shared-mode check passed ten consecutive `date`
+editing/execution and Esc/Alt cycles without Wayland debug logging, using
+instantaneous taps and the same derived layout. That APK's SHA-256 was
+`9535cc08d995396ed7ae75344b29c3d20f07b96136c00571986ab9a89ef36ec5`.
+Its direct keyboard opening does not establish automatic popup or tile behavior;
+those passed in the final UI run above.
+That run's input proof passed, but screen restoration failed during an Android
+service restart and was recovered before final acceptance.
+
+Debug/test APK builds, JVM checks, lint, mechanical audit, four focused host
+tests, native `squeekboard-test-layout`, and the 1309-member canonical payload
+comparison passed. The unchanged session-ownership script had also passed three
+POSIX lifecycle checks during the initial integration.
+
+Private evidence is retained under the parent workspace's
+`.build-tools/omamobile-dev-20261017/`: the failing protocol trace is
+`native-keyboard-runtime/run-1792421458740695100`, the ten-cycle check is
+`run-1792422720451580800`, and final acceptance is `run-1792426943474705600`
+in the same runtime directory. Exact APK, generated native metadata and final
+runtime artifacts are sealed in `native-keyboard-fixed-artifacts/`.
+Interrupted runs remain recorded as failures: Android-wide ANRs and unreliable
+accessibility snapshots blocked testing before input. The final run followed
+a restart of that same disposable AVD with its data preserved and 6 GiB RAM.
+This is emulator evidence; physical ARM64 native-keyboard validation, other
+languages and broader client compatibility remain open. All seven native
+binary publication holds remain; no graphical APK was published for this change.
+
 ## Direct IME composition contract — 2026-10-16
 
 On emulator `emulator-5556` (API 35, signed `wev` installed and the approved
@@ -925,3 +987,43 @@ compared with their staged manifest SHA-256 and byte metadata. Duplicate or
 missing ZIP entries and malformed payload manifests fail closed. Android
 platform libraries and AGP-supplied `libc++_shared.so` remain outside this
 staged ownership check.
+
+## Integrated developer-preview candidate (2026-10-19)
+
+Private graphical APK SHA-256
+`c9672e5d517562108fe86770c253baaf3fd900e3852437d0a983ea0cfd25d461`
+combines shared audio, safe payload updates and native Squeekboard at functional
+source commit `dbe7137c1cd8bc217201de4bc79509157c3a435d`. Later preview-guide
+edits do not change its runtime code. Both ABI payloads passed mechanical
+candidate matching; execution below was on a prepared API 35 x86_64 emulator.
+
+Normal host controls passed busy-update rejection, custom-file conflict
+preflight, replacement of 20 changed stock paths plus one missing profile, and
+a repeated update with zero changes. Native audio playback worked before and
+after updating. The audio owner survived compositor-mode switching and actual
+external-display removal/recreation; main-process death cleaned it up. Phone
+widgets and the desktop bar/background were inspected after reconnect.
+
+The same APK passed all 11 audio instrumentation cases and the native keyboard
+gate in separate and shared modes: automatic Mobile search input, Keyboard tile,
+Foot editing/Enter, Ctrl/arrows/Backspace, Esc/Alt, native hide, phone-only workspace
+reservation and one replacement keyboard after stop/reopen. Shared-mode symbol
+input produced exactly `A1!π€√` in the terminal fixture. Both normal-control gates
+restored the original APK, test APK where changed, rootfs identity, backed-up
+files and Android grants; no Shizuku authorization was changed.
+
+An isolated fixture additionally exercised the candidate's session-entry script
+with the real Gio keyfile backend. It enabled missing defaults and preserved an
+explicit disabled preference, custom layout and dangling layout link. Upstream
+theme install/set/restore and session-settings persistence passed in a temporary
+home. This headless theme check does not establish rendered theme appearance.
+The fixture was removed and the original APK/user-file hashes remained identical.
+
+Full graphical build, JVM/lint checks, canonical comparison of 1,309 payload
+members and 19 socket-credential regressions passed. Source CI at `d5f6ec5`
+passed host contracts and all 125 JVM cases with zero ignored tests. The private
+source-evidence bundle was rebuilt and its 152 files rehashed; it retains SHA-256
+`166309462514fa6b8a38469eba9faed5418751707faa7cf114b9020e7328040f`.
+All seven public native source/relink holds remain. Physical ARM64 bootstrap,
+audio audibility/routes, work-policy/Wallet compatibility and power behavior
+still require the [device gate](DEVELOPER-PREVIEW.md).
