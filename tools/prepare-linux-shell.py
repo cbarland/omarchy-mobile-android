@@ -14,10 +14,8 @@ import tarfile
 
 from shell.output_composition import compose
 from shell.terminal_keyboard import terminal_keycodes
+from shell.sources import DEFAULT_LOCK, load_sources
 
-OMARCHY = "e71a816e9032f040225e086c7256f73e8080ae45"
-MOBILE = "953bcb3058347459cdf7faaa1e149f16e0f7cfa6"
-WIDGETS = "b63886b75e02ccef1a8a11baeef2d6eff7a374af"
 OMARCHY_DESKTOP_SHELL_HASH = "64f80ae8e7877018c20e9f0de65fa9c0a39311470b456209c52ed7f232c48f94"
 MOBILE_TRANSFORM_HASHES = {
     "packages/omamobile-shell/squeekboard/keyboards/terminal/us.yaml": "430c56d179c8291c026cfa6f7f55336fc646f5a0aec4e41af322be5b3b11d65b",
@@ -30,7 +28,10 @@ p.add_argument("--omarchy", type=Path, required=True)
 p.add_argument("--mobile", type=Path, required=True)
 p.add_argument("--widgets", type=Path, required=True, help="Omalauncher OWL store checkout at the pinned revision")
 p.add_argument("--output", type=Path, required=True)
+p.add_argument("--sources-lock", type=Path, default=DEFAULT_LOCK)
 a = p.parse_args()
+sources = load_sources(a.sources_lock)
+OMARCHY, MOBILE, WIDGETS = (sources[name]['commit'] for name in ('omarchy', 'mobile', 'widgets'))
 a.omarchy, a.mobile, a.widgets = a.omarchy.resolve(), a.mobile.resolve(), a.widgets.resolve()
 for path, pin in [(a.omarchy, OMARCHY), (a.mobile, MOBILE), (a.widgets, WIDGETS)]:
     head = subprocess.check_output(["git", "-C", str(path), "rev-parse", "HEAD"], text=True).strip()
