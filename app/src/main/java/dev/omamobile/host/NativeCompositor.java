@@ -31,6 +31,7 @@ final class NativeCompositor {
     static native int outputResize(int output, long generation, int width, int height);
     static native int outputRemove(int output, long generation);
     static native int pointerAt(int output, long generation, float x, float y, int button, boolean pressed);
+    static native int relativePointerAt(int output, long generation, float dx, float dy, int button, boolean pressed);
     static native int touchAt(int output, long generation, int id, int action, float x, float y);
     static native int axisAt(int output, long generation, float dx, float dy);
     static native int keyAt(int output, long generation, int evdev, boolean pressed);

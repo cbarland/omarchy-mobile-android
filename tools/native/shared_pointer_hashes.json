@@ -1,0 +1,7 @@
+{
+  "src/android/Embed.cpp": "9b8a652a2a2503820ebc00f47dd21318b3aef1190b9ac45b17509c6a7c71b8d0",
+  "src/android/Embed.h": "88f4fbe19d4978eb2c313e6c84d85b9bea273535bfc43c46d54051fdc2c6a32b",
+  "src/devices/TouchDevice.cpp": "fc94606f50775f62e694bbf40b6f61c149a7036c288a4c614121e3d7c416510e",
+  "subprojects/aquamarine/include/aquamarine/backend/Android.hpp": "00d9f3d30fad9ec97bfa163fc63d441b00d19d9f6c2b51c8494a13a0823da4c3",
+  "subprojects/aquamarine/src/backend/Android.cpp": "490a1c39cdf200e57a2655382ab542733348268e6f5977bfcf171640127e8961"
+}

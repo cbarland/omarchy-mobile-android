@@ -14,6 +14,7 @@ int anhyprland_output_surface(int, uint64_t, ANativeWindow*, int, int);
 int anhyprland_output_resize(int, uint64_t, int, int);
 int anhyprland_output_remove(int, uint64_t);
 int anhyprland_pointer_at(int, uint64_t, float, float, uint32_t, int);
+int anhyprland_relative_pointer_at(int, uint64_t, float, float, uint32_t, int);
 int anhyprland_touch_at(int, uint64_t, int, int, float, float);
 int anhyprland_axis_at(int, uint64_t, float, float);
 int anhyprland_key_at(int, uint64_t, uint32_t, int);
@@ -105,6 +106,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_FN(outputSurface)(JNIEnv* env, jclass, jin
 extern "C" JNIEXPORT jint JNICALL JNI_FN(outputResize)(JNIEnv*, jclass, jint id, jlong generation, jint width, jint height) { return anhyprland_output_resize(id, generation, width, height); }
 extern "C" JNIEXPORT jint JNICALL JNI_FN(outputRemove)(JNIEnv*, jclass, jint id, jlong generation) { return anhyprland_output_remove(id, generation); }
 extern "C" JNIEXPORT jint JNICALL JNI_FN(pointerAt)(JNIEnv*, jclass, jint id, jlong generation, jfloat x, jfloat y, jint button, jboolean pressed) { return anhyprland_pointer_at(id, generation, x, y, button, pressed); }
+extern "C" JNIEXPORT jint JNICALL JNI_FN(relativePointerAt)(JNIEnv*, jclass, jint id, jlong generation, jfloat dx, jfloat dy, jint button, jboolean pressed) { return anhyprland_relative_pointer_at(id, generation, dx, dy, button, pressed); }
 extern "C" JNIEXPORT jint JNICALL JNI_FN(touchAt)(JNIEnv*, jclass, jint id, jlong generation, jint touch, jint action, jfloat x, jfloat y) { return anhyprland_touch_at(id, generation, touch, action, x, y); }
 extern "C" JNIEXPORT jint JNICALL JNI_FN(axisAt)(JNIEnv*, jclass, jint id, jlong generation, jfloat x, jfloat y) { return anhyprland_axis_at(id, generation, x, y); }
 extern "C" JNIEXPORT jint JNICALL JNI_FN(keyAt)(JNIEnv*, jclass, jint id, jlong generation, jint code, jboolean pressed) { return anhyprland_key_at(id, generation, code, pressed); }

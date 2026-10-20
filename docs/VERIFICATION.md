@@ -1027,3 +1027,39 @@ source-evidence bundle was rebuilt and its 152 files rehashed; it retains SHA-25
 All seven public native source/relink holds remain. Physical ARM64 bootstrap,
 audio audibility/routes, work-policy/Wallet compatibility and power behavior
 still require the [device gate](DEVELOPER-PREVIEW.md).
+
+## Shared mouse seat, 20 October 2026
+
+Private graphical candidate SHA-256
+`c1af539ec852ff73b9a0fee8f4d32587638bbebfb508d8810539a791dac5ec23`
+was exercised on the prepared API 35 x86_64 disposable emulator. Real Android
+`SOURCE_MOUSE_RELATIVE` events captured by the phone window moved Hyprland's
+cursor from the phone to the external output and back. The external Foot PTY
+reported actual mouse down/up sequences and received `x` plus Enter from the
+phone's Android keyboard channel. Scrolling preserved the shared cursor position.
+Visiting Android controls and returning preserved the external Linux focus;
+Ctrl+Alt+Escape released capture without immediate recapture.
+
+The unchanged baseline failed the phone-capture assertion. An intermediate fix
+exposed a second regression: Android focus return selected the phone's Linux
+workspace. The final native callback restores focus through Hyprland's pointer
+manager. Its full input gate passed in fresh sessions, including after an actual
+emulator external-display removal and recreation (two outputs, one, then two).
+The existing separate-desktop `PointerCaptureTest` also passed on this candidate.
+Actual captures showed Mobile widgets and the desktop bar/wallpaper; existing
+FP16 and helper diagnostics remain outside this input gate.
+
+Both native ABIs rebuilt. Pinned patch output, repeated application and rejection
+of customized input were checked with `tools/native/verify_patch_shared_pointer.py`.
+All 191 host tests passed using Linux shell/filesystem APIs and the installed
+Windows Node runtime through a local path adapter. The Windows JVM run reported
+125 cases, with six POSIX-specific skips and no failures; lint reported zero errors
+and 31 existing warnings. Mechanical native/payload packaging checks passed while
+retaining all seven public binary source/relink holds.
+
+This is emulator evidence. The earlier Nubia run used the preceding integrated
+candidate: native phone search typing and separate phone/desktop rendering worked;
+stopping the obsolete Omalateral app released the mouse, which then controlled the
+phone. The device was removed before shared-seat verification. A shared audio
+graph exit on that device also remains unresolved. No physical audio, shared-seat
+Bluetooth input, ARM64 shared-mode startup, or power-efficiency pass is claimed.

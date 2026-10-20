@@ -446,7 +446,12 @@ public class GraphicsSmokeTest {
 
     static String runGuest(Context context, String profile, Properties properties, List<String> guest) throws Exception {
         Path files = context.getFilesDir().toPath();
-        String runtime = "/run/omamobile/" + (profile.equals("phone") ? "p" : "d");
+        String runtime = "/run/omamobile/" + switch (profile) {
+            case "phone" -> "p";
+            case "desktop" -> "d";
+            case "unified" -> "u";
+            default -> throw new IllegalArgumentException("Unknown graphics profile: " + profile);
+        };
         var argv = RuntimeSpec.command(new File(context.getApplicationInfo().nativeLibraryDir, "libtawcroot.so").toPath(),
                 files.resolve("linux/rootfs"), List.of(new RuntimeSpec.Bind("/dev", "/dev", false),
                         new RuntimeSpec.Bind("/proc", "/proc", false)),

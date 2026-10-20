@@ -20,9 +20,17 @@ channel do not always become ready in the same frame. Captured mouse movement
 and buttons go to the Linux compositor; touchscreen gestures are forwarded as
 Linux touch events.
 
-The phone session (Omarchy Mobile on the phone display) does not take pointer
-capture, but its touchscreen gestures are still forwarded to the Linux touch
-shell.
+In separate-session mode, the phone does not take pointer capture; its
+touchscreen gestures still reach the Linux touch shell.
+
+In **Start shared compositor preview**, either Android window can capture the
+mouse, including the phone window when Android routes the Bluetooth mouse there.
+Relative mouse movement goes to Hyprland's shared seat, so its monitor layout
+determines where the cursor crosses between phone and desktop. Keyboard input
+and scrolling follow that seat rather than jumping back to the capturing
+Android display. Touch remains local to the screen touched. This input path
+does not require Shizuku; Android application windows still use their separately
+authorized helper.
 
 ## Mouse capture and Ctrl+Alt+Escape
 
@@ -30,7 +38,8 @@ While the desktop window is focused, an external mouse's relative movement and
 buttons are captured by the host, so they act on the Linux cursor instead of
 the Android UI. Touchscreen gestures remain Linux touch events. To hand the
 mouse back to Android without leaving the session, press
-**Ctrl + Alt + Escape**. The host releases pointer capture on that key and stops
+**Ctrl + Alt + Escape**. The same shortcut works from either shared-mode window.
+The host releases pointer capture on that key and stops
 retrying until the window regains focus. The matching key-up is consumed even
 if a modifier is released first.
 
@@ -122,3 +131,9 @@ and Bluetooth keyboard input plus mouse movement/clicks. Broad hardware-key
 coverage, the Bluetooth pairing flow, and composition/Unicode behavior beyond
 the recorded IME contract remain unverified; see [VERIFICATION.md](VERIFICATION.md)
 for the recorded runs and their limits.
+
+The shared-seat mouse path was verified on an API 35 x86_64 emulator, including
+cross-output movement, terminal clicks, scrolling, keyboard focus after returning
+from Android controls, and capture release. The emulator-only opt-in regression
+is `SharedPointerCaptureTest` (`-e sharedPointer true`). This path still needs a
+physical-device retest; earlier Nubia input checks exercised separate sessions.
