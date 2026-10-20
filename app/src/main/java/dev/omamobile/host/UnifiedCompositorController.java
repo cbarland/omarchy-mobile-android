@@ -117,6 +117,11 @@ final class UnifiedCompositorController {
                 queued("detach", NativeCompositor.outputSurface(role.id(), lease.generation(), null, 0, 0));
         }
         private boolean acceptsInput() { return phase == Phase.RUNNING && ownership.isCurrent(lease); }
+        @Override public boolean sharedSeat() { return true; }
+        @Override public boolean relativePointer(float dx, float dy, int button, boolean pressed) {
+            if (acceptsInput()) NativeCompositor.relativePointerAt(role.id(), lease.generation(), dx, dy, button, pressed);
+            return true;
+        }
         @Override public void pointer(float x, float y, int button, boolean pressed) {
             if (acceptsInput()) NativeCompositor.pointerAt(role.id(), lease.generation(), x, y, button, pressed);
         }

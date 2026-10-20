@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import sys
 from fetch_termux import default_lock, load_lock
-from patch_output_lifecycle import prepare as prepare_output_lifecycle
+from patch_shared_pointer import prepare as prepare_shared_pointer
 
 PIN = "bc13ae5859097791b3e93a32632727a7f7075354"
 ROOT = Path(__file__).resolve().parents[2]
@@ -100,7 +100,7 @@ for filename in ["build-deps.py", "build-core.py"]:
     path.write_text(text)
 # Aquamarine is built below, so install the exact patched Android backend
 # header and library before configuring the compositor against that prefix.
-prepare_output_lifecycle(source)
+prepare_shared_pointer(source)
 env = os.environ.copy()
 env.update(ARLINUX_DIR=str(base), ANDROID_NDK_HOME=str(args.ndk), JOBS=env.get("JOBS", "4"), ARLINUX_ANDROID_API="29")
 env["PATH"] = str(args.cache / "venv/bin") + os.pathsep + env["PATH"]

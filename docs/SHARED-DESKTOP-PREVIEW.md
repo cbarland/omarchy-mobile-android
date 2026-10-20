@@ -20,6 +20,11 @@ can move between outputs. Output generations prevent retired Android surfaces
 from controlling their replacements. Removing the external display returns
 its windows to the phone; its logical output name is stable on reconnect.
 
+Captured mouse movement uses one Wayland seat across both outputs, even when
+Android delivers the Bluetooth input to the phone window. Hyprland owns cursor
+movement, application focus and scrolling across the configured monitor layout.
+Ctrl+Alt+Escape releases capture; phone touch input remains screen-local.
+
 Each output has its own persisted scale. The upstream display panel remains
 reachable on the phone when the external output is absent. Android's scale
 preview supports Keep, Revert, timeout, and recovery after process termination.

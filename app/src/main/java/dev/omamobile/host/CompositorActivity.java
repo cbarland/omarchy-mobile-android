@@ -99,7 +99,7 @@ public abstract class CompositorActivity extends Activity {
             post(capture);
         }
         private void tryCapture() {
-            if (phone() || !NativeCompositor.AVAILABLE || !captureAllowed || !hasWindowFocus()
+            if ((phone() && !controller.sharedSeat()) || !NativeCompositor.AVAILABLE || !captureAllowed || !hasWindowFocus()
                     || !isShown() || !isAttachedToWindow() || hasPointerCapture()) return;
             requestFocus();
             requestPointerCapture();
@@ -121,7 +121,7 @@ public abstract class CompositorActivity extends Activity {
         }
         @Override public void onWindowFocusChanged(boolean focused) {
             super.onWindowFocusChanged(focused);
-            if (focused && !phone() && NativeCompositor.AVAILABLE) {
+            if (focused && (!phone() || controller.sharedSeat()) && NativeCompositor.AVAILABLE) {
                 queueCapture();
             } else if (!focused) {
                 removeCallbacks(capture);
@@ -132,6 +132,26 @@ public abstract class CompositorActivity extends Activity {
         }
         @Override public boolean onCapturedPointerEvent(MotionEvent event) {
             if (!NativeCompositor.AVAILABLE) return true;
+            if (controller.sharedSeat()) {
+                float dx = 0, dy = 0;
+                if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                    for (int i = 0; i < event.getHistorySize(); i++) {
+                        dx += event.getHistoricalX(i); dy += event.getHistoricalY(i);
+                    }
+                    dx += event.getX(); dy += event.getY();
+                }
+                // Hyprland owns the shared cursor and monitor geometry. Android's
+                // capturing window authorizes input; it does not bound the cursor.
+                controller.relativePointer(dx, dy, 0, false);
+                int buttons = event.getButtonState();
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN && buttons == 0) buttons = MotionEvent.BUTTON_PRIMARY;
+                if (event.getActionMasked() == MotionEvent.ACTION_UP || event.getActionMasked() == MotionEvent.ACTION_CANCEL) buttons = 0;
+                updateButtons(buttons);
+                if (event.getActionMasked() == MotionEvent.ACTION_SCROLL)
+                    controller.axis(-event.getAxisValue(MotionEvent.AXIS_HSCROLL) * 15,
+                            -event.getAxisValue(MotionEvent.AXIS_VSCROLL) * 15);
+                return true;
+            }
             if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
                 for (int i = 0; i < event.getHistorySize(); i++) {
                     cursorX += event.getHistoricalX(i); cursorY += event.getHistoricalY(i);
@@ -180,7 +200,8 @@ public abstract class CompositorActivity extends Activity {
             for (int bit : new int[]{MotionEvent.BUTTON_PRIMARY, MotionEvent.BUTTON_SECONDARY, MotionEvent.BUTTON_TERTIARY}) {
                 if ((changed & bit) == 0) continue;
                 int evdev = bit == MotionEvent.BUTTON_SECONDARY ? 273 : bit == MotionEvent.BUTTON_TERTIARY ? 274 : 272;
-                controller.pointer(cursorX, cursorY, evdev, (buttons & bit) != 0);
+                if (!controller.relativePointer(0, 0, evdev, (buttons & bit) != 0))
+                    controller.pointer(cursorX, cursorY, evdev, (buttons & bit) != 0);
             }
             mouseButtons = buttons;
         }
@@ -267,7 +288,7 @@ public abstract class CompositorActivity extends Activity {
         }
     }
     private boolean handleCaptureRelease(KeyEvent event) {
-        if (!NativeCompositor.AVAILABLE || phone() || event.getKeyCode() != KeyEvent.KEYCODE_ESCAPE) return false;
+        if (!NativeCompositor.AVAILABLE || (phone() && !controller.sharedSeat()) || event.getKeyCode() != KeyEvent.KEYCODE_ESCAPE) return false;
         if (event.getAction() == KeyEvent.ACTION_DOWN && event.isCtrlPressed() && event.isAltPressed()) {
             captureReleaseKeyDown = true;
             surface.releaseCapture();

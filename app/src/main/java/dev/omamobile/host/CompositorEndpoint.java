@@ -10,6 +10,9 @@ interface CompositorEndpoint {
     void attach(Object owner, Surface surface, int width, int height, int displayId);
     void detach(Object owner);
     void pointer(float x, float y, int button, boolean pressed);
+    default boolean sharedSeat() { return false; }
+    /** True consumes motion, including input from a retired shared-output lease. */
+    default boolean relativePointer(float dx, float dy, int button, boolean pressed) { return false; }
     void touch(int id, int action, float x, float y);
     void axis(float dx, float dy);
     void key(int code, boolean pressed);
