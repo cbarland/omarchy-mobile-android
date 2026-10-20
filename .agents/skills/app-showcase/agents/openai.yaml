@@ -1,0 +1,4 @@
+interface:
+  display_name: "App Showcase"
+  short_description: "Create honest showcase media from real app captures"
+  default_prompt: "Use $app-showcase to capture the app, compose shareable media from real screenshots, and draft a release post."

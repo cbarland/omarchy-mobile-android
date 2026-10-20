@@ -1,0 +1,15 @@
+{
+  "capturedAtUtc": "2026-10-20T17:03:50Z",
+  "environment": "Android 15 / API 35 x86_64 disposable emulator",
+  "mode": "One shared Hyprland/Quickshell compositor; phone and external outputs",
+  "apkSha256": "c1af539ec852ff73b9a0fee8f4d32587638bbebfb508d8810539a791dac5ec23",
+  "runtimeSourceCommit": "53aa75166c0dcd4a30d1f3d2e62f641bc6d83ffb",
+  "displayedSourceRevision": "9a7b859c0d1a-dirty",
+  "phone": {"capture": "captures/phone.png", "pixels": [1080, 2424], "linuxScale": 3},
+  "desktop": {"capture": "captures/desktop.png", "pixels": [1920, 1080], "linuxScale": 1},
+  "captureMethod": "Binary-safe adb exec-out screencap -p -d on each discovered SurfaceFlinger output, sequentially within the same running session",
+  "scene": "Mobile clock/calendar widgets; Foot runs actual uname, os-release, pacman and hyprctl commands; Neovim opens an unmodified read-only copy of CompositorEndpoint.java",
+  "sceneChanges": "Opened two owned desktop windows and copied public source/demo script into a temporary Linux directory; hid Squeekboard using its real touch control",
+  "pixelEdits": "None. Whole raw PNGs embedded verbatim in HTML, proportionally scaled with borders and editorial text outside the screenshots",
+  "limits": "These are emulator captures, not ARM64 device evidence. Screenshots do not prove audibility, hardware acceleration, battery life, Wallet/work-profile compatibility, or complete plugin coverage. Unknown Android status icons remain as captured; they were not retouched."
+}

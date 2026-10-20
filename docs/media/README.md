@@ -1,10 +1,30 @@
 # Preview 2 sharing kit
 
-`omarchy-mobile-android-preview-2.png` is an AI-generated concept illustration
-for the source developer preview. It illustrates project intent, not captured
-device behavior. Preview capabilities and goals are labeled separately. Use
-the release notes for test conditions and known limitations; do not describe
-the image as a screenshot or advertise a public graphical APK.
+`omarchy-mobile-android-preview-2.png` combines real captures from an API 35
+x86_64 emulator: Mobile widgets on the phone and Foot/Neovim on the shared
+Hyprland desktop. Entire captures are embedded without retouching or cropping.
+Borders, labels, goals and credits sit outside the screens. This replaces the
+initial concept poster. No simulated product UI is used.
+
+The raw PNGs are in `captures/`; `capture-context.json` records the environment,
+exact APK and limitations. `showcase.json` preserves the editable composition;
+the generated self-contained HTML is a release asset, regenerated rather than
+duplicated in Git. The `.captures.json` binds raw screenshot hashes and dimensions
+to that HTML. Actual emulator architecture and unknown
+Android status icons remain visible; neither was altered for presentation.
+
+Rebuild with the repository's reusable app-showcase skill:
+
+```sh
+python .agents/skills/app-showcase/scripts/compose.py docs/media/showcase.json --output docs/media/omarchy-mobile-android-preview-2.html
+node .agents/skills/app-showcase/scripts/render.cjs docs/media/omarchy-mobile-android-preview-2.html --output docs/media/omarchy-mobile-android-preview-2.png
+```
+
+The renderer needs an existing Playwright/browser installation; optional
+`--module-root` and `--browser` select local installations. It blocks network
+requests and checks decoding, aspect ratio and layout overflow. Inspect the final
+PNG too. Use the release notes for verification limits; do not advertise a public
+graphical APK.
 
 Attach the PNG to the first post below. These are drafts; they have not been
 posted to X.

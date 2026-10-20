@@ -1,0 +1,22 @@
+{
+  "title": "Your phone. A real Linux desktop.",
+  "subtitle": "Omarchy Mobile on Android · Source developer preview",
+  "context": "REAL EMULATOR CAPTURES\nAndroid 15 · x86_64\nShared compositor · 20 Oct 2026",
+  "captures": [
+    {"path": "captures/phone.png", "label": "PHONE", "note": "Mobile widgets"},
+    {"path": "captures/desktop.png", "label": "DESKTOP / HYPRLAND", "note": "Foot + Neovim"}
+  ],
+  "demonstrated": [
+    "Mobile widgets + native touch shell",
+    "Real Hyprland, Foot + Neovim",
+    "One shared Linux installation"
+  ],
+  "goals": [
+    "Easy upstream Omarchy Mobile upgrades",
+    "Broader ARM64 hardware validation",
+    "Graphics, audio + power efficiency"
+  ],
+  "cta": "Test it. Build with us.",
+  "url": "github.com/cbarland/omarchy-mobile-android",
+  "credits": "Built on Omarchy · Omarchy Mobile · TAWC · anhyprland"
+}
