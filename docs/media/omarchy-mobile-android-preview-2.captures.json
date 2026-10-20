@@ -1,0 +1,20 @@
+{
+  "captures": [
+    {
+      "file": "phone.png",
+      "label": "PHONE",
+      "width": 1080,
+      "height": 2424,
+      "sha256": "c42b22343235fffa9a694df6588b99758cff15a6c019b24673869aa2d7ef4ad0"
+    },
+    {
+      "file": "desktop.png",
+      "label": "DESKTOP / HYPRLAND",
+      "width": 1920,
+      "height": 1080,
+      "sha256": "286a19bb05a3edbdea396b293da05b224d644c9c100534c54e17084ec8f5a05a"
+    }
+  ],
+  "htmlSha256": "b7d79cd8a428e4f3a9b40d72a080c72bd07f5cae3dc98e76c01f9a85f4e365b0",
+  "screenshotEdits": "none; inputs embedded verbatim, proportionally scaled by CSS"
+}
