@@ -1063,3 +1063,47 @@ stopping the obsolete Omalateral app released the mouse, which then controlled t
 phone. The device was removed before shared-seat verification. A shared audio
 graph exit on that device also remains unresolved. No physical audio, shared-seat
 Bluetooth input, ARM64 shared-mode startup, or power-efficiency pass is claimed.
+
+## Mobile main upgrade and contributor checks, 20 October 2026
+
+The source lock advances only Mobile from `953bcb3` to
+`f1885a79a1709c8387ad32798c00cfc8f16afabd` (shell 0.2.9). Omarchy and the widget
+store retain their existing commits. Canonical source verification compared
+1,312 payload members, including upstream application entries and the shell's
+version file. The AI Agent entry is copied unchanged; no agent was installed,
+authenticated or executed by this verification.
+
+On the prepared disposable API 35 x86_64 emulator, the normal **Update Linux
+integration** control replaced seven owned stock files. A repeat updated zero
+files. The app UID, rootfs inode, home settings and phone/desktop profiles were
+preserved. This migration used APK SHA-256
+`26becebb5645817919417240b658c042f461dd60487467cf2286566cdf3b8082`.
+The final candidate, SHA-256
+`7879ed1fcd37c0d4dc5c4f0fb8fe5751f02a5141a19806946aab1bfcc3defe06`,
+differs only in its `assets/CREDITS.md` ZIP entry.
+
+The final APK passed the real shared-input gate: cursor movement across both
+outputs, terminal clicks and typing, scroll position, Android focus return and
+explicit capture release. Captures showed the Mobile widgets and desktop bar
+and background. Native Squeekboard touch targets typed `foot` into Mobile search.
+The first search-open probe ran before the interface was ready and failed; a
+retry against the inspected current frame opened the launcher and keyboard.
+Startup input readiness remains a usability follow-up.
+
+Actual external-display removal/recreation produced two, one, then two Hyprland
+outputs. A later phone capture after reopening was black despite mapped Linux
+layers, while the external desktop remained visible. This is **not** a visual
+reconnect pass. Surface/capture lifecycle diagnosis and post-reconnect input
+verification remain open; no Android or native compositor code changed in this
+upgrade. Existing FP16/helper diagnostics also remain.
+
+All 196 host tests passed with staged assets. The graphical APK build and
+mechanical native/payload binding checks passed using the preceding candidate's
+114 unchanged staged native libraries. The contributor-tooling PR additionally
+passed clean-checkout CI for host contracts, canonical shell packaging and the
+core APK/JVM/lint path. No fresh native rebuild or ARM64 runtime pass is claimed
+for this shell-only upgrade; all seven public binary source/relink holds remain.
+
+After testing, the original APKs and Linux files were restored. A content/mode
+comparison matched all 1,533 backed-up entries, including 15 symlinks, with no
+added entries. The Nubia and existing Shizuku authorizations were untouched.
