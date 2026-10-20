@@ -126,6 +126,11 @@ completed before public APK publication; publishing the adapter source is separa
 
 ## Include installer assets
 
+Shell contributors can run this section without Android or native graphics
+builds. PR CI checks the actual pinned payload separately. See [upstream
+upgrades](UPSTREAM-UPGRADES.md) for isolated Mobile-main checks and the boundary
+between source compatibility and installed-system migration.
+
 Before assembling an APK intended for the in-app installer, run:
 
 ```sh
@@ -134,7 +139,8 @@ bash ./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest :app:lintDe
 ```
 
 The helper fetches the exact Omarchy, Mobile, and widget Git revisions into its
-cache and stages `app/src/main/assets/install/`. To use already available pinned
+commit-keyed cache and stages `app/src/main/assets/install/`. Pins live in
+`tools/shell/sources.lock.json`, also read by the release gate. To use available pinned
 checkouts without fetching them:
 
 ```sh

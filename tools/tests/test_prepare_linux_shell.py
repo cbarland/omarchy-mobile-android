@@ -8,7 +8,6 @@ Disposable shared clones and the JSON report are retained beneath .build-tools.
 This is an explicit integration check, not part of automatic unit discovery.
 """
 import argparse
-import ast
 import hashlib
 import json
 import os
@@ -17,6 +16,8 @@ import subprocess
 import sys
 import tarfile
 import uuid
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from shell.sources import DEFAULT_LOCK, load_sources
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -29,13 +30,8 @@ def run(*arguments):
     return subprocess.check_output(arguments, text=True, encoding="utf-8", env=environment, timeout=60).strip()
 
 
-def pins():
-    return {
-        node.targets[0].id.lower(): ast.literal_eval(node.value)
-        for node in ast.parse(PREPARE.read_text(encoding="utf-8")).body
-        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
-        and node.targets[0].id in {"OMARCHY", "MOBILE", "WIDGETS"}
-    }
+def pins(lock=DEFAULT_LOCK):
+    return {name: source['commit'] for name, source in load_sources(lock).items()}
 
 
 def members(path):
@@ -85,9 +81,10 @@ def main():
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--work-directory", type=Path,
                         help="New disposable directory; defaults to a unique workspace .build-tools child")
+    parser.add_argument("--sources-lock", type=Path, default=DEFAULT_LOCK)
     arguments = parser.parse_args()
     sources = {name: getattr(arguments, name).resolve() for name in ("omarchy", "mobile", "widgets")}
-    revisions = pins()
+    revisions = pins(arguments.sources_lock)
     original_status = {}
     for name, source in sources.items():
         assert run("git", "-C", str(source), "rev-parse", "HEAD") == revisions[name], f"Wrong {name} reference revision"
@@ -106,7 +103,8 @@ def main():
     def payload(name):
         archive = directory / (name + ".tar.gz")
         run(sys.executable, str(PREPARE), "--omarchy", str(clones["omarchy"]), "--mobile", str(clones["mobile"]),
-            "--widgets", str(clones["widgets"]), "--output", str(archive))
+            "--widgets", str(clones["widgets"]), "--output", str(archive),
+            "--sources-lock", str(arguments.sources_lock.resolve()))
         return members(archive)
 
     before = payload("clean")

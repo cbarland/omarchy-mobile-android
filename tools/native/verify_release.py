@@ -10,17 +10,16 @@ import argparse
 import hashlib
 import json
 import re
+import sys
 import zipfile
 from pathlib import Path
 from build_graphite import validate_materials, sha256
 from elf_dependencies import read_elf64_dependencies_bytes
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from shell.sources import load_sources
 
 ABIS = ("arm64-v8a", "x86_64")
-INSTALL_PINS = {
-    "omarchy": {"url": "https://github.com/omacom/omarchy.git", "commit": "e71a816e9032f040225e086c7256f73e8080ae45"},
-    "mobile": {"url": "https://github.com/derekross/omarchy-mobile.git", "commit": "953bcb3058347459cdf7faaa1e149f16e0f7cfa6"},
-    "widgets": {"url": "https://github.com/SimonSchubert/omarchy-widgets.git", "commit": "b63886b75e02ccef1a8a11baeef2d6eff7a374af"},
-}
+INSTALL_PINS = load_sources()
 INSTALL_FILES = {"linux-shell.tgz", "prepare-arch-graphics", "configure-omarchy-repository"}
 SOURCE_PACKAGES = {"glib", "pango", "libcairo", "freetype", "fribidi", "libiconv", "libgraphite"}
 SYSTEM = {"libandroid.so", "liblog.so", "libEGL.so", "libGLESv2.so", "libGLESv3.so",

@@ -13,13 +13,11 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from shell.sources import DEFAULT_LOCK, load_sources
 
 
-PINS = {
-    "omarchy": ("https://github.com/omacom/omarchy.git", "e71a816e9032f040225e086c7256f73e8080ae45"),
-    "mobile": ("https://github.com/derekross/omarchy-mobile.git", "953bcb3058347459cdf7faaa1e149f16e0f7cfa6"),
-    "widgets": ("https://github.com/SimonSchubert/omarchy-widgets.git", "b63886b75e02ccef1a8a11baeef2d6eff7a374af"),
-}
+PINS = {name: (source['url'], source['commit']) for name, source in load_sources().items()}
 # AAPT transparently inflates .gz assets and strips that suffix. Keep the
 # packaged compressed bytes unchanged so the runtime can verify their hash.
 PAYLOAD = "linux-shell.tgz"
@@ -36,21 +34,36 @@ def run(command: list[str], *, cwd: Path | None = None) -> subprocess.CompletedP
     return subprocess.run(command, cwd=cwd, check=True, text=True, capture_output=True, timeout=300)
 
 
-def checkout(name: str, requested: Path | None, cache: Path) -> Path:
-    _, pin = PINS[name]
+def checkout(name: str, requested: Path | None, cache: Path, pins=PINS) -> Path:
+    url, pin = pins[name]
     if requested is not None:
         path = requested.resolve()
         head = run(["git", "-C", str(path), "rev-parse", "HEAD"]).stdout.strip()
         if head != pin:
             raise SystemExit(f"{name} checkout is {head}, expected pinned {pin}")
         return path
-    path = cache / name
-    if not (path / ".git").is_dir():
-        path.mkdir(parents=True, exist_ok=True)
-        run(["git", "init", "--quiet"], cwd=path)
-        run(["git", "remote", "add", "origin", PINS[name][0]], cwd=path)
-    run(["git", "fetch", "--depth", "1", "origin", pin], cwd=path)
-    run(["git", "checkout", "--detach", "FETCH_HEAD"], cwd=path)
+    # Different pins never share a mutable checkout. Only completed clones
+    # become visible, allowing parallel builds to reuse the same version.
+    parent = cache / name
+    parent.mkdir(parents=True, exist_ok=True)
+    path = parent / pin
+    if not path.exists():
+        with tempfile.TemporaryDirectory(prefix='checkout-', dir=parent) as temporary:
+            staged = Path(temporary) / 'source'
+            staged.mkdir()
+            run(["git", "init", "--quiet"], cwd=staged)
+            run(["git", "remote", "add", "origin", url], cwd=staged)
+            run(["git", "fetch", "--depth", "1", "origin", pin], cwd=staged)
+            run(["git", "-c", "core.autocrlf=false", "checkout", "--detach", "FETCH_HEAD"], cwd=staged)
+            try:
+                os.rename(staged, path)
+            except OSError:
+                if not path.is_dir():
+                    raise
+                # Another completed clone may have won the publish race.
+    head = run(["git", "-C", str(path), "rev-parse", "HEAD"]).stdout.strip()
+    if head != pin:
+        raise SystemExit(f"{name} cache is {head}, expected pinned {pin}; preserve it for inspection")
     return path
 
 
@@ -80,17 +93,24 @@ def main() -> int:
     parser.add_argument("--omarchy", type=Path)
     parser.add_argument("--mobile", type=Path)
     parser.add_argument("--widgets", type=Path)
+    parser.add_argument("--sources-lock", type=Path, default=DEFAULT_LOCK,
+                        help="Reviewed pins, or an isolated compatibility candidate lock")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     output = (root / args.output).resolve() if not args.output.is_absolute() else args.output.resolve()
     cache = (root / args.cache).resolve() if not args.cache.is_absolute() else args.cache.resolve()
+    sources_lock = args.sources_lock.resolve()
+    if sources_lock != DEFAULT_LOCK.resolve() and output == (root / 'app/src/main/assets/install').resolve():
+        parser.error('A candidate source lock requires an explicit separate --output directory')
+    locked = load_sources(sources_lock)
+    pins = {name: (source['url'], source['commit']) for name, source in locked.items()}
     output.parent.mkdir(parents=True, exist_ok=True)
     cache.mkdir(parents=True, exist_ok=True)
 
     sources = {
-        "omarchy": checkout("omarchy", args.omarchy, cache),
-        "mobile": checkout("mobile", args.mobile, cache),
-        "widgets": checkout("widgets", args.widgets, cache),
+        "omarchy": checkout("omarchy", args.omarchy, cache, pins),
+        "mobile": checkout("mobile", args.mobile, cache, pins),
+        "widgets": checkout("widgets", args.widgets, cache, pins),
     }
     temp_root = Path(tempfile.mkdtemp(prefix="install-assets-", dir=str(output.parent)))
     try:
@@ -98,7 +118,7 @@ def main() -> int:
         prepare = root / "tools/prepare-linux-shell.py"
         command = [sys.executable, str(prepare), "--omarchy", str(sources["omarchy"]),
                    "--mobile", str(sources["mobile"]), "--widgets", str(sources["widgets"]),
-                   "--output", str(temp_payload)]
+                   "--output", str(temp_payload), "--sources-lock", str(sources_lock)]
         completed = subprocess.run(command, cwd=root, text=True, capture_output=True, timeout=300)
         if completed.returncode:
             raise SystemExit(completed.stderr or completed.stdout or "Linux shell packaging failed")
@@ -117,7 +137,7 @@ def main() -> int:
 
         manifest = {
             "format": 1,
-            "pins": {name: {"url": PINS[name][0], "commit": PINS[name][1]} for name in PINS},
+            "pins": locked,
             "files": [{"path": PAYLOAD, "sha256": sha256(temp_payload), "bytes": temp_payload.stat().st_size}, *script_entries],
             "payloadMembers": payload_entries,
             "licensePayload": sorted(entry["path"] for entry in payload_entries if "/licenses/" in entry["path"]),
@@ -132,7 +152,8 @@ def main() -> int:
         (output / "linux-shell.tar.gz").unlink(missing_ok=True)
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
-    print(json.dumps({"output": str(output), "manifest": str(output / MANIFEST)}))
+    print(json.dumps({"output": str(output), "manifest": str(output / MANIFEST),
+                      "checkouts": {name: str(path) for name, path in sources.items()}}))
     return 0
 
 

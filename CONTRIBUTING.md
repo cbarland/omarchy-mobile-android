@@ -3,18 +3,36 @@
 Start with [the project intent](docs/INTENT.md), [building](docs/BUILDING.md), and
 [current verification evidence](docs/VERIFICATION.md). This is an Android adapter
 for upstream Omarchy and Omarchy Mobile, with one shared app-private Linux
-installation and independent phone/external compositor sessions.
+installation. Separate phone/desktop sessions remain the default; a shared
+multi-output compositor is an opt-in preview.
 
 Useful small contributions include installer failure recovery, clean-checkout
 build tooling, archive-import edge cases, Android display lifetime tests, keyboard
 and IME compatibility, documentation, and reproducible application compatibility
 reports. A focused issue describing a concrete user problem is enough to begin.
 
-Three scoped places to start:
+## Choose an independent contribution path
 
-- [Document the host's input controls](https://github.com/cbarland/omarchy-mobile-android/issues/55).
-- [Show app version and source revision in the controls](https://github.com/cbarland/omarchy-mobile-android/issues/56).
-- [Check the core build guide from a fresh environment](https://github.com/cbarland/omarchy-mobile-android/issues/57).
+- **Linux shell/UI and upstream compatibility:** Git, Python and Node are enough
+  to build/check the source payload. No Android SDK, native graphics build, device
+  or model-provider account is needed. Start with [upstream upgrades](docs/UPSTREAM-UPGRADES.md).
+- **Android host, installation and recovery:** the clean core APK, JVM tests and
+  lint run without prebuilt graphics. Start with [the core build](docs/BUILDING.md#core-apk-from-a-clean-checkout)
+  or [fresh build verification](https://github.com/cbarland/omarchy-mobile-android/issues/57).
+- **Graphical distribution:** [issue 8](https://github.com/cbarland/omarchy-mobile-android/issues/8)
+  tracks reproducible graphics and APK delivery. Native source/relink records,
+  individual owned dependency builds, and signing/update work can progress
+  independently of phone-shell changes. Existing FreeType work is [PR 46](https://github.com/cbarland/omarchy-mobile-android/pull/46);
+  coordinate before duplicating it.
+- **Runtime/device tests:** use a full graphics build and an explicitly selected
+  disposable emulator or backed-up device. Report observations through [the
+  device gate](docs/DEVELOPER-PREVIEW.md). Source-payload/core CI artifacts cannot
+  display Omarchy.
+
+Use separate branches/worktrees and output directories. Source caches are keyed
+by commit; do not edit published checkouts. Never share an emulator between
+simultaneous runtime tests. Keep upstream pin upgrades and Android/native changes
+as separate reviewable units so contributors can test their own layer.
 
 ## Where to work
 

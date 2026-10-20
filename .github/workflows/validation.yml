@@ -30,6 +30,43 @@ jobs:
             -Wl,--gc-sections -o "$RUNNER_TEMP/test_socket_credentials"
           "$RUNNER_TEMP/test_socket_credentials"
 
+  shell-payload:
+    name: Pinned upstream shell payload
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Package the reviewed source lock without Android or native builds
+        run: |
+          mkdir -p app/build/shell-check
+          python3 tools/prepare-install-assets.py --output app/build/shell-check/install > app/build/shell-check/prepare.json
+          python3 tools/tests/test_unified_shell_payload.py app/build/shell-check/install/linux-shell.tgz
+      - name: Verify canonical sources and preserve dirty contributor checkouts
+        run: |
+          python3 - <<'PY'
+          import json, subprocess, sys
+          from pathlib import Path
+          sources = json.loads(Path('app/build/shell-check/prepare.json').read_text())['checkouts']
+          command = [sys.executable, 'tools/tests/test_prepare_linux_shell.py',
+                     '--work-directory', 'app/build/shell-check/canonical']
+          for name, path in sources.items():
+              command.extend(['--' + name, path])
+          subprocess.run(command, check=True)
+          PY
+      - name: Save source payload and contract evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: pinned-shell-source-payload
+          path: |
+            app/build/shell-check/install/
+            app/build/shell-check/prepare.json
+            app/build/shell-check/canonical/report.json
+          if-no-files-found: warn
+          retention-days: 7
+
   core-android:
     name: Clean core APK, JVM tests and lint
     runs-on: ubuntu-24.04

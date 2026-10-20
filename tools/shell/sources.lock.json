@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "sources": {
+    "omarchy": {"url": "https://github.com/omacom/omarchy.git", "commit": "e71a816e9032f040225e086c7256f73e8080ae45"},
+    "mobile": {"url": "https://github.com/derekross/omarchy-mobile.git", "commit": "953bcb3058347459cdf7faaa1e149f16e0f7cfa6"},
+    "widgets": {"url": "https://github.com/SimonSchubert/omarchy-widgets.git", "commit": "b63886b75e02ccef1a8a11baeef2d6eff7a374af"}
+  }
+}
