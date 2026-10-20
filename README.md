@@ -97,6 +97,11 @@ access remain pending.
 
 ## Develop
 
+Development now prioritizes [installation and contributor onboarding](docs/DEVELOPMENT-PRIORITIES.md)
+and a tested [Omarchy Mobile main upgrade path](docs/UPSTREAM-UPGRADES.md).
+Shell contributors can package/check the Linux UI with Git, Python and Node,
+without an Android SDK, native build, device, or private model-provider account.
+
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) and [the build guide](docs/BUILDING.md).
 The [developer preview gate](docs/DEVELOPER-PREVIEW.md) covers candidate checks,
 device installation, recovery and the remaining public binary release requirements.

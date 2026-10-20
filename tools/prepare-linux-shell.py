@@ -385,6 +385,8 @@ with tarfile.open(a.output, "w:gz") as archive:
     for name in ["WIDGETS.md", "OWL.md"]:
         put("usr/share/omamobile/shell/" + name, blob(package / "widgets" / name)[0])
     tree(package / "bin", "usr/bin")
+    tree(package / "applications", "usr/share/applications")
+    put("usr/share/omamobile/shell/version", blob(package / "version")[0])
     tree(package / "squeekboard", "usr/share/omamobile/squeekboard")
     put("usr/share/licenses/squeekboard-terminal-layout/COPYING",
         (Path(__file__).parents[1] / "app/src/main/assets/licenses/squeekboard-layout.txt").read_bytes())

@@ -6,6 +6,10 @@ Mobile and widget pins. Packaging, installer manifests and the public binary gat
 read the same lock. Checking a Mobile upgrade needs Git, Python 3.11+ and Node,
 not an NDK, emulator, private cache, or model-provider account.
 
+The candidate here advances Mobile's portable shell package. It does not install
+the upstream Pixel kernel, initramfs, firmware, hardware daemons or every Mobile
+application package. Android retains those hardware responsibilities.
+
 ## Check the current reviewed payload
 
 From a clean source checkout:

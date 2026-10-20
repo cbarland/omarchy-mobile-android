@@ -17,7 +17,7 @@ by Derek Ross and contributors, supplies the touch phone profile, launcher,
 QML widgets, plugin integration and OWL compatibility layer. Its shell notices
 are retained in the packaged Linux payload; its device-flashing and hardware
 stack are not used here. Pinned revision:
-<code>953bcb3058347459cdf7faaa1e149f16e0f7cfa6</code>.</p>
+<code>f1885a79a1709c8387ad32798c00cfc8f16afabd</code> (Mobile shell 0.2.9).</p>
 
 <p><strong><a href="https://github.com/wmww/tawc">TAWC</a></strong>, by Sophie Winter
 and contributors, supplies the MIT-licensed <code>tawcroot</code> runtime that

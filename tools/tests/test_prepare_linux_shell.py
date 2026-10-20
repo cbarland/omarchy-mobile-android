@@ -109,6 +109,16 @@ def main():
 
     before = payload("clean")
     assert before, "Preparation produced an empty payload"
+    # Preserve Mobile's own discoverable version and launch entries, rather than
+    # silently dropping new upstream entry points when advancing its commit.
+    prefix = 'packages/omamobile-shell/'
+    applications = run('git', '-C', str(clones['mobile']), 'ls-tree', '-r', '--name-only',
+                       revisions['mobile'], '--', prefix + 'applications/').splitlines()
+    for relative in ['version', *(name.removeprefix(prefix) for name in applications)]:
+        expected = subprocess.check_output(['git', '-C', str(clones['mobile']), 'show',
+                                            revisions['mobile'] + ':' + prefix + relative])
+        target = 'usr/share/omamobile/shell/version' if relative == 'version' else 'usr/share/' + relative
+        assert member_bytes(directory / 'clean.tar.gz', target) == expected
     required_portal = {
         "usr/bin/omamobile-portal-access",
         "usr/share/xdg-desktop-portal/portals/omamobile.portal",
