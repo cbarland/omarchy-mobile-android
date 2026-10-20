@@ -20,6 +20,12 @@ no root, bootloader unlock, flashing, custom kernel or SELinux changes.
 release yet. The temporary **core validation** CI APK cannot install or display
 Omarchy. See [graphical release readiness](docs/RELEASE-READINESS.md).
 
+[Latest source preview: v0.1.0-preview.2](https://github.com/cbarland/omarchy-mobile-android/releases/tag/v0.1.0-preview.2)
+adds native phone keyboard fixes, shared Linux audio output, recoverable Linux
+integration updates, and emulator-verified mouse movement between shared outputs.
+Read the [release notes](docs/releases/v0.1.0-preview.2.md) for verification limits
+and ways to help. Public graphical APK distribution remains gated.
+
 Fresh x86_64 emulator installation, using the app's packaged setup:
 
 ![Omarchy desktop after a fresh installation](docs/images/desktop-fresh-install.png)
