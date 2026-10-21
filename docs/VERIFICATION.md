@@ -1107,3 +1107,58 @@ for this shell-only upgrade; all seven public binary source/relink holds remain.
 After testing, the original APKs and Linux files were restored. A content/mode
 comparison matched all 1,533 backed-up entries, including 15 symlinks, with no
 added entries. The Nubia and existing Shizuku authorizations were untouched.
+
+## Nubia preparation: display readiness and identity, 20 October 2026
+
+The missed first search tap was reproduced after a cold startup. The developer
+helper returned when Hyprland IPC became available, before Mobile's shell mapped.
+It now waits for visible, nonempty shell layers. Two stop/cold-start repetitions
+then opened Mobile search and native Squeekboard on the first injected tap. This
+fix changes test/control tooling; no Android or native compositor behavior changed.
+
+Five ordinary reopen cycles, two replayed reconnect sequences and a new
+same-process reconnect/input gate did not reproduce the earlier black phone
+capture. Its cause is not established, and the failed capture remains retained.
+The new gate replaces the actual emulator display and repeats relative mouse
+crossing, clicks, scroll, typing, focus return, release and nonblank screenshots
+before/after reconnect without restarting the compositor. Separate instrumentation
+invocations restart Android and cannot prove this preservation.
+
+The final private candidate is identified in its Android controls as source
+`956ee8033c546581d7fd33a2a5365b011c40d5f1`, APK SHA-256
+`4cda3e6ae38d74fc5c412ce20dbeaf9223f567882b9abf185e6f27d1f7a68fb4`.
+Its test APK SHA-256 is
+`39af592f83310e9a58c54c2204deb560c74d885009663332be50a2ffd54a76c4`.
+It passed that same-compositor reconnect gate in 48.676 seconds on the disposable
+API 35 x86_64 emulator; actual captures showed phone widgets and the external
+bar/background. Compared with the preceding `7879ed1f` candidate, only
+`classes3.dex` changed (source identification); installed Linux assets and native
+libraries are byte-identical.
+
+The same final APK passed all 11 PCM/managed-output/shared-audio instrumentation
+tests in 35.496 seconds, including real PipeWire/Pulse clients, mixing, Android
+focus handling and owner replacement/cleanup. This is transport evidence;
+physical audio audibility and route selection remain device checks.
+
+On that exact final APK, a fresh startup opened native Squeekboard on the first
+search tap and actual touch targets typed `foot`. The immediate last-character
+query briefly returned `foo`, then settled to `foot` without additional input;
+the harness now waits for the expected asynchronous query instead of retyping.
+The settled launcher closed and actual phone widgets/desktop frames were inspected.
+
+All 205 supported host tests passed. APK/test-APK build, JVM checks, lint and
+mechanical native/payload matching passed; lint retained 31 existing warnings
+and no errors. The new read-only preflight ran against the emulator and recorded
+the verified signing certificate, both packaged graphics ABIs, upstream pins,
+display topology and unchanged Linux identity/profile hashes. Its fixture tests
+reject certificate/ABI/SDK/display mismatches and preserve failure diagnostics.
+The optional capture gate rejects empty/near-black frames and saves the exact
+sampled raw pixels as PNG; it does not establish correct UI content or input.
+
+The Nubia still requires physical Bluetooth/shared-seat, touch keyboard, audio
+routes and ARM64 runtime observation. The seven public native source/relink holds
+remain; this preparation does not publish a graphical APK.
+
+The emulator's original APKs and Linux files were restored afterward. The content
+audit matched all 1,533 original entries and 15 symlinks, with zero changed or
+added entries. Existing Shizuku grants and the Nubia were untouched.

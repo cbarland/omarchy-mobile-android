@@ -41,6 +41,24 @@ as a disposable installation fixture.
 
 ## Install or update on the test device
 
+Run the read-only preflight before updating a prepared device (Git, Python 3.11+,
+JDK and the SDK's Build Tools 36.0.0 are sufficient):
+
+```sh
+python tools/device-preflight.py --serial DEVICE --candidate path/to/candidate.apk --output app/build/verification/device-before
+```
+
+Use an explicit ADB serial and a new private output directory each time. The
+report records candidate/installed APK hashes, verified signer fingerprints,
+upstream pins, device ABI/SDK, active display geometry and available Linux
+identity/profile hashes. It rejects a missing compositor/runtime library pair,
+unsupported Android SDK, mismatched signing certificates or missing active
+presentation display. Exact certificate equality is conservative; key rotation
+requires manual migration review. A passing report is not an installation,
+native dependency-closure check or functional device pass. Nothing is installed,
+started, stopped, typed or granted by this command. Reports can contain device
+identifiers and should be redacted before sharing.
+
 Record the Android version, ABI, app revision and certificate before changing
 the installation. Export Linux user data with the host controls and keep the
 export off-device. Do not uninstall an existing app to work around a signing
@@ -92,6 +110,31 @@ Run these on the ARM64 phone with its monitor, mouse and keyboard attached:
 5. Verify Android work apps and Wallet through their ordinary user flows, plus
    idle/resume, thermal and battery behavior. Emulator success does not establish
    physical-device policy compatibility, power efficiency or GPU performance.
+
+For scripted startup, `tools/emulator-linux.py --serial DEVICE start-unified`
+waits for visible shell layers as well as live IPC. This helper also supports
+physical devices despite its historical filename. Inspect real output pixels:
+
+```sh
+python tools/capture-emulator.py --serial DEVICE --wait-content 10 --output app/build/verification/device-screens
+```
+
+The optional content gate saves the same raw RGB(A) frame losslessly as PNG and
+records sampled brightness metrics. It rejects empty/near-black/uniform frames
+and retains the last frame/report on failure. This check targets the prepared
+shell; a deliberately uniform screen can fail it. It does not identify the UI
+or prove input works. Inspect both screenshots and perform the steps above.
+Unknown raw screencap formats fail explicitly; ordinary PNG capture remains
+available without the option. Ambiguous displays require explicit
+`--phone-display`/`--desktop-display` SurfaceFlinger IDs.
+
+The opt-in `SharedPointerCaptureTest#realReconnectRetainsTheSeatAndRenderedFrames`
+gate is restricted to the disposable `Omamobile_Radio_Test_API35` AVD. It replaces
+its configured external display and repeats real shared input/frame checks within
+one instrumentation invocation. Separate `am instrument` runs restart Android
+and cannot establish preservation of the compositor across hotplug. Do not run
+the emulator display-mutation gate on a phone; reconnect the Nubia monitor
+manually and verify input and frames on that same running compositor.
 
 ## Recovery and evidence
 

@@ -129,7 +129,17 @@ class EmulatorHelperTests(unittest.TestCase):
                 self.assertIn("WAYLAND_DISPLAY=wayland-7", command[4])
                 if len(probes) == 1:
                     raise subprocess.TimeoutExpired(command, timeout)
-                return subprocess.CompletedProcess(command, 0, '[{"width":1920}]', "")
+                import json
+                if len(probes) == 2:
+                    return subprocess.CompletedProcess(command, 0, '{}', '')
+                if len(probes) == 3:
+                    # A mapped but transparent startup layer cannot receive the
+                    # next visible search interaction yet.
+                    return subprocess.CompletedProcess(command, 0, json.dumps({"ANDROID-1": {"levels": {
+                        "2": [{"namespace": "omarchy-bar", "alpha": 0, "w": 1920, "h": 26}]}}}), '')
+                return subprocess.CompletedProcess(command, 0, json.dumps({"ANDROID-1": {"levels": {
+                    "0": [{"namespace": "omarchy-background", "alpha": 1, "w": 1920, "h": 1080}],
+                    "2": [{"namespace": "omarchy-bar", "alpha": 1, "w": 1920, "h": 26}]}}}), "")
             return subprocess.CompletedProcess(command, 0, "", "")
 
         # Give the CLI its own reconfigurable stdout without changing test I/O.
@@ -137,7 +147,7 @@ class EmulatorHelperTests(unittest.TestCase):
                 patch("subprocess.run", side_effect=run), patch("subprocess.check_output", side_effect=output), \
                 patch("time.sleep"), contextlib.redirect_stdout(io.TextIOWrapper(io.BytesIO(), encoding="utf-8")):
             runpy.run_path(str(SCRIPT), run_name="__main__")
-        self.assertEqual(len(probes), 3)  # One retry, then both profiles ready.
+        self.assertEqual(len(probes), 5)  # Timeout, missing/transparent UI, then both profiles ready.
 
 
 if __name__ == "__main__":
