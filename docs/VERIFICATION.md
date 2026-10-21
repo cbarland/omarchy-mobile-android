@@ -1140,6 +1140,12 @@ tests in 35.496 seconds, including real PipeWire/Pulse clients, mixing, Android
 focus handling and owner replacement/cleanup. This is transport evidence;
 physical audio audibility and route selection remain device checks.
 
+On that exact final APK, a fresh startup opened native Squeekboard on the first
+search tap and actual touch targets typed `foot`. The immediate last-character
+query briefly returned `foo`, then settled to `foot` without additional input;
+the harness now waits for the expected asynchronous query instead of retyping.
+The settled launcher closed and actual phone widgets/desktop frames were inspected.
+
 All 205 supported host tests passed. APK/test-APK build, JVM checks, lint and
 mechanical native/payload matching passed; lint retained 31 existing warnings
 and no errors. The new read-only preflight ran against the emulator and recorded
@@ -1152,3 +1158,7 @@ sampled raw pixels as PNG; it does not establish correct UI content or input.
 The Nubia still requires physical Bluetooth/shared-seat, touch keyboard, audio
 routes and ARM64 runtime observation. The seven public native source/relink holds
 remain; this preparation does not publish a graphical APK.
+
+The emulator's original APKs and Linux files were restored afterward. The content
+audit matched all 1,533 original entries and 15 symlinks, with zero changed or
+added entries. Existing Shizuku grants and the Nubia were untouched.
