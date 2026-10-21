@@ -115,13 +115,14 @@ if a.action in ("start", "start-unified", "stop"):
                 raise RuntimeError("Could not inspect display owner shutdown: " + owners.stderr)
             time.sleep(0.2)
         raise RuntimeError("Display owners did not stop after the normal Stop control")
-    # A tap queues native compositor startup. Confirm live IPC instead of
-    # handing subsequent checks a ready file left by the previous process.
+    # IPC is available before Quickshell maps. Waiting only for monitors drops
+    # the next search tap during cold startup, even though the compositor is live.
     for profile in (("unified",) if a.action == "start-unified" else ("phone", "desktop")):
-        deadline = time.monotonic() + 20
+        deadline = time.monotonic() + 45
+        last = "No live compositor response"
         while time.monotonic() < deadline:
             try:
-                probe = session_adb_command(profile, "hyprctl -j monitors", metadata_timeout=5, deadline=deadline)
+                probe = session_adb_command(profile, "hyprctl -j layers", metadata_timeout=5, deadline=deadline)
                 budget = deadline - time.monotonic()
                 if budget <= 0:
                     raise subprocess.TimeoutExpired(probe, 0)
@@ -130,15 +131,28 @@ if a.action in ("start", "start-unified", "stop"):
                 time.sleep(0.2)
                 continue
             try:
-                monitors = json.loads(result.stdout)
-                if result.returncode == 0 and monitors and monitors[0]["width"] > 0:
-                    print(profile, "Hyprland IPC ready")
+                layers = json.loads(result.stdout)
+                # A phone can be showing its launcher or a Linux application;
+                # its bar is the persistent shell surface in those states.
+                required = [("ANDROID-1", "2", "omarchy-bar")]
+                if profile == "desktop":
+                    required.append(("ANDROID-1", "0", "omarchy-background"))
+                elif profile == "unified":
+                    required += [("ANDROID-2", "0", "omarchy-background"),
+                                 ("ANDROID-2", "2", "omarchy-bar")]
+                missing = [namespace + " on " + output for output, level, namespace in required
+                           if not any(item.get("namespace") == namespace and item.get("alpha", 0) >= .9
+                                      and item.get("w", 0) > 0 and item.get("h", 0) > 0
+                                      for item in layers.get(output, {}).get("levels", {}).get(level, []))]
+                last = "Waiting for " + ", ".join(missing) if missing else result.stderr[-300:]
+                if result.returncode == 0 and not missing:
+                    print(profile, "shell layers ready (rendered pixels still require capture)")
                     break
-            except (ValueError, KeyError, TypeError):
-                pass
+            except (ValueError, KeyError, TypeError, AttributeError):
+                last = "Invalid shell layer response"
             time.sleep(0.2)
         else:
-            raise RuntimeError(profile + " compositor did not become ready; attach an external emulator display and inspect graphics logs")
+            raise RuntimeError(profile + " shell did not become ready: " + last + "; inspect graphics logs")
 elif a.action == "push":
     destination = a.destination
     if not destination.startswith("files/") or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/_.-" for c in destination) or ".." in destination.split("/"):

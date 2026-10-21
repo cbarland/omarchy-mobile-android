@@ -2,6 +2,7 @@ package dev.omamobile.host;
 
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.BitmapFactory;
 import android.os.SystemClock;
 import android.view.InputDevice;
 import android.view.InputEvent;
@@ -23,6 +24,57 @@ public class SharedPointerCaptureTest {
     private Context context;
     private android.app.UiAutomation ui;
     private final Properties ready = new Properties();
+
+    @Test public void realReconnectRetainsTheSeatAndRenderedFrames() throws Exception {
+        Assume.assumeTrue("Explicit disposable-emulator reconnect opt-in required",
+                "true".equals(InstrumentationRegistry.getArguments().getString("sharedPointerReconnect")));
+        ui = InstrumentationRegistry.getInstrumentation().getUiAutomation(
+                android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES);
+        assertEquals("Refusing display mutation outside the approved disposable AVD", "Omamobile_Radio_Test_API35",
+                new String(shellBytes("getprop ro.boot.qemu.avd_name"), StandardCharsets.UTF_8).trim());
+        String provider = new String(shellBytes("dumpsys activity service com.android.emulator.multidisplay/.MultiDisplayService"),
+                StandardCharsets.UTF_8);
+        var slots = java.util.regex.Pattern.compile("MultiDisplay #(\\d+): enabled").matcher(provider);
+        assertTrue("Expected one enabled external display", slots.find());
+        assertEquals("1", slots.group(1));
+        assertFalse("Other emulator displays must be preserved", slots.find());
+        assertTrue(provider.contains("Dimensions: 1920x1080") && provider.contains("DPI: 160"));
+        assertTrue("sharedPointer must also be enabled", "true".equals(
+                InstrumentationRegistry.getArguments().getString("sharedPointer")));
+        phoneCaptureCrossesOutputsAndKeyboardFollowsTheSeat();
+        String signature = ready.getProperty("HYPRLAND_INSTANCE_SIGNATURE");
+        Path files = context.getFilesDir().toPath().resolve("graphics");
+        Files.copy(files.resolve("verified-shared-pointer.json"), files.resolve("shared-pointer-before-reconnect.json"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        boolean restoreNeeded = true;
+        try {
+            shellBytes("dumpsys activity service com.android.emulator.multidisplay/.MultiDisplayService del 1");
+            awaitMonitorCount(1);
+            shellBytes("dumpsys activity service com.android.emulator.multidisplay/.MultiDisplayService add 1 1920 1080 160 1739");
+            awaitMonitorCount(2);
+            restoreNeeded = false;
+            // Calling the gate within this same instrumentation run is essential:
+            // a new am instrument invocation restarts Android and hides hotplug faults.
+            phoneCaptureCrossesOutputsAndKeyboardFollowsTheSeat();
+            assertEquals("Reconnect must keep the original compositor", signature,
+                    ready.getProperty("HYPRLAND_INSTANCE_SIGNATURE"));
+            Files.write(files.resolve("verified-shared-reconnect.json"),
+                    new JSONObject().put("signature", signature).put("actualDisplayReplacement", true)
+                            .put("sameCompositor", true).put("inputAndFramesPassed", true).toString(2).getBytes(StandardCharsets.UTF_8));
+        } finally {
+            if (restoreNeeded)
+                shellBytes("dumpsys activity service com.android.emulator.multidisplay/.MultiDisplayService add 1 1920 1080 160 1739");
+        }
+    }
+
+    private void awaitMonitorCount(int expected) throws Exception {
+        long deadline = SystemClock.uptimeMillis() + 15000;
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (new JSONArray(ipc("monitors")).length() == expected) return;
+            SystemClock.sleep(100);
+        }
+        fail("Hyprland did not expose " + expected + " outputs after actual display replacement");
+    }
 
     @Test public void phoneCaptureCrossesOutputsAndKeyboardFollowsTheSeat() throws Exception {
         Assume.assumeTrue("Prepared disposable two-display emulator and -e sharedPointer true required",
@@ -218,6 +270,21 @@ public class SharedPointerCaptureTest {
             byte[] png = shellBytes("screencap -p -d " + ids[i]);
             assertTrue("Capture was not PNG", png.length > 8 && png[0] == (byte)137 && png[1] == 'P');
             Files.write(context.getFilesDir().toPath().resolve("graphics/shared-pointer-" + names[i] + ".png"), png);
+            var bitmap = BitmapFactory.decodeByteArray(png, 0, png.length);
+            assertNotNull("Cannot decode " + names[i] + " frame", bitmap);
+            try {
+                int samples = 0, lit = 0, low = 255, high = 0;
+                for (int y = 0; y < bitmap.getHeight(); y += Math.max(1, bitmap.getHeight() / 64))
+                    for (int x = 0; x < bitmap.getWidth(); x += Math.max(1, bitmap.getWidth() / 64)) {
+                        int pixel = bitmap.getPixel(x, y);
+                        int brightness = Math.max((pixel >> 16) & 255, Math.max((pixel >> 8) & 255, pixel & 255));
+                        samples++;
+                        if (brightness > 8) lit++;
+                        low = Math.min(low, brightness); high = Math.max(high, brightness);
+                    }
+                assertTrue(names[i] + " frame is blank despite live IPC/layers; capture retained",
+                        lit >= samples * .01 && high - low >= 16);
+            } finally { bitmap.recycle(); }
         }
     }
     private byte[] shellBytes(String command) throws Exception {
